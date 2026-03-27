@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
 const EMPTY = {
@@ -108,6 +108,10 @@ export default function Empleados() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
+  const [csvModal, setCsvModal] = useState(false)
+  const [csvResult, setCsvResult] = useState(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const csvFileRef = useRef(null)
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -154,6 +158,27 @@ export default function Empleados() {
     catch (err) { alert(err?.message || 'Error') }
   }
 
+  const downloadCsvTemplate = () => {
+    const header = 'num_empleado,nombre_completo,puesto,area,email,telefono,sucursal_nombre'
+    const sample = 'EMP-0100,María López García,Analista,Finanzas,m.lopez@empresa.com,5512345678,Corporativo Central'
+    const blob = new Blob([header + '\n' + sample], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'plantilla_empleados.csv'; a.click()
+  }
+
+  const handleCsvImport = async (e) => {
+    e.preventDefault()
+    const file = csvFileRef.current?.files[0]
+    if (!file) return
+    setCsvImporting(true); setCsvResult(null)
+    try {
+      const fd = new FormData(); fd.append('archivo', file)
+      const result = await empleadoAPI.importarCSV(fd)
+      setCsvResult(result)
+      load(1)
+    } catch (err) { setCsvResult({ error: err?.message || 'Error al importar' }) }
+    finally { setCsvImporting(false) }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -161,7 +186,10 @@ export default function Empleados() {
           <h1 className="text-2xl font-bold text-gray-900">Empleados</h1>
           <p className="text-sm text-gray-500 mt-0.5">Registro de empleados y sus asignaciones</p>
         </div>
-        {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Empleado</button>}
+        <div className="flex gap-2">
+          {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
+          {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Empleado</button>}
+        </div>
       </div>
 
       <div className="card p-4">
@@ -295,6 +323,42 @@ export default function Empleados() {
       </Modal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={() => handleDelete(deleteId)} title="Eliminar empleado" message="¿Estás seguro de que deseas eliminar este empleado?" />
+
+      {/* Modal importar CSV */}
+      <Modal open={csvModal} onClose={() => setCsvModal(false)} title="Importar Empleados desde CSV" size="md">
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-gray-600">Sube un archivo CSV con los datos de empleados.</p>
+            <button className="btn-secondary text-xs py-1.5" onClick={downloadCsvTemplate}><ArrowDownTrayIcon className="h-4 w-4" /> Descargar plantilla</button>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+            <strong>Columnas requeridas:</strong> num_empleado, nombre_completo<br />
+            <strong>Columnas opcionales:</strong> puesto, area, email, telefono, sucursal_nombre
+          </div>
+          <form onSubmit={handleCsvImport} className="space-y-3">
+            <input ref={csvFileRef} type="file" accept=".csv" className="input" required />
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setCsvModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" disabled={csvImporting}>{csvImporting ? 'Importando...' : 'Importar'}</button>
+            </div>
+          </form>
+          {csvResult && (
+            <div className={`rounded-lg p-3 text-sm ${csvResult.error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-800'}`}>
+              {csvResult.error ? csvResult.error : (
+                <>
+                  <div className="font-semibold mb-1">Resultado:</div>
+                  <div>Creados: <strong>{csvResult.creados}</strong></div>
+                  <div>Duplicados (omitidos): <strong>{csvResult.duplicados}</strong></div>
+                  <div>Errores: <strong>{csvResult.errores}</strong></div>
+                  {csvResult.detalle?.errores?.length > 0 && (
+                    <div className="mt-2 text-xs text-red-600">{csvResult.detalle.errores.map((e, i) => <div key={i}>Línea {e.linea}: {e.error}</div>)}</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

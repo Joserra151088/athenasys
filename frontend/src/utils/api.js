@@ -43,7 +43,8 @@ export const empleadoAPI = {
   getById: (id) => api.get(`/empleados/${id}`),
   create: (data) => api.post('/empleados', data),
   update: (id, data) => api.put(`/empleados/${id}`, data),
-  delete: (id) => api.delete(`/empleados/${id}`)
+  delete: (id) => api.delete(`/empleados/${id}`),
+  importarCSV: (formData) => api.post('/empleados/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 // Sucursales
@@ -52,7 +53,8 @@ export const sucursalAPI = {
   getById: (id) => api.get(`/sucursales/${id}`),
   create: (data) => api.post('/sucursales', data),
   update: (id, data) => api.put(`/sucursales/${id}`, data),
-  delete: (id) => api.delete(`/sucursales/${id}`)
+  delete: (id) => api.delete(`/sucursales/${id}`),
+  importarCSV: (formData) => api.post('/sucursales/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 // Asignaciones
@@ -119,7 +121,10 @@ export const proveedorAPI = {
   getAll: () => api.get('/proveedores'),
   create: (data) => api.post('/proveedores', data),
   update: (id, data) => api.put(`/proveedores/${id}`, data),
-  delete: (id) => api.delete(`/proveedores/${id}`)
+  delete: (id) => api.delete(`/proveedores/${id}`),
+  getDocumentos: (id) => api.get(`/proveedores/${id}/documentos`),
+  addDocumento: (id, data) => api.post(`/proveedores/${id}/documentos`, data),
+  deleteDocumento: (id, docId) => api.delete(`/proveedores/${id}/documentos/${docId}`)
 }
 
 // Usuarios del sistema
@@ -154,6 +159,12 @@ export const auditoriaAPI = {
 // Tipo de cambio USD/MXN
 export const exchangeAPI = {
   getRate: () => api.get('/exchange-rate')
+}
+
+// Configuración global (logo, etc.)
+export const configAPI = {
+  getLogo: () => api.get('/config/logo'),
+  setLogo: (logo) => api.put('/config/logo', { logo })
 }
 
 // Centros de Costo

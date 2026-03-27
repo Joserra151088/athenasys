@@ -6,7 +6,7 @@ import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
 const EMPTY = { nombre: '', tipo: 'sucursal', direccion: '', estado: '', lat: '', lng: '', centro_costos: '', centro_costo_codigo: '', centro_costo_nombre: '' }
@@ -99,6 +99,10 @@ export default function Sucursales() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
+  const [csvModal, setCsvModal] = useState(false)
+  const [csvResult, setCsvResult] = useState(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const csvFileRef = useRef(null)
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -142,6 +146,27 @@ export default function Sucursales() {
     catch (err) { alert(err?.message || 'Error') }
   }
 
+  const downloadCsvTemplate = () => {
+    const header = 'nombre,tipo,direccion,estado,lat,lng'
+    const sample = 'Sucursal Querétaro,sucursal,"Av. 5 de Febrero 1234, Qro",Querétaro,20.5888,-100.3899'
+    const blob = new Blob([header + '\n' + sample], { type: 'text/csv' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'plantilla_sucursales.csv'; a.click()
+  }
+
+  const handleCsvImport = async (e) => {
+    e.preventDefault()
+    const file = csvFileRef.current?.files[0]
+    if (!file) return
+    setCsvImporting(true); setCsvResult(null)
+    try {
+      const fd = new FormData(); fd.append('archivo', file)
+      const result = await sucursalAPI.importarCSV(fd)
+      setCsvResult(result)
+      load(1)
+    } catch (err) { setCsvResult({ error: err?.message || 'Error al importar' }) }
+    finally { setCsvImporting(false) }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -149,7 +174,10 @@ export default function Sucursales() {
           <h1 className="text-2xl font-bold text-gray-900">Sucursales</h1>
           <p className="text-sm text-gray-500 mt-0.5">Corporativo y sucursales de la empresa</p>
         </div>
-        {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Sucursal</button>}
+        <div className="flex gap-2">
+          {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
+          {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Sucursal</button>}
+        </div>
       </div>
 
       <div className="card p-4">
@@ -269,6 +297,41 @@ export default function Sucursales() {
       </Modal>
 
       <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={() => handleDelete(deleteId)} title="Eliminar sucursal" message="¿Estás seguro de que deseas eliminar esta sucursal?" />
+
+      {/* Modal importar CSV */}
+      <Modal open={csvModal} onClose={() => setCsvModal(false)} title="Importar Sucursales desde CSV" size="md">
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <p className="text-sm text-gray-600">Sube un archivo CSV con los datos de sucursales.</p>
+            <button className="btn-secondary text-xs py-1.5" onClick={downloadCsvTemplate}><ArrowDownTrayIcon className="h-4 w-4" /> Descargar plantilla</button>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-500">
+            <strong>Columnas requeridas:</strong> nombre, tipo<br />
+            <strong>Columnas opcionales:</strong> direccion, estado, lat, lng
+          </div>
+          <form onSubmit={handleCsvImport} className="space-y-3">
+            <input ref={csvFileRef} type="file" accept=".csv" className="input" required />
+            <div className="flex justify-end gap-2">
+              <button type="button" className="btn-secondary" onClick={() => setCsvModal(false)}>Cancelar</button>
+              <button type="submit" className="btn-primary" disabled={csvImporting}>{csvImporting ? 'Importando...' : 'Importar'}</button>
+            </div>
+          </form>
+          {csvResult && (
+            <div className={`rounded-lg p-3 text-sm ${csvResult.error ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-800'}`}>
+              {csvResult.error ? csvResult.error : (
+                <>
+                  <div className="font-semibold mb-1">Resultado:</div>
+                  <div>Creadas: <strong>{csvResult.creados}</strong></div>
+                  <div>Errores: <strong>{csvResult.errores}</strong></div>
+                  {csvResult.detalle?.errores?.length > 0 && (
+                    <div className="mt-2 text-xs text-red-600">{csvResult.detalle.errores.map((e, i) => <div key={i}>Línea {e.linea}: {e.error}</div>)}</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

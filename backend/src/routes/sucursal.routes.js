@@ -1,10 +1,64 @@
 const router = require('express').Router()
 const { v4: uuidv4 } = require('uuid')
+const multer = require('multer')
 const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
 
+const upload = multer({ storage: multer.memoryStorage() })
+
 router.use(authMiddleware)
+
+// ── Importar sucursales desde CSV ────────────────────────────────────────────
+router.post('/importar-csv', requireRoles('super_admin', 'agente_soporte'), upload.single('archivo'), (req, res) => {
+  if (!req.file) return res.status(400).json({ message: 'Archivo CSV requerido' })
+  const text = req.file.buffer.toString('utf8')
+  const lines = text.split(/\r?\n/).filter(l => l.trim())
+  if (lines.length < 2) return res.status(400).json({ message: 'CSV vacío o sin datos' })
+
+  const parseRow = (line) => {
+    const result = []
+    let cur = '', inQ = false
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i]
+      if (ch === '"') { inQ = !inQ }
+      else if (ch === ',' && !inQ) { result.push(cur.trim()); cur = '' }
+      else { cur += ch }
+    }
+    result.push(cur.trim())
+    return result
+  }
+
+  const headers = parseRow(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'))
+  const creados = [], errores = []
+  const now = new Date().toISOString()
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseRow(lines[i])
+    const row = {}
+    headers.forEach((h, idx) => { row[h] = cols[idx] || '' })
+
+    if (!row.nombre || !row.tipo) {
+      errores.push({ linea: i + 1, error: 'nombre y tipo son requeridos' })
+      continue
+    }
+
+    const suc = {
+      id: uuidv4(),
+      nombre: row.nombre,
+      tipo: row.tipo || 'sucursal',
+      direccion: row.direccion || '',
+      estado: row.estado || '',
+      lat: row.lat ? parseFloat(row.lat) : null,
+      lng: row.lng ? parseFloat(row.lng) : null,
+      activo: true, created_at: now
+    }
+    db.get('sucursales').push(suc).write()
+    creados.push(row.nombre)
+  }
+
+  res.json({ creados: creados.length, errores: errores.length, detalle: { creados, errores } })
+})
 
 router.get('/', (req, res) => {
   const { search, tipo, page = 1, limit = 50 } = req.query

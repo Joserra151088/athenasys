@@ -461,6 +461,7 @@ const DDL = [
     \`tipo_cambio\` DECIMAL(10,4) DEFAULT 1,
     \`notas\` TEXT,
     \`estado\` ENUM('borrador','enviada','aceptada','rechazada') DEFAULT 'borrador',
+    \`fecha_vencimiento\` DATE,
     \`creado_por\` VARCHAR(36),
     \`creado_por_nombre\` VARCHAR(200),
     \`created_at\` DATETIME,
@@ -482,7 +483,23 @@ const DDL = [
     \`nombre\` VARCHAR(200) NOT NULL,
     \`contacto\` VARCHAR(200),
     \`telefono\` VARCHAR(50),
+    \`contacto_nombre\` VARCHAR(200),
+    \`rfc\` VARCHAR(20),
+    \`direccion\` TEXT,
+    \`url_web\` VARCHAR(500),
+    \`imagen\` LONGTEXT,
     \`activo\` TINYINT(1) DEFAULT 1,
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`proveedor_documentos\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`proveedor_id\` VARCHAR(36) NOT NULL,
+    \`nombre\` VARCHAR(200) NOT NULL,
+    \`tipo\` ENUM('contrato','constancia_fiscal','otro') DEFAULT 'otro',
+    \`archivo\` LONGTEXT,
+    \`nombre_archivo\` VARCHAR(500),
     \`created_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
@@ -599,6 +616,13 @@ const DDL = [
     \`creado_por\` VARCHAR(36),
     \`creado_por_nombre\` VARCHAR(200),
     \`created_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`configuracion\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`clave\` VARCHAR(100) UNIQUE NOT NULL,
+    \`valor\` LONGTEXT,
+    \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS \`finanzas_detalle\` (
@@ -888,6 +912,15 @@ async function initDB() {
   await alterIfNotExists('documentos', 'sharepoint_url',         'TEXT')
   await alterIfNotExists('documentos', 'sharepoint_uploaded_at', 'DATETIME')
   await alterIfNotExists('documentos', 'activo',                 'TINYINT(1) DEFAULT 1')
+  // Proveedores nuevos campos
+  await alterIfNotExists('proveedores', 'contacto_nombre', 'VARCHAR(200)')
+  await alterIfNotExists('proveedores', 'rfc',             'VARCHAR(20)')
+  await alterIfNotExists('proveedores', 'direccion',       'TEXT')
+  await alterIfNotExists('proveedores', 'url_web',         'VARCHAR(500)')
+  await alterIfNotExists('proveedores', 'imagen',          'LONGTEXT')
+  await alterIfNotExists('proveedores', 'updated_at',      'DATETIME')
+  // Cotizaciones nueva columna
+  await alterIfNotExists('cotizaciones', 'fecha_vencimiento', 'DATE')
 
   console.log('✓ Tablas verificadas/creadas')
 
@@ -902,6 +935,7 @@ async function initDB() {
     'presupuesto_cambios','finanzas_detalle',
     'catalogo_tipos_dispositivo','catalogo_tipos_licencia',
     'catalogo_areas','catalogo_marcas',
+    'configuracion','proveedor_documentos',
   ]
   for (const t of tables) await loadTable(t)
 

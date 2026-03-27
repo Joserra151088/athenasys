@@ -1,17 +1,34 @@
 import { useState, useEffect, useRef } from 'react'
-import { cotizacionAPI, exchangeAPI } from '../utils/api'
+import { cotizacionAPI, exchangeAPI, configAPI } from '../utils/api'
 import { IVA_RATE } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
-import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, PrinterIcon, BookmarkIcon, PlusCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import ConfirmDialog from '../components/ConfirmDialog'
+import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, PrinterIcon, BookmarkIcon, PlusCircleIcon, XMarkIcon, MinusCircleIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 
 const ESTADO_COLORS = { borrador: 'bg-gray-100 text-gray-600', enviada: 'bg-blue-100 text-blue-700', aceptada: 'bg-emerald-100 text-emerald-700', rechazada: 'bg-red-100 text-red-700' }
+
+function defaultVenc() {
+  const d = new Date(); d.setDate(d.getDate() + 30)
+  return d.toISOString().slice(0, 10)
+}
+
+function isExpired(fechaVenc) {
+  if (!fechaVenc) return false
+  return new Date(fechaVenc) < new Date(new Date().toISOString().slice(0, 10))
+}
+
+function formatDateEs(dateStr) {
+  if (!dateStr) return ''
+  try { return format(new Date(dateStr + 'T12:00:00'), "dd 'de' MMMM 'de' yyyy", { locale: es }) }
+  catch { return dateStr }
+}
 
 export default function Cotizaciones() {
   const { canEdit, user } = useAuth()
@@ -25,16 +42,23 @@ export default function Cotizaciones() {
   const [exchangeRate, setExchangeRate] = useState(17.15)
   const [repositorio, setRepositorio] = useState([])
   const [showRepo, setShowRepo] = useState(false)
+  const [globalLogo, setGlobalLogo] = useState(null)
+  const [deleteId, setDeleteId] = useState(null)
+  const [formError, setFormError] = useState('')
   const previewRef = useRef(null)
 
+  // Qty per repo item
+  const [repoQty, setRepoQty] = useState({})
+
   // Form
-  const [form, setForm] = useState({ cliente: '', descripcion: '', moneda: 'MXN', tipo_cambio: 17.15, notas: '', items: [] })
+  const [form, setForm] = useState({ cliente: '', descripcion: '', moneda: 'MXN', tipo_cambio: 17.15, notas: '', items: [], fecha_vencimiento: defaultVenc() })
   const [newItem, setNewItem] = useState({ nombre: '', descripcion: '', cantidad: 1, precio: '' })
 
   useEffect(() => {
     loadCotizaciones()
     exchangeAPI.getRate().then(r => { setExchangeRate(r.usd_mxn); setForm(f => ({ ...f, tipo_cambio: r.usd_mxn })) })
     cotizacionAPI.getRepositorio().then(setRepositorio)
+    configAPI.getLogo().then(r => setGlobalLogo(r.logo)).catch(() => {})
   }, [])
 
   const loadCotizaciones = (page = 1) => {
@@ -58,36 +82,52 @@ export default function Cotizaciones() {
   }
 
   const fmt = (n, moneda = 'MXN') => {
-    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: moneda, minimumFractionDigits: 2 }).format(n)
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: moneda, minimumFractionDigits: 2 }).format(n || 0)
   }
 
   const openCreate = () => {
-    setForm({ cliente: '', descripcion: '', moneda: 'MXN', tipo_cambio: exchangeRate, notas: '', items: [] })
+    setForm({ cliente: '', descripcion: '', moneda: 'MXN', tipo_cambio: exchangeRate, notas: '', items: [], fecha_vencimiento: defaultVenc() })
     setNewItem({ nombre: '', descripcion: '', cantidad: 1, precio: '' })
+    setFormError('')
+    setShowRepo(false)
+    setRepoQty({})
     setModal('create')
   }
 
   const addItem = () => {
     if (!newItem.nombre || !newItem.precio) return
-    setForm(f => ({ ...f, items: [...f.items, { ...newItem, precio: parseFloat(newItem.precio), cantidad: parseInt(newItem.cantidad) }] }))
+    setForm(f => ({ ...f, items: [...f.items, { ...newItem, precio: parseFloat(newItem.precio), cantidad: parseInt(newItem.cantidad) || 1 }] }))
     setNewItem({ nombre: '', descripcion: '', cantidad: 1, precio: '' })
   }
 
   const addFromRepo = (item) => {
-    setForm(f => ({ ...f, items: [...f.items, { nombre: item.nombre, descripcion: item.descripcion, cantidad: 1, precio: item.precio }] }))
+    const qty = parseInt(repoQty[item.id]) || 1
+    // Check if already in list
+    const existing = form.items.findIndex(i => i.nombre === item.nombre && i.precio === parseFloat(item.precio))
+    if (existing >= 0) {
+      setForm(f => ({ ...f, items: f.items.map((it, idx) => idx === existing ? { ...it, cantidad: it.cantidad + qty } : it) }))
+    } else {
+      setForm(f => ({ ...f, items: [...f.items, { nombre: item.nombre, descripcion: item.descripcion || '', cantidad: qty, precio: parseFloat(item.precio) }] }))
+    }
+    setRepoQty(q => ({ ...q, [item.id]: 1 }))
   }
 
   const removeItem = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))
 
+  const updateItemQty = (i, delta) => {
+    setForm(f => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, cantidad: Math.max(1, (it.cantidad || 1) + delta) } : it) }))
+  }
+
   const handleCreate = async (e) => {
     e.preventDefault()
-    if (!form.items.length) { alert('Agrega al menos un ítem'); return }
+    setFormError('')
+    if (!form.items.length) { setFormError('Agrega al menos un ítem a la cotización'); return }
     setSaving(true)
     try {
       await cotizacionAPI.create(form)
       setModal(null)
       loadCotizaciones(1)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { setFormError(err?.message || 'Error al crear') }
     finally { setSaving(false) }
   }
 
@@ -106,6 +146,12 @@ export default function Cotizaciones() {
     const h = Math.min((canvas.height * w) / canvas.width, pdf.internal.pageSize.getHeight())
     pdf.addImage(imgData, 'PNG', 0, 0, w, h)
     pdf.save(`${selected?.folio || 'cotizacion'}.pdf`)
+  }
+
+  const handleDelete = async (id) => {
+    try { await cotizacionAPI.delete(id); loadCotizaciones(pagination.page) }
+    catch (err) { alert(err?.message || 'Error') }
+    finally { setDeleteId(null) }
   }
 
   const { subtotal, iva, total, total_mxn } = calcTotals(form.items, form.moneda, form.tipo_cambio)
@@ -142,35 +188,47 @@ export default function Cotizaciones() {
                 <th className="table-header">Folio</th>
                 <th className="table-header">Cliente</th>
                 <th className="table-header">Ítems</th>
-                <th className="table-header">Subtotal</th>
-                <th className="table-header">IVA</th>
                 <th className="table-header">Total</th>
                 <th className="table-header">Moneda</th>
                 <th className="table-header">Estado</th>
+                <th className="table-header">Vence</th>
                 <th className="table-header">Fecha</th>
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={10} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
+                <tr><td colSpan={9} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
               ) : cotizaciones.length === 0 ? (
-                <tr><td colSpan={10} className="py-12 text-center text-gray-400">No hay cotizaciones</td></tr>
+                <tr><td colSpan={9} className="py-12 text-center text-gray-400">No hay cotizaciones</td></tr>
               ) : cotizaciones.map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="table-cell font-mono text-xs font-semibold text-gray-700">{c.folio}</td>
                   <td className="table-cell font-medium text-sm">{c.cliente}</td>
                   <td className="table-cell text-sm">{c.items?.length || 0}</td>
-                  <td className="table-cell text-sm">{fmt(c.subtotal, c.moneda)}</td>
-                  <td className="table-cell text-sm">{fmt(c.iva, c.moneda)}</td>
                   <td className="table-cell text-sm font-semibold">{fmt(c.total, c.moneda)}</td>
                   <td className="table-cell"><Badge label={c.moneda} color={c.moneda === 'USD' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} /></td>
                   <td className="table-cell"><Badge label={c.estado} color={ESTADO_COLORS[c.estado] || 'bg-gray-100 text-gray-600'} /></td>
+                  <td className="table-cell text-xs">
+                    <div className="flex items-center gap-1">
+                      <span className={isExpired(c.fecha_vencimiento) ? 'text-red-600' : 'text-gray-500'}>
+                        {c.fecha_vencimiento ? format(new Date(c.fecha_vencimiento + 'T12:00:00'), 'dd/MM/yyyy') : '—'}
+                      </span>
+                      {isExpired(c.fecha_vencimiento) && <Badge label="Vencida" color="bg-red-100 text-red-700" />}
+                    </div>
+                  </td>
                   <td className="table-cell text-xs text-gray-500">{c.created_at ? format(new Date(c.created_at), 'dd/MM/yyyy') : ''}</td>
                   <td className="table-cell">
-                    <button onClick={() => openPreview(c)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50">
-                      <EyeIcon className="h-4 w-4" />
-                    </button>
+                    <div className="flex gap-1">
+                      <button onClick={() => openPreview(c)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50">
+                        <EyeIcon className="h-4 w-4" />
+                      </button>
+                      {(user?.rol === 'super_admin' || user?.rol === 'agente_soporte') && (
+                        <button onClick={() => setDeleteId(c.id)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50">
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -199,8 +257,12 @@ export default function Cotizaciones() {
                 <option value="USD">USD — Dólar Americano</option>
               </select>
             </div>
+            <div>
+              <label className="label">Fecha de vencimiento</label>
+              <input type="date" className="input" value={form.fecha_vencimiento} onChange={e => setForm(f => ({ ...f, fecha_vencimiento: e.target.value }))} />
+            </div>
             {form.moneda === 'USD' && (
-              <div>
+              <div className="col-span-2">
                 <label className="label">Tipo de cambio (USD → MXN)</label>
                 <input type="number" step="0.01" className="input" value={form.tipo_cambio} onChange={e => setForm(f => ({ ...f, tipo_cambio: e.target.value }))} />
                 <p className="text-xs text-gray-400 mt-1">Tipo de cambio de referencia: ${exchangeRate} MXN/USD</p>
@@ -220,13 +282,23 @@ export default function Cotizaciones() {
             </div>
 
             {showRepo && (
-              <div className="mb-3 border border-primary-200 rounded-lg overflow-y-auto max-h-40">
+              <div className="mb-3 border border-primary-200 rounded-lg overflow-y-auto max-h-52 bg-white">
                 {repositorio.map(item => (
-                  <button key={item.id} type="button" onClick={() => { addFromRepo(item); setShowRepo(false) }}
-                    className="w-full text-left flex justify-between px-3 py-2 hover:bg-primary-50 text-sm border-b border-gray-100 last:border-0">
-                    <span>{item.nombre}</span>
-                    <span className="text-gray-500">{fmt(item.precio, item.moneda)}</span>
-                  </button>
+                  <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-primary-50">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{item.nombre}</div>
+                      <div className="text-xs text-gray-400">{fmt(item.precio, item.moneda)}</div>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                      <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: Math.max(1, (parseInt(q[item.id]) || 1) - 1) }))}
+                        className="p-1 rounded hover:bg-gray-200"><MinusCircleIcon className="h-4 w-4 text-gray-500" /></button>
+                      <span className="text-sm font-semibold w-6 text-center">{repoQty[item.id] || 1}</span>
+                      <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: (parseInt(q[item.id]) || 1) + 1 }))}
+                        className="p-1 rounded hover:bg-gray-200"><PlusCircleIcon className="h-4 w-4 text-gray-500" /></button>
+                      <button type="button" onClick={() => addFromRepo(item)}
+                        className="btn-primary text-xs py-1 px-2">Agregar</button>
+                    </div>
+                  </div>
                 ))}
               </div>
             )}
@@ -238,7 +310,15 @@ export default function Cotizaciones() {
                     <div className="font-medium text-sm">{item.nombre}</div>
                     <div className="text-xs text-gray-500">{item.descripcion}</div>
                   </div>
-                  <div className="text-sm text-gray-600">x{item.cantidad}</div>
+                  <div className="flex items-center gap-1">
+                    <button type="button" onClick={() => updateItemQty(i, -1)} className="p-0.5 rounded hover:bg-gray-200">
+                      <MinusCircleIcon className="h-4 w-4 text-gray-400" />
+                    </button>
+                    <span className="text-sm font-semibold w-6 text-center">{item.cantidad}</span>
+                    <button type="button" onClick={() => updateItemQty(i, 1)} className="p-0.5 rounded hover:bg-gray-200">
+                      <PlusCircleIcon className="h-4 w-4 text-gray-400" />
+                    </button>
+                  </div>
                   <div className="text-sm font-semibold">{fmt(item.precio * item.cantidad, form.moneda)}</div>
                   <button type="button" onClick={() => removeItem(i)} className="text-gray-300 hover:text-red-500">
                     <XMarkIcon className="h-4 w-4" />
@@ -262,6 +342,10 @@ export default function Cotizaciones() {
                 <button type="button" onClick={addItem} className="btn-primary py-2 px-3 flex-shrink-0"><PlusCircleIcon className="h-4 w-4" /></button>
               </div>
             </div>
+
+            {formError && (
+              <div className="mt-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{formError}</div>
+            )}
           </div>
 
           {/* Totales */}
@@ -293,82 +377,103 @@ export default function Cotizaciones() {
             <div className="flex justify-end">
               <button className="btn-secondary" onClick={exportPDF}><PrinterIcon className="h-4 w-4" /> Exportar PDF</button>
             </div>
-            <div ref={previewRef} className="bg-white border border-gray-200 rounded-xl p-8 space-y-6 text-sm font-sans">
-              <div className="flex justify-between items-start border-b-2 border-gray-200 pb-5">
-                <div>
-                  <div className="font-bold text-2xl text-gray-900">COTIZACIÓN</div>
-                  <div className="text-gray-500 text-sm">Folio: {selected.folio}</div>
-                  <div className="text-gray-500 text-xs">Fecha: {selected.created_at ? format(new Date(selected.created_at), "dd 'de' MMMM yyyy", { locale: es }) : ''}</div>
-                </div>
-                <div className="text-right">
-                  <div className="font-bold text-gray-800 text-lg">KRONOS TI</div>
-                  <div className="text-gray-500 text-xs">Área de Tecnologías de la Información</div>
-                  <div className="text-gray-500 text-xs">Elaborado por: {selected.creado_por_nombre}</div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="font-semibold text-xs uppercase tracking-wide text-gray-500 mb-2">Cliente</div>
-                  <div className="font-bold text-gray-900">{selected.cliente}</div>
-                  {selected.descripcion && <div className="text-gray-500 text-xs mt-1">{selected.descripcion}</div>}
-                </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="font-semibold text-xs uppercase tracking-wide text-gray-500 mb-2">Condiciones</div>
-                  <div className="text-xs space-y-1">
-                    <div><span className="font-medium">Moneda:</span> {selected.moneda}</div>
-                    <div><span className="font-medium">IVA:</span> 16%</div>
-                    {selected.moneda === 'USD' && <div><span className="font-medium">Tipo de cambio:</span> ${selected.tipo_cambio} MXN/USD</div>}
-                    <div><span className="font-medium">Validez:</span> 30 días</div>
+            <div ref={previewRef} className="bg-white border border-gray-200 rounded-xl overflow-hidden text-sm font-sans">
+              {/* Header */}
+              <div className="bg-slate-800 text-white px-8 py-5">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-4">
+                    {globalLogo && <img src={globalLogo} alt="Logo" className="h-12 object-contain rounded" />}
+                    <div>
+                      <div className="font-bold text-xl">AthenaSys</div>
+                      <div className="text-slate-300 text-xs">Área de Tecnologías de la Información</div>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">Cotización</div>
+                    <div className="font-mono font-bold text-lg">{selected.folio}</div>
+                    <div className="text-xs text-slate-300">{selected.created_at ? format(new Date(selected.created_at), "dd 'de' MMMM yyyy", { locale: es }) : ''}</div>
                   </div>
                 </div>
               </div>
 
-              <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
-                <thead className="bg-gray-800 text-white">
-                  <tr>
-                    <th className="text-left px-4 py-2">#</th>
-                    <th className="text-left px-4 py-2">Descripción</th>
-                    <th className="text-right px-4 py-2">Cant.</th>
-                    <th className="text-right px-4 py-2">P. Unit.</th>
-                    <th className="text-right px-4 py-2">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.items?.map((item, i) => (
-                    <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      <td className="px-4 py-2 text-gray-500">{i + 1}</td>
-                      <td className="px-4 py-2">
-                        <div className="font-medium">{item.nombre}</div>
-                        {item.descripcion && <div className="text-gray-400">{item.descripcion}</div>}
-                      </td>
-                      <td className="px-4 py-2 text-right">{item.cantidad}</td>
-                      <td className="px-4 py-2 text-right">{fmt(item.precio, selected.moneda)}</td>
-                      <td className="px-4 py-2 text-right font-medium">{fmt(item.precio * item.cantidad, selected.moneda)}</td>
+              <div className="p-8 space-y-6">
+                <div className="grid grid-cols-2 gap-6">
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <div className="font-semibold text-xs uppercase tracking-wide text-gray-400 mb-2">Para</div>
+                    <div className="font-bold text-gray-900 text-base">{selected.cliente}</div>
+                    {selected.descripcion && <div className="text-gray-500 text-xs mt-1">{selected.descripcion}</div>}
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                    <div className="font-semibold text-xs uppercase tracking-wide text-gray-400 mb-2">Condiciones</div>
+                    <div className="text-xs space-y-1 text-gray-700">
+                      <div><span className="font-medium">Moneda:</span> {selected.moneda}</div>
+                      <div><span className="font-medium">IVA:</span> 16%</div>
+                      {selected.moneda === 'USD' && <div><span className="font-medium">Tipo de cambio ref.:</span> ${selected.tipo_cambio} MXN/USD</div>}
+                      <div><span className="font-medium">Válida hasta:</span> <span className={isExpired(selected.fecha_vencimiento) ? 'text-red-600 font-semibold' : 'text-gray-700'}>{selected.fecha_vencimiento ? formatDateEs(selected.fecha_vencimiento) : '30 días'}</span></div>
+                      <div><span className="font-medium">Elaborado por:</span> {selected.creado_por_nombre}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <table className="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+                  <thead className="bg-slate-800 text-white">
+                    <tr>
+                      <th className="text-left px-4 py-2.5">#</th>
+                      <th className="text-left px-4 py-2.5">Descripción</th>
+                      <th className="text-right px-4 py-2.5">Cant.</th>
+                      <th className="text-right px-4 py-2.5">P. Unit.</th>
+                      <th className="text-right px-4 py-2.5">Total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {selected.items?.map((item, i) => (
+                      <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
+                        <td className="px-4 py-2.5 text-gray-400">{i + 1}</td>
+                        <td className="px-4 py-2.5">
+                          <div className="font-medium text-gray-900">{item.nombre}</div>
+                          {item.descripcion && <div className="text-gray-400 text-xs">{item.descripcion}</div>}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{item.cantidad}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700">{fmt(item.precio, selected.moneda)}</td>
+                        <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{fmt(item.precio * item.cantidad, selected.moneda)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
 
-              <div className="flex justify-end">
-                <div className="w-64 space-y-2 text-xs">
-                  <div className="flex justify-between"><span className="text-gray-600">Subtotal</span><span>{fmt(selected.subtotal, selected.moneda)}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">IVA (16%)</span><span>{fmt(selected.iva, selected.moneda)}</span></div>
-                  <div className="flex justify-between text-sm font-bold border-t-2 border-gray-900 pt-2">
-                    <span>TOTAL</span><span>{fmt(selected.total, selected.moneda)}</span>
+                <div className="flex justify-end">
+                  <div className="w-72 space-y-1.5 text-xs">
+                    <div className="flex justify-between py-1 text-gray-600"><span>Subtotal</span><span className="font-medium">{fmt(selected.subtotal, selected.moneda)}</span></div>
+                    <div className="flex justify-between py-1 text-gray-600"><span>IVA (16%)</span><span className="font-medium">{fmt(selected.iva, selected.moneda)}</span></div>
+                    <div className="flex justify-between py-2 text-base font-bold border-t-2 border-slate-800 mt-1 text-gray-900">
+                      <span>TOTAL</span><span>{fmt(selected.total, selected.moneda)}</span>
+                    </div>
+                    {selected.moneda === 'USD' && (
+                      <div className="flex justify-between text-gray-500 pt-1"><span>Total MXN (referencial)</span><span>{fmt(selected.total_mxn, 'MXN')}</span></div>
+                    )}
                   </div>
-                  {selected.moneda === 'USD' && (
-                    <div className="flex justify-between text-gray-500"><span>Total MXN</span><span>{fmt(selected.total_mxn, 'MXN')}</span></div>
-                  )}
+                </div>
+
+                {/* Leyenda tipo de cambio USD */}
+                {selected.moneda === 'USD' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                    * El costo en pesos será calculado con el tipo de cambio publicado por el SAT o Banco de México vigente a la fecha de autorización de la cotización. Tipo de cambio referencial: ${selected.tipo_cambio} MXN/USD
+                  </div>
+                )}
+
+                {selected.notas && (
+                  <div className="border-t pt-4 text-xs text-gray-600">
+                    <div className="font-semibold mb-1 text-gray-700">Notas:</div>
+                    <div>{selected.notas}</div>
+                  </div>
+                )}
+
+                {/* Footer */}
+                <div className="border-t pt-3 flex justify-between text-xs text-gray-400">
+                  <span>Elaborado por: {selected.creado_por_nombre}</span>
+                  <span>AthenaSys — Área TI</span>
                 </div>
               </div>
-
-              {selected.notas && (
-                <div className="border-t pt-4 text-xs text-gray-600">
-                  <div className="font-semibold mb-1">Notas:</div>
-                  <div>{selected.notas}</div>
-                </div>
-              )}
             </div>
           </div>
         )}
@@ -378,6 +483,15 @@ export default function Cotizaciones() {
       <Modal open={modal === 'repositorio'} onClose={() => setModal(null)} title="Repositorio de Productos" size="lg">
         <RepositorioManager repositorio={repositorio} onChange={setRepositorio} />
       </Modal>
+
+      {/* Confirm delete */}
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => handleDelete(deleteId)}
+        title="Eliminar cotización"
+        message="¿Estás seguro de que deseas eliminar esta cotización? Esta acción no se puede deshacer."
+      />
     </div>
   )
 }

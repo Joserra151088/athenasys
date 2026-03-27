@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { plantillaAPI } from '../utils/api'
+import { plantillaAPI, configAPI } from '../utils/api'
 import { DOCUMENT_TYPES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import {
   PlusIcon, PencilIcon, ClockIcon, ChevronDownIcon,
-  EyeIcon, PencilSquareIcon, MagnifyingGlassIcon
+  EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon
 } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -67,7 +67,25 @@ const GROUP_COLORS = {
   red:    { pill: 'bg-red-100 text-red-700 border-red-200',      btn: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200' },
 }
 
-// Reemplaza todos los tags con sus ejemplos para la vista previa
+// Datos de ejemplo para la vista previa realista
+const SAMPLE_DATA = {
+  '{{receptor_nombre}}':      'Juan García Pérez',
+  '{{receptor_num_empleado}}':'EMP-0042',
+  '{{receptor_area}}':        'Tecnologías de la Información',
+  '{{receptor_puesto}}':      'Analista Senior',
+  '{{receptor_email}}':       'juan.garcia@empresa.com',
+  '{{sucursal_nombre}}':      'Corporativo CDMX',
+  '{{sucursal_estado}}':      'Ciudad de México',
+  '{{sucursal_tipo}}':        'Corporativo',
+  '{{agente_nombre}}':        'José Ramón Estrada Rendón',
+  '{{fecha_documento}}':      format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: es }),
+  '{{folio}}':                'SAL-2026-000001',
+  '{{motivo_salida}}':        'Asignación de equipo de trabajo',
+  '{{lista_dispositivos}}':   '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#1e293b;color:white"><th style="padding:4px 8px;text-align:left">Equipo</th><th style="padding:4px 8px;text-align:left">Serie</th></tr></thead><tbody><tr style="background:#f8fafc"><td style="padding:4px 8px">Laptop Dell XPS 15</td><td style="padding:4px 8px">ABC123XYZ</td></tr><tr><td style="padding:4px 8px">MacBook Pro M3</td><td style="padding:4px 8px">DEF456UVW</td></tr></tbody></table>',
+  '{{num_dispositivos}}':     '2',
+}
+
+// Reemplaza todos los tags con sus ejemplos para la vista previa simple
 function renderPreview(text) {
   let out = text
   for (const g of TAG_GROUPS) {
@@ -80,6 +98,51 @@ function renderPreview(text) {
     out = out.replace(/\n/g, '<br/>')
   }
   return out
+}
+
+// Genera el HTML del documento real con los datos de ejemplo
+function renderRealPreview(text, logo) {
+  let body = text
+  for (const [tag, val] of Object.entries(SAMPLE_DATA)) {
+    body = body.split(tag).join(val)
+  }
+  if (!/<[a-z][\s\S]*>/i.test(body)) {
+    body = body.replace(/\n/g, '<br/>')
+  }
+  const logoHtml = logo ? `<img src="${logo}" alt="Logo" style="height:48px;object-fit:contain;border-radius:4px" />` : ''
+  return `
+    <div style="font-family:Georgia,serif;color:#1e293b;line-height:1.6">
+      <div style="background:#1e293b;color:white;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;border-radius:8px 8px 0 0">
+        <div style="display:flex;align-items:center;gap:12px">
+          ${logoHtml}
+          <div>
+            <div style="font-weight:bold;font-size:18px">AthenaSys</div>
+            <div style="font-size:11px;color:#94a3b8">Área de Tecnologías de la Información</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em">Folio</div>
+          <div style="font-weight:bold;font-family:monospace;font-size:14px">${SAMPLE_DATA['{{folio}}']}</div>
+          <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{fecha_documento}}']}</div>
+        </div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:24px 28px">
+        ${body}
+        <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:32px">
+          <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+            <div style="font-size:12px;color:#64748b">Firma del receptor</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{receptor_nombre}}']}</div>
+            <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{receptor_puesto}}']}</div>
+          </div>
+          <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+            <div style="font-size:12px;color:#64748b">Firma del agente TI</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{agente_nombre}}']}</div>
+            <div style="font-size:11px;color:#94a3b8">Soporte TI</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
 }
 
 // Toolbar de formato enriquecido
@@ -141,16 +204,26 @@ export default function Plantillas() {
   const [showVersiones, setShowVersiones] = useState(null)
   const [form, setForm] = useState({ tipo: 'responsiva', nombre: '', texto_legal: '' })
   const [saving, setSaving] = useState(false)
-  const [editorTab, setEditorTab] = useState('editar') // 'editar' | 'vista'
+  const [editorTab, setEditorTab] = useState('editar') // 'editar' | 'vista' | 'real'
   const [tagSearch, setTagSearch] = useState('')
   const textareaRef = useRef(null)
+  const logoFileRef = useRef(null)
+
+  // Logo global
+  const [globalLogo, setGlobalLogo] = useState(null)
+  const [logoModal, setLogoModal] = useState(false)
+  const [logoPreview, setLogoPreview] = useState(null)
+  const [logoSaving, setLogoSaving] = useState(false)
 
   const load = () => {
     setLoading(true)
     plantillaAPI.getAll().then(setPlantillas).finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    load()
+    configAPI.getLogo().then(r => setGlobalLogo(r.logo)).catch(() => {})
+  }, [])
 
   const openCreate = () => {
     setEditing(null)
@@ -205,6 +278,35 @@ export default function Plantillas() {
     }, 0)
   }
 
+  const handleLogoFileChange = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => setLogoPreview(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  const handleLogoSave = async () => {
+    setLogoSaving(true)
+    try {
+      await configAPI.setLogo(logoPreview)
+      setGlobalLogo(logoPreview)
+      setLogoModal(false)
+    } catch (err) { alert(err?.message || 'Error al guardar logo') }
+    finally { setLogoSaving(false) }
+  }
+
+  const handleLogoRemove = async () => {
+    setLogoSaving(true)
+    try {
+      await configAPI.setLogo(null)
+      setGlobalLogo(null)
+      setLogoPreview(null)
+      setLogoModal(false)
+    } catch (err) { alert(err?.message || 'Error') }
+    finally { setLogoSaving(false) }
+  }
+
   // Filtro de búsqueda en tags
   const filteredGroups = tagSearch
     ? TAG_GROUPS.map(g => ({
@@ -226,11 +328,18 @@ export default function Plantillas() {
           <h1 className="text-2xl font-bold text-gray-900">Plantillas de Documentos</h1>
           <p className="text-sm text-gray-500 mt-0.5">Administra los templates con versionamiento</p>
         </div>
-        {canEdit() && (
-          <button className="btn-primary" onClick={openCreate}>
-            <PlusIcon className="h-4 w-4" /> Nueva Plantilla
-          </button>
-        )}
+        <div className="flex gap-2">
+          {canEdit() && (
+            <button className="btn-secondary" onClick={() => { setLogoPreview(globalLogo); setLogoModal(true) }}>
+              <PhotoIcon className="h-4 w-4" /> Configurar Logo
+            </button>
+          )}
+          {canEdit() && (
+            <button className="btn-primary" onClick={openCreate}>
+              <PlusIcon className="h-4 w-4" /> Nueva Plantilla
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -355,6 +464,17 @@ export default function Plantillas() {
                 </span>
               )}
             </button>
+            <button
+              type="button"
+              onClick={() => setEditorTab('real')}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editorTab === 'real'
+                  ? 'border-emerald-600 text-emerald-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <EyeIcon className="h-4 w-4" /> Vista Previa Real
+            </button>
           </div>
 
           {/* ── Tab: Editar ─────────────────────────────────────────────── */}
@@ -456,6 +576,21 @@ export default function Plantillas() {
             </div>
           )}
 
+          {/* ── Tab: Vista previa real ──────────────────────────────────── */}
+          {editorTab === 'real' && (
+            <div className="flex-1 flex flex-col gap-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs text-emerald-700">
+                Vista previa realista con datos de ejemplo. Así lucirá el documento final generado para el receptor.
+                {!globalLogo && <span className="ml-2 text-emerald-600 font-medium">(Sin logo — configúralo con "Configurar Logo")</span>}
+              </div>
+              <div
+                className="flex-1 bg-white border border-gray-200 rounded-xl overflow-y-auto shadow-inner"
+                style={{ minHeight: '380px' }}
+                dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo) }}
+              />
+            </div>
+          )}
+
           {/* Aviso versión */}
           {editing && (
             <div className="bg-amber-50 text-amber-700 text-xs px-3 py-2 rounded-lg border border-amber-200">
@@ -470,6 +605,35 @@ export default function Plantillas() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Modal configurar logo global ─────────────────────────────────── */}
+      <Modal open={logoModal} onClose={() => setLogoModal(false)} title="Configurar Logo Global" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">El logo se mostrará en el encabezado de todos los documentos generados.</p>
+          {(logoPreview || globalLogo) && (
+            <div className="flex justify-center">
+              <img src={logoPreview || globalLogo} alt="Logo" className="h-24 object-contain border border-gray-200 rounded-lg p-2" />
+            </div>
+          )}
+          <div>
+            <label className="label">Subir imagen</label>
+            <input ref={logoFileRef} type="file" accept="image/*" className="input" onChange={handleLogoFileChange} />
+          </div>
+          <div className="flex justify-between gap-2">
+            {(globalLogo) && (
+              <button type="button" className="btn-secondary text-red-600 border-red-200 hover:bg-red-50" onClick={handleLogoRemove} disabled={logoSaving}>
+                Quitar logo
+              </button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <button type="button" className="btn-secondary" onClick={() => setLogoModal(false)}>Cancelar</button>
+              <button type="button" className="btn-primary" onClick={handleLogoSave} disabled={logoSaving || !logoPreview}>
+                {logoSaving ? 'Guardando...' : 'Guardar logo'}
+              </button>
+            </div>
+          </div>
+        </div>
       </Modal>
 
       {/* Estilos para la vista previa */}

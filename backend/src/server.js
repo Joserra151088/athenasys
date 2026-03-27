@@ -24,6 +24,7 @@ const finanzasRoutes = require('./routes/finanzas.routes')
 const presupuestoRoutes = require('./routes/presupuesto.routes')
 const reportesRoutes = require('./routes/reportes.routes')
 const catalogosRoutes = require('./routes/catalogos.routes')
+const configRoutes = require('./routes/config.routes')
 
 const { initDB } = require('./data/db')
 
@@ -31,8 +32,8 @@ const app = express()
 const PORT = process.env.PORT || 3002
 
 app.use(cors({ origin: '*', credentials: true }))
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true, limit: '10mb' }))
+app.use(express.json({ limit: '25mb' }))
+app.use(express.urlencoded({ extended: true, limit: '25mb' }))
 
 // Servir archivos subidos (firmas, pdfs)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
@@ -59,6 +60,7 @@ app.use('/api/finanzas', finanzasRoutes)
 app.use('/api/presupuesto', presupuestoRoutes)
 app.use('/api/reportes', reportesRoutes)
 app.use('/api/catalogos', catalogosRoutes)
+app.use('/api/config', configRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }))

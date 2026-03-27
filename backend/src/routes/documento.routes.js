@@ -101,7 +101,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
 })
 
 // Firmar documento
-router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditLog('firmar', 'documento'), (req, res) => {
+router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditLog('firmar', 'documento'), async (req, res) => {
   const doc = db.get('documentos').find({ id: req.params.id }).value()
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
   if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado' })
