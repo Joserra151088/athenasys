@@ -65,11 +65,18 @@ export const asignacionAPI = {
 
 // Documentos
 export const documentoAPI = {
-  getAll: (params) => api.get('/documentos', { params }),
-  getById: (id) => api.get(`/documentos/${id}`),
-  create: (data) => api.post('/documentos', data),
-  sign: (id, data) => api.post(`/documentos/${id}/firmar`, data),
-  getPdf: (id) => api.get(`/documentos/${id}/pdf`)
+  getAll:           (params) => api.get('/documentos', { params }),
+  getById:          (id)     => api.get(`/documentos/${id}`),
+  create:           (data)   => api.post('/documentos', data),
+  /**
+   * Firma un documento. Incluye opcionalmente el PDF como base64
+   * para subirlo a SharePoint.
+   * @param {string} id
+   * @param {{ firma_agente?, firma_receptor, pdf_base64? }} data
+   */
+  sign:             (id, data) => api.post(`/documentos/${id}/firmar`, data),
+  delete:           (id)       => api.delete(`/documentos/${id}`),
+  sharepointStatus: ()         => api.get('/documentos/sharepoint/status'),
 }
 
 // Plantillas

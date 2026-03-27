@@ -6,6 +6,16 @@ const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
 
+// SharePoint — carga condicional: si no hay credenciales configuradas el módulo
+// simplemente se deshabilita y los documentos se guardan solo localmente.
+let sp = null
+try {
+  sp = require('../services/sharepoint.service')
+  if (!process.env.SHAREPOINT_TENANT_ID) sp = null
+} catch (_) { sp = null }
+
+const SP_ENABLED = !!sp
+
 router.use(authMiddleware)
 
 const uploadsDir = path.join(__dirname, '../../uploads/firmas')
@@ -119,8 +129,36 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     firma_agente_path: `/uploads/firmas/${doc.id}_agente.png`,
     firma_receptor,
     firma_receptor_path: `/uploads/firmas/${doc.id}_receptor.png`,
-    firmado: true, fecha_firma: now, updated_at: now
+    firmado: true, fecha_firma: now, updated_at: now,
+    // SharePoint — se rellenan abajo si el servicio está activo
+    sharepoint_item_id:      null,
+    sharepoint_url:          null,
+    sharepoint_uploaded_at:  null,
   }
+
+  // ── Subir PDF a SharePoint (si viene en el body y SP está configurado) ──────
+  if (SP_ENABLED && req.body.pdf_base64) {
+    try {
+      const pdfBuffer = Buffer.from(
+        req.body.pdf_base64.replace(/^data:application\/pdf;base64,/, ''),
+        'base64'
+      )
+      const safeName = `${doc.folio}_${doc.entidad_nombre.replace(/\s+/g, '_')}.pdf`
+      const subfolder = doc.tipo  // 'entrada' | 'salida' | 'responsiva'
+
+      const spFile = await sp.uploadFile(pdfBuffer, safeName, subfolder)
+
+      updated.sharepoint_item_id     = spFile.id
+      updated.sharepoint_url         = spFile.webUrl
+      updated.sharepoint_uploaded_at = now
+
+      console.log(`[SharePoint] ✓ Documento subido: ${spFile.webUrl}`)
+    } catch (spErr) {
+      // No bloquear la firma si SP falla — solo registrar
+      console.error('[SharePoint] Error al subir documento:', spErr.message)
+    }
+  }
+
   db.get('documentos').find({ id: req.params.id }).assign(updated).write()
 
   // ── Auto-asignaciones al firmar ────────────────────────────────────────────
@@ -181,6 +219,58 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   }
 
   res.json(updated)
+})
+
+// ── Eliminar documento (y archivo de SharePoint si aplica) ───────────────────
+router.delete('/:id', requireRoles('super_admin'), auditLog('eliminar', 'documento'), async (req, res) => {
+  const doc = db.get('documentos').find({ id: req.params.id }).value()
+  if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+
+  let sharepointDeleted = false
+  let sharepointError   = null
+
+  // Eliminar de SharePoint si tiene referencia
+  if (SP_ENABLED && doc.sharepoint_item_id) {
+    try {
+      await sp.deleteFile(doc.sharepoint_item_id)
+      sharepointDeleted = true
+      console.log(`[SharePoint] ✓ Archivo eliminado: ${doc.sharepoint_item_id}`)
+    } catch (spErr) {
+      sharepointError = spErr.message
+      console.error('[SharePoint] Error al eliminar archivo:', spErr.message)
+    }
+  }
+
+  // Eliminar firmas locales
+  const agentePath   = path.join(uploadsDir, `${doc.id}_agente.png`)
+  const receptorPath = path.join(uploadsDir, `${doc.id}_receptor.png`)
+  if (fs.existsSync(agentePath))   fs.unlinkSync(agentePath)
+  if (fs.existsSync(receptorPath)) fs.unlinkSync(receptorPath)
+
+  // Soft-delete del registro
+  db.get('documentos').find({ id: req.params.id }).assign({
+    activo: false, updated_at: new Date().toISOString()
+  }).write()
+
+  res.json({
+    message: 'Documento eliminado',
+    sharepoint: SP_ENABLED
+      ? { deleted: sharepointDeleted, error: sharepointError }
+      : { deleted: false, reason: 'SharePoint no configurado' }
+  })
+})
+
+// ── Status de conexión con SharePoint ────────────────────────────────────────
+router.get('/sharepoint/status', requireRoles('super_admin'), async (req, res) => {
+  if (!SP_ENABLED) {
+    return res.json({ enabled: false, message: 'SharePoint no configurado (faltan variables de entorno)' })
+  }
+  try {
+    const info = await sp.testConnection()
+    res.json({ enabled: true, ...info })
+  } catch (err) {
+    res.status(500).json({ enabled: true, ok: false, error: err.message })
+  }
 })
 
 module.exports = router

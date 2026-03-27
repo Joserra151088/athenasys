@@ -883,6 +883,11 @@ async function initDB() {
   await alterIfNotExists('finanzas_detalle', 'modo_calculo',    "VARCHAR(10) DEFAULT 'dias'")
   await alterIfNotExists('finanzas_detalle', 'tiene_vigencia',  'TINYINT(1) DEFAULT 0')
   await alterIfNotExists('presupuesto_partidas', 'montos_por_mes', 'LONGTEXT')
+  // SharePoint
+  await alterIfNotExists('documentos', 'sharepoint_item_id',     'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'sharepoint_url',         'TEXT')
+  await alterIfNotExists('documentos', 'sharepoint_uploaded_at', 'DATETIME')
+  await alterIfNotExists('documentos', 'activo',                 'TINYINT(1) DEFAULT 1')
 
   console.log('✓ Tablas verificadas/creadas')
 
