@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { deviceAPI, proveedorAPI } from '../utils/api'
+import { deviceAPI, proveedorAPI, catalogosAPI } from '../utils/api'
 import { DEVICE_TYPES, DEVICE_STATUS, LOCATION_TYPES, DEVICE_DAILY_RATES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Badge from '../components/Badge'
@@ -81,6 +81,7 @@ export default function Dispositivos() {
   const { canEdit, isAdmin } = useAuth()
   const [dispositivos, setDispositivos] = useState([])
   const [proveedores, setProveedores] = useState([])
+  const [tiposDispositivo, setTiposDispositivo] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [filters, setFilters] = useState({ search: '', tipo: '', estado: '', ubicacion_tipo: '' })
   const [loading, setLoading] = useState(true)
@@ -102,7 +103,10 @@ export default function Dispositivos() {
   }, [filters])
 
   useEffect(() => { load(1) }, [load])
-  useEffect(() => { proveedorAPI.getAll().then(setProveedores) }, [])
+  useEffect(() => {
+    proveedorAPI.getAll().then(setProveedores)
+    catalogosAPI.tiposDispositivo.getAll().then(r => setTiposDispositivo(r.map(t => t.nombre || t.valor || t)))
+  }, [])
 
   const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setModal(true) }
   const openEdit = (d) => {
@@ -186,7 +190,7 @@ export default function Dispositivos() {
               <label className="label">Tipo</label>
               <select className="input" value={filters.tipo} onChange={e => setFilters(f => ({ ...f, tipo: e.target.value }))}>
                 <option value="">Todos</option>
-                {DEVICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {(tiposDispositivo.length > 0 ? tiposDispositivo : DEVICE_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -292,7 +296,7 @@ export default function Dispositivos() {
                   setForm(f => ({ ...f, tipo: t, costo_dia: rate ? rate.costo : f.costo_dia }))
                 }}>
                 <option value="">Seleccionar...</option>
-                {DEVICE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {(tiposDispositivo.length > 0 ? tiposDispositivo : DEVICE_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -346,9 +350,17 @@ export default function Dispositivos() {
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
                 <input type="number" min="0" step="0.01" className="input pl-7"
                   placeholder="0.00"
-                  value={form.costo_dia}
-                  onChange={e => setForm(f => ({ ...f, costo_dia: e.target.value }))} />
+                  value={form.costo_dia === 0 || form.costo_dia === '0' ? '0' : (form.costo_dia || '')}
+                  onChange={e => {
+                    const val = e.target.value
+                    setForm(f => ({ ...f, costo_dia: val === '' ? '' : parseFloat(val) }))
+                  }} />
               </div>
+              <button type="button"
+                onClick={() => setForm(f => ({ ...f, costo_dia: 0 }))}
+                className="text-xs text-gray-400 hover:text-emerald-600 mt-1 underline">
+                Sin costo (establecer en $0)
+              </button>
               {form.tipo && DEVICE_DAILY_RATES[form.tipo] && (
                 <p className="text-xs text-gray-400 mt-1">{DEVICE_DAILY_RATES[form.tipo].nota}</p>
               )}

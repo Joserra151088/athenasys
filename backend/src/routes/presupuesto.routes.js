@@ -263,6 +263,20 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (req, 
   syncGastoReal(updated.partida_id, updated.mes, updated.anio)
   res.json(updated)
 })
+router.delete('/detalle', requireRoles('super_admin', 'agente_soporte'), async (req, res) => {
+  const { ids } = req.body
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'IDs requeridos' })
+  let eliminados = 0
+  for (const id of ids) {
+    const item = db.get('finanzas_detalle').find({ id }).value()
+    if (item) {
+      db.get('finanzas_detalle').remove({ id }).write()
+      syncGastoReal(item.partida_id, item.mes, item.anio)
+      eliminados++
+    }
+  }
+  res.json({ eliminados })
+})
 router.delete('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
   const toDelete = db.get('finanzas_detalle').find({ id: req.params.id }).value()
   db.get('finanzas_detalle').remove({ id: req.params.id }).write()

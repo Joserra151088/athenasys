@@ -225,6 +225,7 @@ export const presupuestoAPI = {
   createDetalle: (data) => api.post('/presupuesto/detalle', data),
   updateDetalle: (id, data) => api.put(`/presupuesto/detalle/${id}`, data),
   deleteDetalle: (id) => api.delete(`/presupuesto/detalle/${id}`),
+  bulkDeleteDetalle: (ids) => api.delete('/presupuesto/detalle', { data: { ids } }),
   clonarMes: (data) => api.post('/presupuesto/detalle/clonar', data),
   buscarPorSerie: (serie) => api.get('/presupuesto/dispositivo-por-serie', { params: { serie } }),
   // Dashboard

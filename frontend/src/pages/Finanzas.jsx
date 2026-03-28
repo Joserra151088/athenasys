@@ -488,6 +488,43 @@ function TabPresupuesto() {
   )
 }
 
+// ── BulkDeleteConfirm ─────────────────────────────────────────────────────────
+function BulkDeleteConfirm({ count, onConfirm, onCancel, loading }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backdropFilter: 'blur(4px)', background: 'rgba(0,0,0,0.4)', animation: 'fadeIn 0.2s ease' }}>
+      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full mx-4 text-center"
+        style={{ animation: 'scaleIn 0.25s cubic-bezier(0.34,1.56,0.64,1)' }}>
+        {loading ? (
+          <>
+            <div className="text-5xl mb-4 animate-bounce">🗑️</div>
+            <div className="text-lg font-bold text-gray-800 mb-2">Eliminando...</div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-red-500 border-t-transparent mt-2" />
+          </>
+        ) : (
+          <>
+            <div className="text-5xl mb-4">⚠️</div>
+            <div className="text-lg font-bold text-gray-800 mb-2">¿Eliminar {count} registro{count !== 1 ? 's' : ''}?</div>
+            <div className="text-sm text-gray-500 mb-6">Esta acción no se puede deshacer. Se eliminarán permanentemente del desgloce.</div>
+            <div className="flex gap-3">
+              <button onClick={onCancel} className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl text-gray-600 font-medium hover:bg-gray-50">
+                Cancelar
+              </button>
+              <button onClick={onConfirm} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700">
+                Sí, eliminar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes scaleIn { from { transform: scale(0.85); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+      `}</style>
+    </div>
+  )
+}
+
 // ── Tab Desgloce de Gastos ────────────────────────────────────────────────────
 function TabDesgloce() {
   const now = new Date()
@@ -501,6 +538,9 @@ function TabDesgloce() {
   const [serieSearch, setSerieSearch] = useState('')
   const [proveedoresLista, setProveedoresLista] = useState([])
   const [clonarForm, setClonarForm] = useState({ mes_origen: now.getMonth(), anio_origen: now.getFullYear() })
+  const [selected, setSelected] = useState(new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -594,6 +634,18 @@ function TabDesgloce() {
     load()
   }
 
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true)
+    try {
+      await presupuestoAPI.bulkDeleteDetalle([...selected])
+      await new Promise(r => setTimeout(r, 800))
+      setShowBulkConfirm(false)
+      setSelected(new Set())
+      load()
+    } catch(e) { alert(e?.message || 'Error al eliminar') }
+    finally { setBulkDeleting(false) }
+  }
+
   const handleClonar = async () => {
     setSaving(true)
     try {
@@ -660,12 +712,31 @@ function TabDesgloce() {
         </div>
       )}
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
+          <span className="text-sm font-semibold text-red-700">{selected.size} registro{selected.size !== 1 ? 's' : ''} seleccionado{selected.size !== 1 ? 's' : ''}</span>
+          <div className="flex-1" />
+          <button onClick={() => setSelected(new Set())} className="text-sm text-gray-500 hover:text-gray-700">Deseleccionar</button>
+          <button onClick={() => setShowBulkConfirm(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
+            <TrashIcon className="h-4 w-4" /> Eliminar {selected.size} registro{selected.size !== 1 ? 's' : ''}
+          </button>
+        </div>
+      )}
+
       {/* Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead className="bg-gray-50">
               <tr>
+                <th className="px-3 py-2.5 w-10">
+                  <input type="checkbox"
+                    className="rounded border-gray-300"
+                    checked={selected.size === detalle.length && detalle.length > 0}
+                    onChange={e => setSelected(e.target.checked ? new Set(detalle.map(d => d.id)) : new Set())}
+                  />
+                </th>
                 <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Nombre</th>
                 <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Serie/Tel</th>
                 <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Servicio</th>
@@ -682,11 +753,23 @@ function TabDesgloce() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={12} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
+                <tr><td colSpan={13} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
               ) : detalle.length === 0 ? (
-                <tr><td colSpan={12} className="py-10 text-center text-gray-400">No hay registros para este período. Agrega líneas o clona el mes anterior.</td></tr>
+                <tr><td colSpan={13} className="py-10 text-center text-gray-400">No hay registros para este período. Agrega líneas o clona el mes anterior.</td></tr>
               ) : detalle.map(d => (
                 <tr key={d.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 w-10">
+                    <input type="checkbox"
+                      className="rounded border-gray-300"
+                      checked={selected.has(d.id)}
+                      onChange={e => setSelected(prev => {
+                        const next = new Set(prev)
+                        if (e.target.checked) next.add(d.id)
+                        else next.delete(d.id)
+                        return next
+                      })}
+                    />
+                  </td>
                   <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px] truncate">{d.nombre}</td>
                   <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
                   <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
@@ -989,6 +1072,15 @@ function TabDesgloce() {
           </div>
         </div>
       </Modal>
+
+      {showBulkConfirm && (
+        <BulkDeleteConfirm
+          count={selected.size}
+          onConfirm={handleBulkDelete}
+          onCancel={() => !bulkDeleting && setShowBulkConfirm(false)}
+          loading={bulkDeleting}
+        />
+      )}
     </div>
   )
 }
