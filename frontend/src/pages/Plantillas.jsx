@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { plantillaAPI, configAPI } from '../utils/api'
 import { DOCUMENT_TYPES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
@@ -6,7 +6,8 @@ import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import {
   PlusIcon, PencilIcon, ClockIcon, ChevronDownIcon,
-  EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon
+  EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon,
+  BoldIcon, ItalicIcon, UnderlineIcon
 } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -14,60 +15,54 @@ import { es } from 'date-fns/locale'
 // ── Tags organizados por categoría ──────────────────────────────────────────
 const TAG_GROUPS = [
   {
-    label: 'Receptor / Empleado',
-    color: 'blue',
+    label: 'Receptor / Empleado', color: 'blue',
     tags: [
-      { tag: '{{receptor_nombre}}',        desc: 'Nombre completo del empleado',         ejemplo: 'Carlos Mendoza Ruiz' },
-      { tag: '{{receptor_num_empleado}}',   desc: 'Número de empleado',                   ejemplo: 'EMP-001' },
-      { tag: '{{receptor_area}}',           desc: 'Área o departamento',                  ejemplo: 'Tecnologías de la Información' },
-      { tag: '{{receptor_puesto}}',         desc: 'Puesto del empleado',                  ejemplo: 'Gerente de TI' },
-      { tag: '{{receptor_email}}',          desc: 'Correo electrónico',                   ejemplo: 'c.mendoza@empresa.com' },
+      { tag: '{{receptor_nombre}}',      desc: 'Nombre completo del empleado',   ejemplo: 'Carlos Mendoza Ruiz' },
+      { tag: '{{receptor_num_empleado}}',desc: 'Número de empleado',              ejemplo: 'EMP-001' },
+      { tag: '{{receptor_area}}',        desc: 'Área o departamento',             ejemplo: 'Tecnologías de la Información' },
+      { tag: '{{receptor_puesto}}',      desc: 'Puesto del empleado',             ejemplo: 'Gerente de TI' },
+      { tag: '{{receptor_email}}',       desc: 'Correo electrónico',              ejemplo: 'c.mendoza@empresa.com' },
     ]
   },
   {
-    label: 'Sucursal / Ubicación',
-    color: 'green',
+    label: 'Sucursal / Ubicación', color: 'green',
     tags: [
-      { tag: '{{sucursal_nombre}}',  desc: 'Nombre de la sucursal o corporativo', ejemplo: 'Corporativo Central' },
-      { tag: '{{sucursal_estado}}',  desc: 'Estado o ciudad',                     ejemplo: 'Ciudad de México' },
-      { tag: '{{sucursal_tipo}}',    desc: 'Tipo: Sucursal o Corporativo',         ejemplo: 'Corporativo' },
+      { tag: '{{sucursal_nombre}}', desc: 'Nombre de la sucursal o corporativo', ejemplo: 'Corporativo Central' },
+      { tag: '{{sucursal_estado}}', desc: 'Estado o ciudad',                      ejemplo: 'Ciudad de México' },
+      { tag: '{{sucursal_tipo}}',   desc: 'Tipo: Sucursal o Corporativo',         ejemplo: 'Corporativo' },
     ]
   },
   {
-    label: 'Agente de Soporte TI',
-    color: 'purple',
+    label: 'Agente de Soporte TI', color: 'purple',
     tags: [
-      { tag: '{{agente_nombre}}',    desc: 'Nombre del agente que registra',       ejemplo: 'Laura Sánchez Torres' },
+      { tag: '{{agente_nombre}}', desc: 'Nombre del agente que registra', ejemplo: 'Laura Sánchez Torres' },
     ]
   },
   {
-    label: 'Documento',
-    color: 'orange',
+    label: 'Documento', color: 'orange',
     tags: [
-      { tag: '{{fecha_documento}}',   desc: 'Fecha de generación del documento',   ejemplo: format(new Date(), 'dd/MM/yyyy') },
-      { tag: '{{motivo_salida}}',     desc: 'Motivo de salida (actas de salida)',   ejemplo: 'Baja laboral' },
-      { tag: '{{folio}}',             desc: 'Folio único del documento',            ejemplo: 'DOC-2026-0042' },
+      { tag: '{{fecha_documento}}', desc: 'Fecha de generación del documento', ejemplo: format(new Date(), 'dd/MM/yyyy') },
+      { tag: '{{motivo_salida}}',   desc: 'Motivo de salida (actas de salida)', ejemplo: 'Baja laboral' },
+      { tag: '{{folio}}',           desc: 'Folio único del documento',          ejemplo: 'DOC-2026-0042' },
     ]
   },
   {
-    label: 'Dispositivos',
-    color: 'red',
+    label: 'Dispositivos', color: 'red',
     tags: [
-      { tag: '{{lista_dispositivos}}', desc: 'Lista detallada de equipos',         ejemplo: '- CPU Dell OptiPlex 7090 (DELL-001)\n- Monitor Dell 27" (MON-002)' },
-      { tag: '{{num_dispositivos}}',   desc: 'Cantidad total de equipos',          ejemplo: '2' },
+      { tag: '{{lista_dispositivos}}', desc: 'Lista detallada de equipos',  ejemplo: '- CPU Dell OptiPlex 7090 (DELL-001)\n- Monitor Dell 27"' },
+      { tag: '{{num_dispositivos}}',   desc: 'Cantidad total de equipos',   ejemplo: '2' },
     ]
   },
 ]
 
 const GROUP_COLORS = {
-  blue:   { pill: 'bg-blue-100 text-blue-700 border-blue-200',   btn: 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200' },
-  green:  { pill: 'bg-green-100 text-green-700 border-green-200', btn: 'bg-green-50 hover:bg-green-100 text-green-700 border border-green-200' },
+  blue:   { pill: 'bg-blue-100 text-blue-700 border-blue-200',     btn: 'bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200' },
+  green:  { pill: 'bg-green-100 text-green-700 border-green-200',  btn: 'bg-green-50 hover:bg-green-100 text-green-700 border border-green-200' },
   purple: { pill: 'bg-purple-100 text-purple-700 border-purple-200', btn: 'bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200' },
   orange: { pill: 'bg-orange-100 text-orange-700 border-orange-200', btn: 'bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200' },
-  red:    { pill: 'bg-red-100 text-red-700 border-red-200',      btn: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200' },
+  red:    { pill: 'bg-red-100 text-red-700 border-red-200',        btn: 'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200' },
 }
 
-// Datos de ejemplo para la vista previa realista
 const SAMPLE_DATA = {
   '{{receptor_nombre}}':      'Juan García Pérez',
   '{{receptor_num_empleado}}':'EMP-0042',
@@ -81,37 +76,40 @@ const SAMPLE_DATA = {
   '{{fecha_documento}}':      format(new Date(), "dd 'de' MMMM 'de' yyyy", { locale: es }),
   '{{folio}}':                'SAL-2026-000001',
   '{{motivo_salida}}':        'Asignación de equipo de trabajo',
-  '{{lista_dispositivos}}':   '<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#1e293b;color:white"><th style="padding:4px 8px;text-align:left">Equipo</th><th style="padding:4px 8px;text-align:left">Serie</th></tr></thead><tbody><tr style="background:#f8fafc"><td style="padding:4px 8px">Laptop Dell XPS 15</td><td style="padding:4px 8px">ABC123XYZ</td></tr><tr><td style="padding:4px 8px">MacBook Pro M3</td><td style="padding:4px 8px">DEF456UVW</td></tr></tbody></table>',
-  '{{num_dispositivos}}':     '2',
+  '{{lista_dispositivos}}':   `<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+    <thead><tr style="background:#1e293b;color:white">
+      <th style="padding:6px 10px;text-align:left">Equipo</th>
+      <th style="padding:6px 10px;text-align:left">Marca/Modelo</th>
+      <th style="padding:6px 10px;text-align:left">No. Serie</th>
+    </tr></thead>
+    <tbody>
+      <tr style="background:#f8fafc"><td style="padding:5px 10px">Laptop</td><td style="padding:5px 10px">Dell XPS 15</td><td style="padding:5px 10px">ABC123XYZ</td></tr>
+      <tr><td style="padding:5px 10px">Monitor</td><td style="padding:5px 10px">LG 27UK850</td><td style="padding:5px 10px">DEF456UVW</td></tr>
+    </tbody>
+  </table>`,
+  '{{num_dispositivos}}': '2',
 }
 
-// Reemplaza todos los tags con sus ejemplos para la vista previa simple
-function renderPreview(text) {
-  let out = text
+function renderPreview(html) {
+  let out = html
   for (const g of TAG_GROUPS) {
     for (const t of g.tags) {
       out = out.split(t.tag).join(`<mark class="preview-tag" data-color="${g.color}">${t.ejemplo}</mark>`)
     }
   }
-  // If no HTML tags detected, convert newlines to <br>
-  if (!/<[a-z][\s\S]*>/i.test(out)) {
-    out = out.replace(/\n/g, '<br/>')
-  }
   return out
 }
 
-// Genera el HTML del documento real con los datos de ejemplo
-function renderRealPreview(text, logo) {
-  let body = text
+function renderRealPreview(html, logo) {
+  let body = html
   for (const [tag, val] of Object.entries(SAMPLE_DATA)) {
     body = body.split(tag).join(val)
   }
-  if (!/<[a-z][\s\S]*>/i.test(body)) {
-    body = body.replace(/\n/g, '<br/>')
-  }
-  const logoHtml = logo ? `<img src="${logo}" alt="Logo" style="height:48px;object-fit:contain;border-radius:4px" />` : ''
+  const logoHtml = logo
+    ? `<img src="${logo}" alt="Logo" style="height:48px;object-fit:contain;border-radius:4px" />`
+    : ''
   return `
-    <div style="font-family:Georgia,serif;color:#1e293b;line-height:1.6">
+    <div style="font-family:Georgia,serif;color:#1e293b;line-height:1.7">
       <div style="background:#1e293b;color:white;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;border-radius:8px 8px 0 0">
         <div style="display:flex;align-items:center;gap:12px">
           ${logoHtml}
@@ -128,13 +126,15 @@ function renderRealPreview(text, logo) {
       </div>
       <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:24px 28px">
         ${body}
-        <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:32px">
+        <div style="margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
           <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+            <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del receptor</div>
             <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{receptor_nombre}}']}</div>
             <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{receptor_puesto}}']}</div>
           </div>
           <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+            <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del agente TI</div>
             <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{agente_nombre}}']}</div>
             <div style="font-size:11px;color:#94a3b8">Soporte TI</div>
@@ -145,51 +145,119 @@ function renderRealPreview(text, logo) {
   `
 }
 
-// Toolbar de formato enriquecido
-function RichToolbar({ textareaRef, form, setForm }) {
-  const wrap = (before, after) => {
-    const ta = textareaRef.current
-    if (!ta) return
-    const start = ta.selectionStart, end = ta.selectionEnd
-    const selected = form.texto_legal.substring(start, end)
-    const newText = form.texto_legal.substring(0, start) + before + selected + after + form.texto_legal.substring(end)
-    setForm(f => ({ ...f, texto_legal: newText }))
-    setTimeout(() => { ta.focus(); ta.selectionStart = start + before.length; ta.selectionEnd = end + before.length }, 0)
+// ── WYSIWYG Toolbar usando document.execCommand ───────────────────────────────
+function RichToolbar({ editorRef, onInput }) {
+  const exec = (cmd, value = null) => {
+    editorRef.current?.focus()
+    document.execCommand(cmd, false, value)
+    setTimeout(onInput, 0)
   }
 
-  const alignWrap = (align) => {
-    const ta = textareaRef.current
-    if (!ta) return
-    const start = ta.selectionStart, end = ta.selectionEnd
-    const selected = form.texto_legal.substring(start, end)
-    const before = `<div style="text-align:${align}">`, after = '</div>'
-    const newText = form.texto_legal.substring(0, start) + before + selected + after + form.texto_legal.substring(end)
-    setForm(f => ({ ...f, texto_legal: newText }))
-    setTimeout(() => { ta.focus(); ta.selectionStart = start + before.length; ta.selectionEnd = end + before.length }, 0)
-  }
-
-  const colorWrap = (color) => wrap(`<span style="color:${color}">`, '</span>')
+  const FONT_SIZES = [
+    { label: 'Pequeño',  val: '2' },
+    { label: 'Normal',   val: '3' },
+    { label: 'Grande',   val: '4' },
+    { label: 'Mayor',    val: '5' },
+  ]
 
   const COLORS = ['#000000', '#dc2626', '#2563eb', '#16a34a', '#9333ea', '#ea580c', '#64748b']
 
   return (
-    <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-100 border-b border-gray-200 rounded-t-lg">
-      <button type="button" onClick={() => wrap('<b>', '</b>')} title="Negrita" className="px-2 py-1 text-sm font-bold rounded hover:bg-gray-200">B</button>
-      <button type="button" onClick={() => wrap('<em>', '</em>')} title="Cursiva" className="px-2 py-1 text-sm italic rounded hover:bg-gray-200">I</button>
-      <button type="button" onClick={() => wrap('<u>', '</u>')} title="Subrayado" className="px-2 py-1 text-sm underline rounded hover:bg-gray-200">U</button>
+    <div className="flex flex-wrap items-center gap-0.5 p-1.5 bg-gray-50 border border-b-0 border-gray-200 rounded-t-lg select-none">
+      {/* Formato de texto */}
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('bold') }}
+        title="Negrita (Ctrl+B)" className="p-1.5 rounded hover:bg-gray-200 font-bold text-sm w-7 h-7 flex items-center justify-center">B</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('italic') }}
+        title="Cursiva (Ctrl+I)" className="p-1.5 rounded hover:bg-gray-200 italic text-sm w-7 h-7 flex items-center justify-center">I</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('underline') }}
+        title="Subrayado (Ctrl+U)" className="p-1.5 rounded hover:bg-gray-200 underline text-sm w-7 h-7 flex items-center justify-center">U</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('strikeThrough') }}
+        title="Tachado" className="p-1.5 rounded hover:bg-gray-200 line-through text-sm w-7 h-7 flex items-center justify-center">S</button>
+
       <div className="w-px h-5 bg-gray-300 mx-1" />
-      <button type="button" onClick={() => alignWrap('left')} title="Izquierda" className="px-2 py-1 text-sm rounded hover:bg-gray-200">⬅</button>
-      <button type="button" onClick={() => alignWrap('center')} title="Centrado" className="px-2 py-1 text-sm rounded hover:bg-gray-200">↔</button>
-      <button type="button" onClick={() => alignWrap('right')} title="Derecha" className="px-2 py-1 text-sm rounded hover:bg-gray-200">➡</button>
+
+      {/* Alineación */}
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('justifyLeft') }}
+        title="Alinear izquierda" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M2 4h12v1H2zm0 3h8v1H2zm0 3h12v1H2zm0 3h8v1H2z"/></svg>
+      </button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('justifyCenter') }}
+        title="Centrar" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M2 4h12v1H2zm2 3h8v1H4zm-2 3h12v1H2zm2 3h8v1H4z"/></svg>
+      </button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('justifyRight') }}
+        title="Alinear derecha" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M2 4h12v1H2zm4 3h8v1H6zm-4 3h12v1H2zm4 3h8v1H6z"/></svg>
+      </button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('justifyFull') }}
+        title="Justificar" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M2 4h12v1H2zm0 3h12v1H2zm0 3h12v1H2zm0 3h12v1H2z"/></svg>
+      </button>
+
       <div className="w-px h-5 bg-gray-300 mx-1" />
-      <button type="button" onClick={() => wrap('<h2>', '</h2>')} title="Título" className="px-2 py-1 text-xs font-bold rounded hover:bg-gray-200">T</button>
-      <button type="button" onClick={() => wrap('<li>', '</li>')} title="Lista" className="px-2 py-1 text-sm rounded hover:bg-gray-200">•</button>
+
+      {/* Listas */}
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('insertUnorderedList') }}
+        title="Lista con viñetas" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M3 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm0 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zm0 4a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM4 3.5h10v1H4zm0 4h10v1H4zm0 4h10v1H4z"/></svg>
+      </button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('insertOrderedList') }}
+        title="Lista numerada" className="p-1.5 rounded hover:bg-gray-200 text-sm w-7 h-7 flex items-center justify-center">
+        <svg viewBox="0 0 16 16" className="w-4 h-4"><path fill="currentColor" d="M1 2.5h1v2H1v-2zm0 4h1v2H1v-2zm0 4h1v2H1v-2zM4 3.5h10v1H4zm0 4h10v1H4zm0 4h10v1H4z"/></svg>
+      </button>
+
       <div className="w-px h-5 bg-gray-300 mx-1" />
+
+      {/* Encabezado */}
+      <select
+        title="Estilo de párrafo"
+        className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white h-7 cursor-pointer"
+        defaultValue=""
+        onChange={e => { exec('formatBlock', e.target.value || 'p'); e.target.value = '' }}
+      >
+        <option value="">Párrafo</option>
+        <option value="h1">Título 1</option>
+        <option value="h2">Título 2</option>
+        <option value="h3">Título 3</option>
+        <option value="p">Normal</option>
+      </select>
+
+      {/* Tamaño de fuente */}
+      <select
+        title="Tamaño de fuente"
+        className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white h-7 cursor-pointer"
+        defaultValue=""
+        onChange={e => { if (e.target.value) exec('fontSize', e.target.value); e.target.value = '' }}
+      >
+        <option value="">Tamaño</option>
+        {FONT_SIZES.map(s => <option key={s.val} value={s.val}>{s.label}</option>)}
+      </select>
+
+      <div className="w-px h-5 bg-gray-300 mx-1" />
+
+      {/* Colores */}
+      <span className="text-xs text-gray-400 ml-0.5">Color:</span>
       {COLORS.map(c => (
-        <button key={c} type="button" onClick={() => colorWrap(c)} title={c}
+        <button key={c} type="button"
+          onMouseDown={e => { e.preventDefault(); exec('foreColor', c) }}
+          title={c}
           className="w-5 h-5 rounded-full border border-gray-300 hover:scale-110 transition-transform flex-shrink-0"
           style={{ backgroundColor: c }} />
       ))}
+
+      <div className="w-px h-5 bg-gray-300 mx-1" />
+
+      {/* Deshacer / Rehacer */}
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('undo') }}
+        title="Deshacer (Ctrl+Z)" className="p-1.5 rounded hover:bg-gray-200 text-gray-500 text-xs w-7 h-7 flex items-center justify-center">↩</button>
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('redo') }}
+        title="Rehacer (Ctrl+Y)" className="p-1.5 rounded hover:bg-gray-200 text-gray-500 text-xs w-7 h-7 flex items-center justify-center">↪</button>
+
+      {/* Limpiar formato */}
+      <button type="button" onMouseDown={e => { e.preventDefault(); exec('removeFormat') }}
+        title="Limpiar formato" className="p-1.5 rounded hover:bg-gray-200 text-gray-500 text-xs h-7 px-2">
+        ✕ Fmt
+      </button>
     </div>
   )
 }
@@ -204,9 +272,10 @@ export default function Plantillas() {
   const [showVersiones, setShowVersiones] = useState(null)
   const [form, setForm] = useState({ tipo: 'responsiva', nombre: '', texto_legal: '' })
   const [saving, setSaving] = useState(false)
-  const [editorTab, setEditorTab] = useState('editar') // 'editar' | 'vista' | 'real'
+  const [editorTab, setEditorTab] = useState('editar')
   const [tagSearch, setTagSearch] = useState('')
-  const textareaRef = useRef(null)
+  const [dragOver, setDragOver] = useState(false)
+  const editorRef = useRef(null)
   const logoFileRef = useRef(null)
 
   // Logo global
@@ -225,6 +294,19 @@ export default function Plantillas() {
     configAPI.getLogo().then(r => setGlobalLogo(r.logo)).catch(() => {})
   }, [])
 
+  // Sincronizar contenido del editor cuando se abre el modal o cambia de tab
+  useEffect(() => {
+    if (modal && editorTab === 'editar' && editorRef.current) {
+      editorRef.current.innerHTML = form.texto_legal || ''
+    }
+  }, [modal, editorTab])
+
+  const handleEditorInput = useCallback(() => {
+    if (editorRef.current) {
+      setForm(f => ({ ...f, texto_legal: editorRef.current.innerHTML }))
+    }
+  }, [])
+
   const openCreate = () => {
     setEditing(null)
     setForm({ tipo: 'responsiva', nombre: '', texto_legal: '' })
@@ -241,10 +323,17 @@ export default function Plantillas() {
 
   const handleSave = async (e) => {
     e.preventDefault()
+    // Capturar contenido actualizado del editor antes de guardar
+    const textoFinal = editorRef.current?.innerHTML || form.texto_legal
+    if (!textoFinal.trim() || textoFinal === '<br>') {
+      alert('El texto legal no puede estar vacío')
+      return
+    }
     setSaving(true)
     try {
-      if (editing) await plantillaAPI.update(editing.id, form)
-      else await plantillaAPI.create(form)
+      const payload = { ...form, texto_legal: textoFinal }
+      if (editing) await plantillaAPI.update(editing.id, payload)
+      else await plantillaAPI.create(payload)
       setModal(false)
       load()
     } catch (err) { alert(err?.message || 'Error') }
@@ -258,24 +347,28 @@ export default function Plantillas() {
     setShowVersiones(id)
   }
 
-  // Inserta el tag en la posición actual del cursor
+  // Insertar tag en posición del cursor dentro del contentEditable
   const insertTag = (tag) => {
-    const ta = textareaRef.current
-    if (!ta) {
-      setForm(f => ({ ...f, texto_legal: f.texto_legal + tag }))
-      return
-    }
-    const start = ta.selectionStart
-    const end = ta.selectionEnd
-    const current = form.texto_legal
-    const newText = current.substring(0, start) + tag + current.substring(end)
-    setForm(f => ({ ...f, texto_legal: newText }))
-    // Restaurar foco y cursor después del tag
-    setTimeout(() => {
-      ta.focus()
-      ta.selectionStart = start + tag.length
-      ta.selectionEnd = start + tag.length
-    }, 0)
+    editorRef.current?.focus()
+    // Usar insertText para insertar el tag como texto plano en la posición del cursor
+    document.execCommand('insertText', false, tag)
+    handleEditorInput()
+  }
+
+  // Drag & drop: el tag se arrastra desde el panel y se suelta en el editor
+  const handleTagDragStart = (e, tag) => {
+    e.dataTransfer.setData('text/plain', tag)
+    e.dataTransfer.effectAllowed = 'copy'
+  }
+
+  const handleEditorDrop = (e) => {
+    e.preventDefault()
+    setDragOver(false)
+    const tag = e.dataTransfer.getData('text/plain')
+    if (!tag) return
+    editorRef.current?.focus()
+    document.execCommand('insertText', false, tag)
+    handleEditorInput()
   }
 
   const handleLogoFileChange = (e) => {
@@ -307,7 +400,6 @@ export default function Plantillas() {
     finally { setLogoSaving(false) }
   }
 
-  // Filtro de búsqueda en tags
   const filteredGroups = tagSearch
     ? TAG_GROUPS.map(g => ({
         ...g,
@@ -318,7 +410,6 @@ export default function Plantillas() {
       })).filter(g => g.tags.length > 0)
     : TAG_GROUPS
 
-  // Contar cuántos tags usa el texto
   const tagsUsados = TAG_GROUPS.flatMap(g => g.tags).filter(t => form.texto_legal.includes(t.tag))
 
   return (
@@ -375,7 +466,8 @@ export default function Plantillas() {
               </div>
 
               <div
-                className="bg-gray-50 rounded-lg p-4 text-xs text-gray-600 max-h-32 overflow-y-auto"
+                className="bg-gray-50 rounded-lg p-4 text-sm text-gray-600 max-h-32 overflow-y-auto leading-relaxed"
+                style={{ fontFamily: 'Georgia, serif' }}
                 dangerouslySetInnerHTML={{ __html: /<[a-z][\s\S]*>/i.test(p.texto_legal) ? p.texto_legal : p.texto_legal.replace(/\n/g, '<br/>') }}
               />
 
@@ -435,68 +527,61 @@ export default function Plantillas() {
             </div>
           </div>
 
-          {/* Tabs editar / vista previa */}
+          {/* Tabs */}
           <div className="flex items-center gap-1 border-b border-gray-200 -mb-2">
-            <button
-              type="button"
-              onClick={() => setEditorTab('editar')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                editorTab === 'editar'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <PencilSquareIcon className="h-4 w-4" /> Editar
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorTab('vista')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                editorTab === 'vista'
-                  ? 'border-primary-600 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <EyeIcon className="h-4 w-4" /> Vista previa
-              {tagsUsados.length > 0 && (
-                <span className="ml-1 bg-primary-100 text-primary-700 text-xs px-1.5 py-0.5 rounded-full">
-                  {tagsUsados.length} tags
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditorTab('real')}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                editorTab === 'real'
-                  ? 'border-emerald-600 text-emerald-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <EyeIcon className="h-4 w-4" /> Vista Previa Real
-            </button>
+            {[
+              { id: 'editar', label: 'Editar', icon: <PencilSquareIcon className="h-4 w-4" /> },
+              { id: 'vista',  label: 'Vista previa', icon: <EyeIcon className="h-4 w-4" />, badge: tagsUsados.length > 0 ? `${tagsUsados.length} tags` : null },
+              { id: 'real',   label: 'Vista Previa Real', icon: <EyeIcon className="h-4 w-4" />, green: true },
+            ].map(tab => (
+              <button key={tab.id} type="button" onClick={() => setEditorTab(tab.id)}
+                className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  editorTab === tab.id
+                    ? tab.green ? 'border-emerald-600 text-emerald-600' : 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}>
+                {tab.icon} {tab.label}
+                {tab.badge && <span className="ml-1 bg-primary-100 text-primary-700 text-xs px-1.5 py-0.5 rounded-full">{tab.badge}</span>}
+              </button>
+            ))}
           </div>
 
-          {/* ── Tab: Editar ─────────────────────────────────────────────── */}
+          {/* ── Tab: Editar (WYSIWYG) ─────────────────────────────────────── */}
           {editorTab === 'editar' && (
             <div className="flex gap-4 flex-1" style={{ minHeight: '380px' }}>
 
-              {/* Textarea */}
+              {/* Editor WYSIWYG */}
               <div className="flex-1 flex flex-col">
-                <label className="label mb-1">Texto legal *</label>
-                <RichToolbar textareaRef={textareaRef} form={form} setForm={setForm} />
-                <textarea
-                  ref={textareaRef}
-                  className="input font-mono text-xs flex-1 resize-none rounded-t-none"
-                  style={{ minHeight: '300px' }}
-                  required
-                  value={form.texto_legal}
-                  placeholder="Escribe el texto del documento. Haz clic en un tag de la derecha para insertarlo en la posición del cursor."
-                  onChange={e => setForm(f => ({ ...f, texto_legal: e.target.value }))}
+                <label className="label mb-1">
+                  Texto legal *
+                  <span className="ml-2 text-xs font-normal text-gray-400">— Arrastra un dato dinámico al editor o haz clic en él</span>
+                </label>
+
+                {/* Toolbar */}
+                <RichToolbar editorRef={editorRef} onInput={handleEditorInput} />
+
+                {/* ContentEditable editor */}
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  spellCheck={false}
+                  className={`flex-1 border border-gray-200 rounded-b-lg p-4 text-sm leading-relaxed overflow-y-auto focus:outline-none focus:ring-2 focus:ring-primary-400 transition-all ${
+                    dragOver ? 'bg-primary-50 border-primary-400 border-dashed' : 'bg-white'
+                  }`}
+                  style={{ minHeight: '300px', fontFamily: 'Georgia, serif' }}
+                  onInput={handleEditorInput}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={handleEditorDrop}
+                  data-placeholder="Escribe el texto del documento aquí..."
                 />
-                <p className="text-xs text-gray-400 mt-1.5">
-                  💡 Coloca el cursor donde quieras insertar el dato y haz clic en el tag correspondiente.
-                </p>
+
+                {dragOver && (
+                  <p className="text-xs text-primary-600 mt-1 text-center animate-pulse">
+                    Suelta el dato aquí para insertarlo
+                  </p>
+                )}
               </div>
 
               {/* Panel de tags */}
@@ -505,7 +590,6 @@ export default function Plantillas() {
                   <label className="label mb-0 text-xs">Datos dinámicos</label>
                 </div>
 
-                {/* Buscador de tags */}
                 <div className="relative">
                   <MagnifyingGlassIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                   <input
@@ -517,7 +601,11 @@ export default function Plantillas() {
                   />
                 </div>
 
-                {/* Lista de grupos y tags */}
+                {/* Info drag & drop */}
+                <div className="bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 text-xs text-blue-600">
+                  💡 <strong>Arrastra</strong> un dato al editor o <strong>haz clic</strong> para insertarlo en el cursor
+                </div>
+
                 <div className="flex-1 overflow-y-auto space-y-3 pr-0.5" style={{ maxHeight: '310px' }}>
                   {filteredGroups.map(group => (
                     <div key={group.label}>
@@ -529,9 +617,11 @@ export default function Plantillas() {
                           <button
                             key={t.tag}
                             type="button"
+                            draggable
+                            onDragStart={e => handleTagDragStart(e, t.tag)}
                             onClick={() => insertTag(t.tag)}
                             title={`Ejemplo: ${t.ejemplo}`}
-                            className={`w-full text-left rounded-lg px-2.5 py-2 text-xs transition-all hover:shadow-sm ${GROUP_COLORS[group.color].btn}`}
+                            className={`w-full text-left rounded-lg px-2.5 py-2 text-xs transition-all hover:shadow-sm cursor-grab active:cursor-grabbing ${GROUP_COLORS[group.color].btn}`}
                           >
                             <div className="font-mono font-medium truncate">{t.tag}</div>
                             <div className="text-xs opacity-70 mt-0.5 truncate">{t.desc}</div>
@@ -548,18 +638,17 @@ export default function Plantillas() {
             </div>
           )}
 
-          {/* ── Tab: Vista previa ───────────────────────────────────────── */}
+          {/* ── Tab: Vista previa (tags resaltados) ──────────────────────── */}
           {editorTab === 'vista' && (
             <div className="flex-1 flex flex-col gap-3">
               <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700">
                 Los valores en <span className="font-semibold">color</span> son datos de ejemplo. En el documento real se sustituyen automáticamente.
               </div>
               <div
-                className="flex-1 bg-white border border-gray-200 rounded-xl p-6 text-sm leading-relaxed whitespace-pre-line overflow-y-auto shadow-inner"
+                className="flex-1 bg-white border border-gray-200 rounded-xl p-6 text-sm leading-relaxed overflow-y-auto shadow-inner"
                 style={{ minHeight: '320px', fontFamily: 'Georgia, serif' }}
                 dangerouslySetInnerHTML={{ __html: renderPreview(form.texto_legal) }}
               />
-              {/* Leyenda de tags usados */}
               {tagsUsados.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   <span className="text-xs text-gray-500 self-center">Tags usados:</span>
@@ -584,14 +673,13 @@ export default function Plantillas() {
                 {!globalLogo && <span className="ml-2 text-emerald-600 font-medium">(Sin logo — configúralo con "Configurar Logo")</span>}
               </div>
               <div
-                className="flex-1 bg-white border border-gray-200 rounded-xl overflow-y-auto shadow-inner"
+                className="flex-1 bg-white border border-gray-200 rounded-xl overflow-y-auto shadow-inner p-4"
                 style={{ minHeight: '380px' }}
                 dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo) }}
               />
             </div>
           )}
 
-          {/* Aviso versión */}
           {editing && (
             <div className="bg-amber-50 text-amber-700 text-xs px-3 py-2 rounded-lg border border-amber-200">
               Al guardar se creará una nueva versión (v{editing.version + 1}). La versión actual quedará en el historial.
@@ -621,7 +709,7 @@ export default function Plantillas() {
             <input ref={logoFileRef} type="file" accept="image/*" className="input" onChange={handleLogoFileChange} />
           </div>
           <div className="flex justify-between gap-2">
-            {(globalLogo) && (
+            {globalLogo && (
               <button type="button" className="btn-secondary text-red-600 border-red-200 hover:bg-red-50" onClick={handleLogoRemove} disabled={logoSaving}>
                 Quitar logo
               </button>
@@ -636,19 +724,19 @@ export default function Plantillas() {
         </div>
       </Modal>
 
-      {/* Estilos para la vista previa */}
       <style>{`
-        mark.preview-tag {
-          background: none;
-          border-radius: 3px;
-          padding: 0 2px;
-          font-weight: 600;
-        }
+        mark.preview-tag { background: none; border-radius: 3px; padding: 0 2px; font-weight: 600; }
         mark.preview-tag[data-color="blue"]   { color: #1d4ed8; background: #dbeafe; }
         mark.preview-tag[data-color="green"]  { color: #15803d; background: #dcfce7; }
         mark.preview-tag[data-color="purple"] { color: #7e22ce; background: #f3e8ff; }
         mark.preview-tag[data-color="orange"] { color: #c2410c; background: #ffedd5; }
         mark.preview-tag[data-color="red"]    { color: #b91c1c; background: #fee2e2; }
+        [contenteditable]:empty:before {
+          content: attr(data-placeholder);
+          color: #9ca3af;
+          pointer-events: none;
+          font-style: italic;
+        }
       `}</style>
     </div>
   )

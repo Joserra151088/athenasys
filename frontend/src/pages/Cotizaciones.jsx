@@ -282,24 +282,36 @@ export default function Cotizaciones() {
             </div>
 
             {showRepo && (
-              <div className="mb-3 border border-primary-200 rounded-lg overflow-y-auto max-h-52 bg-white">
-                {repositorio.map(item => (
-                  <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-primary-50">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{item.nombre}</div>
-                      <div className="text-xs text-gray-400">{fmt(item.precio, item.moneda)}</div>
+              <div className="mb-3 border border-primary-200 rounded-lg overflow-y-auto max-h-64 bg-white">
+                {/* Agrupar por categoría */}
+                {REPO_CATEGORIAS.filter(cat => repositorio.some(r => r.categoria === cat.value)).map(cat => (
+                  <div key={cat.value}>
+                    <div className={`px-3 py-1.5 text-xs font-semibold border-b border-gray-100 ${cat.color}`}>
+                      {cat.label}
                     </div>
-                    <div className="flex items-center gap-2 ml-2 flex-shrink-0">
-                      <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: Math.max(1, (parseInt(q[item.id]) || 1) - 1) }))}
-                        className="p-1 rounded hover:bg-gray-200"><MinusCircleIcon className="h-4 w-4 text-gray-500" /></button>
-                      <span className="text-sm font-semibold w-6 text-center">{repoQty[item.id] || 1}</span>
-                      <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: (parseInt(q[item.id]) || 1) + 1 }))}
-                        className="p-1 rounded hover:bg-gray-200"><PlusCircleIcon className="h-4 w-4 text-gray-500" /></button>
-                      <button type="button" onClick={() => addFromRepo(item)}
-                        className="btn-primary text-xs py-1 px-2">Agregar</button>
-                    </div>
+                    {repositorio.filter(r => r.categoria === cat.value).map(item => (
+                      <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-primary-50">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium truncate">{item.nombre}</div>
+                          {item.descripcion && <div className="text-xs text-gray-400 truncate">{item.descripcion}</div>}
+                          <div className="text-xs font-semibold text-primary-700">{fmt(item.precio, item.moneda)}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
+                          <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: Math.max(1, (parseInt(q[item.id]) || 1) - 1) }))}
+                            className="p-1 rounded hover:bg-gray-200"><MinusCircleIcon className="h-4 w-4 text-gray-500" /></button>
+                          <span className="text-sm font-bold w-6 text-center">{repoQty[item.id] || 1}</span>
+                          <button type="button" onClick={() => setRepoQty(q => ({ ...q, [item.id]: (parseInt(q[item.id]) || 1) + 1 }))}
+                            className="p-1 rounded hover:bg-gray-200"><PlusCircleIcon className="h-4 w-4 text-gray-500" /></button>
+                          <button type="button" onClick={() => addFromRepo(item)}
+                            className="btn-primary text-xs py-1 px-2.5">+ Agregar</button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
+                {repositorio.length === 0 && (
+                  <div className="text-center text-gray-400 py-6 text-sm">Sin productos en el repositorio</div>
+                )}
               </div>
             )}
 
@@ -496,9 +508,33 @@ export default function Cotizaciones() {
   )
 }
 
+// Categorías del repositorio de cotizaciones
+const REPO_CATEGORIAS = [
+  { value: 'computo',      label: '🖥️  Equipo de Cómputo',     color: 'bg-blue-100 text-blue-700' },
+  { value: 'laptop',       label: '💻  Laptop / Notebook',      color: 'bg-indigo-100 text-indigo-700' },
+  { value: 'celular',      label: '📱  Celular / Tablet',       color: 'bg-purple-100 text-purple-700' },
+  { value: 'impresora',    label: '🖨️  Impresora / Escáner',    color: 'bg-pink-100 text-pink-700' },
+  { value: 'red',          label: '🌐  Red / Switches / AP',    color: 'bg-teal-100 text-teal-700' },
+  { value: 'internet',     label: '📡  Internet / Telefonía',   color: 'bg-cyan-100 text-cyan-700' },
+  { value: 'licencia',     label: '🔑  Licencias de Software',  color: 'bg-amber-100 text-amber-700' },
+  { value: 'mantenimiento',label: '🔧  Mantenimiento',          color: 'bg-orange-100 text-orange-700' },
+  { value: 'servicio',     label: '⚙️  Servicio Profesional',   color: 'bg-green-100 text-green-700' },
+  { value: 'accesorio',    label: '🖱️  Accesorio / Periférico', color: 'bg-gray-100 text-gray-700' },
+  { value: 'otro',         label: '📦  Otro',                   color: 'bg-slate-100 text-slate-700' },
+]
+
+function catColor(cat) {
+  return REPO_CATEGORIAS.find(c => c.value === cat)?.color || 'bg-gray-100 text-gray-700'
+}
+function catLabel(cat) {
+  return REPO_CATEGORIAS.find(c => c.value === cat)?.label?.replace(/^.{2}\s+/, '') || cat
+}
+
 function RepositorioManager({ repositorio, onChange }) {
-  const [form, setForm] = useState({ nombre: '', descripcion: '', precio: '', moneda: 'MXN' })
+  const EMPTY = { nombre: '', descripcion: '', precio: '', moneda: 'MXN', categoria: 'otro', unidad: 'pieza' }
+  const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
+  const [filterCat, setFilterCat] = useState('todas')
 
   const handleAdd = async (e) => {
     e.preventDefault()
@@ -507,7 +543,7 @@ function RepositorioManager({ repositorio, onChange }) {
       await cotizacionAPI.addRepositorio({ ...form, precio: parseFloat(form.precio) })
       const updated = await cotizacionAPI.getRepositorio()
       onChange(updated)
-      setForm({ nombre: '', descripcion: '', precio: '', moneda: 'MXN' })
+      setForm(EMPTY)
     } catch { alert('Error al agregar') }
     finally { setSaving(false) }
   }
@@ -517,30 +553,72 @@ function RepositorioManager({ repositorio, onChange }) {
     onChange(repositorio.filter(r => r.id !== id))
   }
 
+  const filtered = filterCat === 'todas' ? repositorio : repositorio.filter(r => r.categoria === filterCat)
+
   return (
     <div className="space-y-4">
-      <form onSubmit={handleAdd} className="grid grid-cols-4 gap-3 bg-gray-50 rounded-lg p-3">
-        <div className="col-span-2"><input className="input text-sm" placeholder="Nombre *" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} /></div>
-        <div><input type="number" step="0.01" className="input text-sm" placeholder="Precio *" required value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} /></div>
-        <div className="flex gap-1">
-          <select className="input text-sm" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}><option value="MXN">MXN</option><option value="USD">USD</option></select>
-          <button type="submit" className="btn-primary py-2 px-3 flex-shrink-0" disabled={saving}><PlusCircleIcon className="h-4 w-4" /></button>
+      {/* Formulario agregar */}
+      <form onSubmit={handleAdd} className="bg-gray-50 rounded-lg p-3 space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <input className="input text-sm" placeholder="Nombre del producto/servicio *" required value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
+          <input className="input text-sm" placeholder="Descripción" value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))} />
+        </div>
+        <div className="grid grid-cols-4 gap-2">
+          <select className="input text-sm" value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
+            {REPO_CATEGORIAS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </select>
+          <input type="number" step="0.01" className="input text-sm" placeholder="Precio *" required value={form.precio} onChange={e => setForm(f => ({ ...f, precio: e.target.value }))} />
+          <select className="input text-sm" value={form.moneda} onChange={e => setForm(f => ({ ...f, moneda: e.target.value }))}>
+            <option value="MXN">MXN</option><option value="USD">USD</option>
+          </select>
+          <button type="submit" className="btn-primary text-sm" disabled={saving}>
+            <PlusCircleIcon className="h-4 w-4" /> {saving ? 'Guardando...' : 'Agregar'}
+          </button>
         </div>
       </form>
-      <div className="space-y-2 max-h-80 overflow-y-auto">
-        {repositorio.map(item => (
-          <div key={item.id} className="flex items-center justify-between px-3 py-2 border border-gray-200 rounded-lg">
-            <div>
-              <div className="text-sm font-medium">{item.nombre}</div>
-              <div className="text-xs text-gray-500">{item.descripcion}</div>
+
+      {/* Filtro por categoría */}
+      <div className="flex gap-1.5 flex-wrap">
+        <button onClick={() => setFilterCat('todas')} className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterCat === 'todas' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+          Todas ({repositorio.length})
+        </button>
+        {REPO_CATEGORIAS.filter(c => repositorio.some(r => r.categoria === c.value)).map(c => (
+          <button key={c.value} onClick={() => setFilterCat(c.value)}
+            className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterCat === c.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {c.label.replace(/^.{2}\s+/, '')} ({repositorio.filter(r => r.categoria === c.value).length})
+          </button>
+        ))}
+      </div>
+
+      {/* Lista de items */}
+      <div className="space-y-1.5 max-h-80 overflow-y-auto">
+        {filtered.map(item => (
+          <div key={item.id} className="flex items-center justify-between px-3 py-2.5 border border-gray-200 rounded-lg hover:bg-gray-50">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${catColor(item.categoria)}`}>
+                {catLabel(item.categoria)}
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium truncate">{item.nombre}</div>
+                {item.descripcion && <div className="text-xs text-gray-400 truncate">{item.descripcion}</div>}
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-semibold">{new Intl.NumberFormat('es-MX', { style: 'currency', currency: item.moneda }).format(item.precio)}</span>
-              <button onClick={() => handleDelete(item.id)} className="text-gray-300 hover:text-red-500"><TrashIcon className="h-4 w-4" /></button>
+            <div className="flex items-center gap-3 flex-shrink-0 ml-2">
+              <span className="text-sm font-semibold text-gray-800">
+                {new Intl.NumberFormat('es-MX', { style: 'currency', currency: item.moneda }).format(item.precio)}
+                <span className="text-xs font-normal text-gray-400 ml-1">{item.moneda}</span>
+              </span>
+              <button onClick={() => handleDelete(item.id)} className="text-gray-300 hover:text-red-500 p-1">
+                <TrashIcon className="h-4 w-4" />
+              </button>
             </div>
           </div>
         ))}
-        {repositorio.length === 0 && <p className="text-center text-gray-400 text-sm py-6">Sin productos en el repositorio</p>}
+        {filtered.length === 0 && (
+          <p className="text-center text-gray-400 text-sm py-8">
+            {filterCat === 'todas' ? 'Sin productos en el repositorio' : 'Sin productos en esta categoría'}
+          </p>
+        )}
       </div>
     </div>
   )

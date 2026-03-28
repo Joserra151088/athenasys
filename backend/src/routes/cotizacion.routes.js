@@ -11,9 +11,13 @@ router.get('/repositorio', (req, res) => {
   res.json(db.get('repositorio_cotizacion').filter({ activo: true }).value())
 })
 router.post('/repositorio', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
-  const { nombre, descripcion, precio, moneda = 'MXN' } = req.body
+  const { nombre, descripcion, precio, moneda = 'MXN', categoria = 'otro', unidad = 'pieza' } = req.body
   if (!nombre || !precio) return res.status(400).json({ message: 'Nombre y precio son requeridos' })
-  const item = { id: uuidv4(), nombre, descripcion: descripcion || '', precio: parseFloat(precio), moneda, activo: true, created_at: new Date().toISOString() }
+  const item = {
+    id: uuidv4(), nombre, descripcion: descripcion || '',
+    precio: parseFloat(precio), moneda, categoria, unidad,
+    activo: true, created_at: new Date().toISOString()
+  }
   db.get('repositorio_cotizacion').push(item).write()
   res.status(201).json(item)
 })
