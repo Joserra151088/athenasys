@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manual de Usuario — AthenaSys Inventario TI</title>
+<style>
+  :root {
+    --primary: #1e293b;
+    --accent: #16a34a;
+    --accent2: #2563eb;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --muted: #64748b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; }
+
+  /* ── Portada ── */
+  .cover {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #15803d 100%);
+    color: white; padding: 80px 60px; min-height: 300px;
+    display: flex; flex-direction: column; justify-content: center;
+    position: relative; overflow: hidden;
+  }
+  .cover::before {
+    content: ''; position: absolute; top: -80px; right: -80px;
+    width: 400px; height: 400px; border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+  }
+  .cover-logo { font-size: 13px; letter-spacing: 2px; text-transform: uppercase; opacity: .6; margin-bottom: 16px; }
+  .cover h1 { font-size: 42px; font-weight: 800; line-height: 1.2; margin-bottom: 12px; }
+  .cover h1 span { color: #4ade80; }
+  .cover-sub { font-size: 18px; opacity: .75; margin-bottom: 32px; }
+  .cover-meta { display: flex; gap: 40px; font-size: 13px; opacity: .6; }
+  .cover-meta strong { display: block; font-size: 15px; opacity: 1; color: #4ade80; }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+
+  /* ── TOC ── */
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; margin: 40px 0; }
+  .toc h2 { font-size: 20px; color: var(--primary); margin-bottom: 20px; display: flex; align-items: center; gap: 8px; }
+  .toc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .toc-item { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px;
+    text-decoration: none; color: var(--text); font-size: 13.5px;
+    transition: background .15s; border: 1px solid transparent; }
+  .toc-item:hover { background: #f0fdf4; border-color: #bbf7d0; }
+  .toc-num { background: var(--accent); color: white; border-radius: 50%; width: 22px; height: 22px;
+    display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+
+  /* ── Section ── */
+  .section { margin: 48px 0; }
+  .section-header {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--card); border: 1px solid var(--border);
+    border-left: 5px solid var(--accent);
+    padding: 20px 24px; border-radius: 12px; margin-bottom: 20px;
+  }
+  .section-icon { font-size: 28px; }
+  .section-header h2 { font-size: 22px; color: var(--primary); }
+  .section-header p { font-size: 13px; color: var(--muted); margin-top: 2px; }
+  .section-num { background: var(--primary); color: white; border-radius: 8px;
+    padding: 4px 10px; font-size: 12px; font-weight: 700; margin-left: auto; }
+
+  /* ── Cards ── */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 20px 0; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+  .card h4 { font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 6px; }
+  .card p, .card li { font-size: 12.5px; color: var(--muted); }
+  .card ul { padding-left: 16px; }
+  .card ul li { margin-bottom: 3px; }
+  .card-blue { border-top: 3px solid #3b82f6; }
+  .card-green { border-top: 3px solid #22c55e; }
+  .card-amber { border-top: 3px solid #f59e0b; }
+  .card-red { border-top: 3px solid #ef4444; }
+  .card-purple { border-top: 3px solid #8b5cf6; }
+  .card-cyan { border-top: 3px solid #06b6d4; }
+
+  /* ── Steps ── */
+  .steps { counter-reset: step; margin: 16px 0; }
+  .step { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    background: var(--accent); color: white; border-radius: 50%;
+    min-width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; margin-top: 2px;
+  }
+  .step-content { font-size: 13.5px; }
+  .step-content strong { color: var(--primary); }
+
+  /* ── Screenshot placeholder ── */
+  .screenshot {
+    background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    border: 2px dashed #93c5fd;
+    border-radius: 12px; padding: 24px; margin: 20px 0;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .screenshot-label { font-size: 13px; color: #1d4ed8; font-weight: 600; }
+  .screenshot-url { font-size: 12px; color: #64748b; font-family: monospace;
+    background: white; padding: 4px 12px; border-radius: 6px; border: 1px solid #bfdbfe; }
+  .screenshot img { width: 100%; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+
+  /* ── Badge ── */
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px;
+    border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .badge-green { background: #dcfce7; color: #15803d; }
+  .badge-blue { background: #dbeafe; color: #1d4ed8; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+
+  /* ── Info box ── */
+  .info-box { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 18px; margin: 16px 0; font-size: 13px; color: #1e40af; }
+  .warn-box { background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; padding: 14px 18px; margin: 16px 0; font-size: 13px; color: #92400e; }
+  .tip-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 18px; margin: 16px 0; font-size: 13px; color: #15803d; }
+
+  /* ── Table ── */
+  .table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: #f1f5f9; padding: 10px 14px; text-align: left; font-weight: 600; color: var(--primary); border-bottom: 2px solid var(--border); }
+  td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; }
+  tr:hover td { background: #f8fafc; }
+
+  /* ── Network Diagram ── */
+  .network-wrap { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 32px; margin: 40px 0; text-align: center; }
+  .network-wrap h2 { font-size: 22px; color: var(--primary); margin-bottom: 8px; }
+  .network-wrap p { font-size: 13px; color: var(--muted); margin-bottom: 32px; }
+
+  /* ── Footer ── */
+  .footer { background: var(--primary); color: rgba(255,255,255,.6); text-align: center; padding: 24px; font-size: 12px; margin-top: 60px; }
+  .footer strong { color: white; }
+
+  /* ── Print ── */
+  @media print {
+    .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .section { page-break-before: auto; }
+    a { color: inherit; text-decoration: none; }
+  }
+
+  /* ── Roles table ── */
+  .role-chip { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; margin: 1px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PORTADA                                                    -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="cover-logo">📋 Manual de Usuario</div>
+  <h1>AthenaSys<br><span>Inventario TI</span></h1>
+  <div class="cover-sub">Gestión integral de activos tecnológicos, documentos, finanzas y operaciones de TI</div>
+  <div class="cover-meta">
+    <div><strong>Versión</strong> 2026</div>
+    <div><strong>Plataforma</strong> Web (React + Node.js)</div>
+    <div><strong>Empresa</strong> Previta — Área de TI</div>
+    <div><strong>Fecha</strong> Marzo 2026</div>
+  </div>
+</div>
+
+<div class="container">
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  TABLA DE CONTENIDO                                         -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="toc">
+  <h2>📑 Tabla de Contenido</h2>
+  <div class="toc-grid">
+    <a href="#s1" class="toc-item"><span class="toc-num">1</span>Dashboard</a>
+    <a href="#s2" class="toc-item"><span class="toc-num">2</span>Dispositivos</a>
+    <a href="#s3" class="toc-item"><span class="toc-num">3</span>Asignaciones</a>
+    <a href="#s4" class="toc-item"><span class="toc-num">4</span>Empleados</a>
+    <a href="#s5" class="toc-item"><span class="toc-num">5</span>Sucursales</a>
+    <a href="#s6" class="toc-item"><span class="toc-num">6</span>Proveedores</a>
+    <a href="#s7" class="toc-item"><span class="toc-num">7</span>Expedientes</a>
+    <a href="#s8" class="toc-item"><span class="toc-num">8</span>Documentos</a>
+    <a href="#s9" class="toc-item"><span class="toc-num">9</span>Plantillas</a>
+    <a href="#s10" class="toc-item"><span class="toc-num">10</span>Cambios de Equipo</a>
+    <a href="#s11" class="toc-item"><span class="toc-num">11</span>Licencias</a>
+    <a href="#s12" class="toc-item"><span class="toc-num">12</span>Cotizaciones</a>
+    <a href="#s13" class="toc-item"><span class="toc-num">13</span>Finanzas TI</a>
+    <a href="#s14" class="toc-item"><span class="toc-num">14</span>Reportes</a>
+    <a href="#s15" class="toc-item"><span class="toc-num">15</span>Mapa Interactivo</a>
+    <a href="#s16" class="toc-item"><span class="toc-num">16</span>Catálogos</a>
+    <a href="#s17" class="toc-item"><span class="toc-num">17</span>Usuarios del Sistema</a>
+    <a href="#s18" class="toc-item"><span class="toc-num">18</span>Auditoría</a>
+    <a href="#snet" class="toc-item"><span class="toc-num">★</span>Mapa de Conexiones</a>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  1 — DASHBOARD                                              -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s1">
+  <div class="section-header">
+    <div class="section-icon">🏠</div>
+    <div>
+      <h2>Dashboard</h2>
+      <p>Panel principal de control — resumen en tiempo real del inventario de TI</p>
+    </div>
+    <div class="section-num">Sección 1</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Dashboard — Vista principal</div>
+    <div class="screenshot-url">http://localhost:5174/</div>
+    <img src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwMCIgaGVpZ2h0PSI2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjEyMDAiIGhlaWdodD0iNjAwIiBmaWxsPSIjZjhmYWZjIi8+PHRleHQgeD0iNjAwIiB5PSIzMDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiM5NGEzYjgiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIj5EYXNoYm9hcmQ8L3RleHQ+PC9zdmc+"
+         alt="Dashboard" style="max-height:200px;object-fit:cover;width:100%">
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📊 KPIs superiores</h4>
+      <ul>
+        <li>Total de dispositivos registrados</li>
+        <li>Dispositivos activos / en stock / en reparación</li>
+        <li>Total de licencias y licencias activas</li>
+        <li>Licencias por vencer (30 días)</li>
+        <li>Asientos de licencias usados</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📍 Distribución por Ubicación</h4>
+      <ul>
+        <li>Dispositivos en Almacén</li>
+        <li>En Sucursales</li>
+        <li>Asignados a Empleados</li>
+        <li>En Proveedor (reparación)</li>
+        <li>Barra de progreso visual</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>💻 Por Tipo de Dispositivo</h4>
+      <ul>
+        <li>Conteo por CPU, Laptop, Monitor</li>
+        <li>Impresoras, Teclados, Mouse</li>
+        <li>Tablets, Celulares, BAM</li>
+        <li>Cámaras Web, Biométricos</li>
+        <li>Cables y accesorios</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tip-box">💡 El Dashboard se actualiza automáticamente cada vez que se carga la página. Muestra el estado consolidado de toda la plataforma sin necesidad de configuración previa.</div>
+
+  <p style="font-size:13.5px; color: var(--muted); margin-top:12px;">La tabla inferior <strong>"Todos los Dispositivos"</strong> muestra los últimos registros con acceso directo a cada equipo haciendo clic en "Ver todos →".</p>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  2 — DISPOSITIVOS                                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s2">
+  <div class="section-header">
+    <div class="section-icon">💻</div>
+    <div>
+      <h2>Dispositivos</h2>
+      <p>Inventario completo de hardware y equipos de TI — registro, edición y control de activos</p>
+    </div>
+    <div class="section-num">Sección 2</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Dispositivos</div>
+    <div class="screenshot-url">http://localhost:5174/dispositivos</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>🔑 Datos del Dispositivo</h4>
+      <ul>
+        <li>Tipo, Marca y Modelo</li>
+        <li>Número de serie</li>
+        <li>Proveedor asignado</li>
+        <li>Características técnicas</li>
+        <li>Costo/día (para finanzas)</li>
+        <li>Estado: Activo / Stock / Reparación</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>💰 Modalidades de Costo</h4>
+      <ul>
+        <li><strong>Paquete:</strong> Monitor + Teclado + Mouse incluidos al precio del CPU</li>
+        <li><strong>Unitario:</strong> Costo independiente por dispositivo</li>
+        <li><strong>En CPU:</strong> Accesorios $0 van con el CPU</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>🔍 Búsqueda y Filtros</h4>
+      <ul>
+        <li>Búsqueda libre (tipo, marca, serie, ubicación)</li>
+        <li>Filtros avanzados por estado</li>
+        <li>Filtros por proveedor</li>
+        <li>Filtros por tipo de dispositivo</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="font-size:15px;margin:20px 0 10px;color:var(--primary)">Cómo agregar un dispositivo:</h3>
+  <div class="steps">
+    <div class="step"><div class="step-content"><strong>Clic en "+ Agregar Dispositivo"</strong> (botón verde arriba a la derecha)</div></div>
+    <div class="step"><div class="step-content">Selecciona el <strong>Tipo</strong> de dispositivo del catálogo</div></div>
+    <div class="step"><div class="step-content">Ingresa <strong>Marca, Modelo y Número de Serie</strong></div></div>
+    <div class="step"><div class="step-content">Selecciona el <strong>Proveedor</strong> y define la <strong>modalidad de costo</strong></div></div>
+    <div class="step"><div class="step-content">Define el <strong>estado inicial</strong> (Activo / Stock) y guarda</div></div>
+  </div>
+
+  <div class="info-box">ℹ️ El <strong>costo/día</strong> del dispositivo se usa automáticamente en Finanzas → Desgloce de Gastos cuando se busca por número de serie para calcular el gasto mensual del servicio.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  3 — ASIGNACIONES                                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s3">
+  <div class="section-header">
+    <div class="section-icon">🔗</div>
+    <div>
+      <h2>Asignaciones</h2>
+      <p>Control de dispositivos asignados a empleados y sucursales con fecha y responsable</p>
+    </div>
+    <div class="section-num">Sección 3</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Asignaciones de Dispositivos</div>
+    <div class="screenshot-url">http://localhost:5174/asignaciones</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📋 Información Registrada</h4>
+      <ul>
+        <li>Dispositivo y número de serie</li>
+        <li>Tipo de asignación (Empleado / Sucursal)</li>
+        <li>Asignado a (nombre del receptor)</li>
+        <li>Asignado por (agente responsable)</li>
+        <li>Fecha de asignación</li>
+        <li>Estado (Activa / Devuelta)</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>⚡ Funciones</h4>
+      <ul>
+        <li>Nueva asignación con selector de dispositivo</li>
+        <li>Marcar como devuelto</li>
+        <li>Historial de asignaciones por equipo</li>
+        <li>El estado del dispositivo cambia automáticamente al asignarlo</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>🔗 Vinculación</h4>
+      <ul>
+        <li>Actualiza la ubicación del dispositivo en el inventario</li>
+        <li>Genera automáticamente registro para <strong>Expediente</strong> del empleado</li>
+        <li>Sirve de base para generar documentos de <strong>Responsiva</strong></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  4 — EMPLEADOS                                              -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s4">
+  <div class="section-header">
+    <div class="section-icon">👥</div>
+    <div>
+      <h2>Empleados</h2>
+      <p>Registro de empleados vinculados al inventario de TI — Menú: Registros → Empleados</p>
+    </div>
+    <div class="section-num">Sección 4</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Registro de Empleados</div>
+    <div class="screenshot-url">http://localhost:5174/empleados</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>👤 Datos del Empleado</h4>
+      <ul>
+        <li>Nombre completo y número de empleado</li>
+        <li>Puesto y área/departamento</li>
+        <li>Centro de Costos asignado</li>
+        <li>Jefe inmediato</li>
+        <li>Sucursal de adscripción</li>
+        <li>Email y teléfono de contacto</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>⚙️ Operaciones</h4>
+      <ul>
+        <li><strong>Importar CSV:</strong> carga masiva de empleados</li>
+        <li>Agregar, editar o desactivar empleados</li>
+        <li>Ver expediente completo del empleado</li>
+        <li>Buscar por nombre, número o puesto</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>🔗 Vínculos</h4>
+      <ul>
+        <li>Centro de Costos → Finanzas</li>
+        <li>Asignaciones de dispositivos</li>
+        <li>Licencias asignadas</li>
+        <li>Documentos firmados</li>
+        <li>Expediente completo</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  5 — SUCURSALES                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s5">
+  <div class="section-header">
+    <div class="section-icon">🏢</div>
+    <div>
+      <h2>Sucursales</h2>
+      <p>Registro de ubicaciones físicas — Menú: Registros → Sucursales</p>
+    </div>
+    <div class="section-num">Sección 5</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📍 Datos de la Sucursal</h4>
+      <ul>
+        <li>Nombre y tipo (Corporativo / Sucursal / Almacén)</li>
+        <li>Dirección completa</li>
+        <li>Coordenadas GPS (lat/lng)</li>
+        <li>Teléfono y responsable</li>
+        <li>Estado activo/inactivo</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🔗 Vínculos</h4>
+      <ul>
+        <li>Aparece en <strong>Mapa Interactivo</strong> con coordenadas GPS</li>
+        <li>Dispositivos asignados a la sucursal</li>
+        <li>Empleados adscritos a la sucursal</li>
+        <li>Documentos de entrada/salida generados aquí</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>💡 Uso</h4>
+      <ul>
+        <li>Al asignar un dispositivo a una sucursal, se actualiza su ubicación</li>
+        <li>Las sucursales aparecen en el selector de Empleados y Asignaciones</li>
+        <li>Las coordenadas GPS activan el pin en el mapa</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  6 — PROVEEDORES                                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s6">
+  <div class="section-header">
+    <div class="section-icon">🏭</div>
+    <div>
+      <h2>Proveedores</h2>
+      <p>Directorio de proveedores de hardware, software y servicios — Menú: Registros → Proveedores</p>
+    </div>
+    <div class="section-num">Sección 6</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📋 Datos del Proveedor</h4>
+      <ul>
+        <li>Razón social y nombre comercial</li>
+        <li>RFC y datos fiscales</li>
+        <li>Contacto, teléfono y email</li>
+        <li>Tipo de proveedor (hardware / software / servicio)</li>
+        <li>Empresa (Previta / EHT / Medclub)</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🔗 Vínculos</h4>
+      <ul>
+        <li>Asignado a dispositivos en el inventario</li>
+        <li>Usado en <strong>Cambios de Equipo</strong> (reparación)</li>
+        <li>Referenciado en <strong>Finanzas</strong> como proveedor de servicio</li>
+        <li>Base para <strong>Cotizaciones</strong></li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  7 — EXPEDIENTES                                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s7">
+  <div class="section-header">
+    <div class="section-icon">📂</div>
+    <div>
+      <h2>Expedientes</h2>
+      <p>Historial completo por empleado o sucursal — todos sus dispositivos, documentos y movimientos</p>
+    </div>
+    <div class="section-num">Sección 7</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Expedientes de Empleados y Sucursales</div>
+    <div class="screenshot-url">http://localhost:5174/expedientes</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>👤 Expediente de Empleado</h4>
+      <ul>
+        <li>Datos personales y laborales</li>
+        <li>Dispositivos actualmente asignados</li>
+        <li>Historial de asignaciones (entradas y salidas)</li>
+        <li>Licencias de software asignadas</li>
+        <li>Documentos firmados (responsivas, entradas, salidas)</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🏢 Expediente de Sucursal</h4>
+      <ul>
+        <li>Dispositivos asignados a la sucursal</li>
+        <li>Historial de movimientos</li>
+        <li>Documentos generados</li>
+        <li>Empleados adscritos</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>📌 Cómo usarlo</h4>
+      <ul>
+        <li>Selecciona la pestaña <strong>Empleados</strong> o <strong>Sucursales</strong></li>
+        <li>Busca por nombre o número</li>
+        <li>Clic en el icono de expediente (carpeta) para ver el detalle</li>
+        <li>El expediente se actualiza automáticamente con cada movimiento</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  8 — DOCUMENTOS                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s8">
+  <div class="section-header">
+    <div class="section-icon">📄</div>
+    <div>
+      <h2>Documentos</h2>
+      <p>Generación y firma digital de actas de entrada, salida y cartas responsivas</p>
+    </div>
+    <div class="section-num">Sección 8</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Documentos</div>
+    <div class="screenshot-url">http://localhost:5174/documentos</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📝 Tipos de Documento</h4>
+      <ul>
+        <li><strong>Entrada:</strong> Recepción de equipo por empleado/sucursal</li>
+        <li><strong>Salida:</strong> Entrega de equipo a empleado/sucursal</li>
+        <li><strong>Responsiva:</strong> Carta de responsabilidad firmada</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>✍️ Proceso de Firma</h4>
+      <ul>
+        <li>Cada usuario registra su <strong>firma digital</strong> en Usuarios del Sistema</li>
+        <li>Al generar documento se aplica automáticamente la firma del agente</li>
+        <li>El receptor puede firmar digitalmente en pantalla</li>
+        <li>El PDF se genera y guarda en carpeta OneDrive configurada</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>💾 Almacenamiento</h4>
+      <ul>
+        <li>PDF guardado automáticamente en la ruta local/OneDrive configurada</li>
+        <li>Subcarpetas por tipo: <code>entrada/</code>, <code>salida/</code>, <code>responsiva/</code></li>
+        <li>Si la ruta no está disponible, el PDF queda en cola de reintentos</li>
+        <li>Acceso al PDF desde la tabla de documentos (columna Archivo Local)</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="font-size:15px;margin:20px 0 10px;color:var(--primary)">Cómo crear un documento:</h3>
+  <div class="steps">
+    <div class="step"><div class="step-content">Clic en <strong>"+ Nuevo Documento"</strong></div></div>
+    <div class="step"><div class="step-content">Selecciona el <strong>tipo</strong> (Entrada / Salida / Responsiva)</div></div>
+    <div class="step"><div class="step-content">Selecciona la <strong>plantilla</strong> a usar (las plantillas se configuran en Plantillas de Documentos)</div></div>
+    <div class="step"><div class="step-content">Agrega los <strong>dispositivos</strong> incluidos en el documento</div></div>
+    <div class="step"><div class="step-content">Selecciona la <strong>entidad receptora</strong> (empleado o sucursal)</div></div>
+    <div class="step"><div class="step-content">El agente <strong>firma digitalmente</strong> — se aplica la firma guardada en su perfil</div></div>
+    <div class="step"><div class="step-content">El sistema genera el <strong>PDF</strong> y lo guarda en la carpeta OneDrive configurada</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  9 — PLANTILLAS                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s9">
+  <div class="section-header">
+    <div class="section-icon">📋</div>
+    <div>
+      <h2>Plantillas de Documentos</h2>
+      <p>Administración de templates con versionamiento — encabezado, logotipo y textos personalizables</p>
+    </div>
+    <div class="section-num">Sección 9</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Plantillas de Documentos</div>
+    <div class="screenshot-url">http://localhost:5174/plantillas</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📄 Variables Disponibles</h4>
+      <ul>
+        <li><code>{{receptor_nombre}}</code> — Nombre del receptor</li>
+        <li><code>{{agente_nombre}}</code> — Nombre del agente TI</li>
+        <li><code>{{fecha}}</code> — Fecha del documento</li>
+        <li><code>{{motivo_salida}}</code> — Razón de salida</li>
+        <li><code>{{dispositivos}}</code> — Lista de equipos</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🎨 Configuración Visual</h4>
+      <ul>
+        <li><strong>Configurar Logo:</strong> sube imagen PNG/JPG del logotipo</li>
+        <li><strong>Nombre de empresa</strong> (encabezado del PDF)</li>
+        <li><strong>Subtítulo</strong> (e.g. "Área de Tecnologías de la Información")</li>
+        <li><strong>Color del encabezado</strong> (selección de color hex)</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>🔖 Versionamiento</h4>
+      <ul>
+        <li>Cada edición crea una nueva <strong>versión</strong> numerada</li>
+        <li>Historial completo de cambios con fecha y autor</li>
+        <li>Botón <strong>"Historial"</strong> muestra versiones anteriores</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="tip-box">💡 <strong>Para guardar el encabezado</strong> (nombre empresa, subtítulo, color) el backend debe estar ejecutándose y reiniciado con los últimos cambios. Si ves error al guardar, reinicia el servidor Node.js en el puerto 3002.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  10 — CAMBIOS DE EQUIPO                                     -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s10">
+  <div class="section-header">
+    <div class="section-icon">🔧</div>
+    <div>
+      <h2>Cambios de Equipo</h2>
+      <p>Registro de reparaciones, actualizaciones y bajas definitivas de dispositivos</p>
+    </div>
+    <div class="section-num">Sección 10</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Cambios de Equipo</div>
+    <div class="screenshot-url">http://localhost:5174/cambios</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>🔄 Tipos de Cambio</h4>
+      <ul>
+        <li><strong>Reparación:</strong> Equipo enviado a proveedor para servicio</li>
+        <li><strong>Actualización:</strong> Mejora de hardware/software</li>
+        <li><strong>Baja definitiva:</strong> Equipo retirado del inventario</li>
+        <li><strong>Robo/Pérdida:</strong> Registro de extravío</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📋 Datos del Cambio</h4>
+      <ul>
+        <li>Dispositivo afectado (número de serie)</li>
+        <li>Tipo de cambio</li>
+        <li>Proveedor de servicio</li>
+        <li>Motivo detallado</li>
+        <li>Fecha estimada de retorno</li>
+        <li>Estado del proceso</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>🔗 Vínculos</h4>
+      <ul>
+        <li>Cambia el estado del dispositivo a <strong>"En Proveedor"</strong></li>
+        <li>Al marcar retorno, el dispositivo vuelve a <strong>"Stock"</strong></li>
+        <li>Registro visible en el <strong>Expediente</strong> del dispositivo</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  11 — LICENCIAS                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s11">
+  <div class="section-header">
+    <div class="section-icon">🔑</div>
+    <div>
+      <h2>Licencias de Software</h2>
+      <p>Gestión de licencias con control de asientos, vencimientos y costos</p>
+    </div>
+    <div class="section-num">Sección 11</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Licencias</div>
+    <div class="screenshot-url">http://localhost:5174/licencias</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📋 Datos de la Licencia</h4>
+      <ul>
+        <li>Nombre y tipo (Ofimática, Seguridad, Diseño…)</li>
+        <li>Proveedor asignado</li>
+        <li>Clave/serial de licencia</li>
+        <li>Número de asientos (capacidad total)</li>
+        <li>Costo y moneda (MXN / USD)</li>
+        <li>Tipo de costo: mensual / anual / único</li>
+        <li>Fecha de vencimiento</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📊 KPIs del módulo</h4>
+      <ul>
+        <li>Total de licencias registradas</li>
+        <li>Licencias activas</li>
+        <li>Por vencer en 30 días</li>
+        <li>Costo mensual estimado total</li>
+        <li>Asientos totales usados vs disponibles</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>⚠️ Vinculación con Finanzas</h4>
+      <p style="font-size:12px;margin-bottom:8px;">Las licencias <strong>NO se vinculan automáticamente</strong> al módulo de Finanzas. Sin embargo, existe una relación conceptual:</p>
+      <ul>
+        <li>El <strong>costo mensual</strong> de cada licencia puede ser ingresado manualmente como línea en <strong>Desgloce de Gastos</strong> (Finanzas)</li>
+        <li>El proveedor de la licencia puede ser seleccionado como partida en Finanzas</li>
+        <li>La categoría <strong>"TI Licencias"</strong> en Finanzas es el agrupador para estos costos</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="warn-box">⚠️ <strong>Respuesta a tu pregunta:</strong> Las Licencias <em>no tienen vinculación automática</em> con el módulo de Finanzas. Son módulos independientes. Para reflejar el costo de una licencia en Finanzas, debes ingresar manualmente una línea en <strong>Finanzas → Desgloce de Gastos</strong> con el proveedor, tipo de servicio (nombre de la licencia), y el costo mensual. Se recomienda usar el agrupador <strong>"TI Licencias"</strong> en el presupuesto.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  12 — COTIZACIONES                                          -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s12">
+  <div class="section-header">
+    <div class="section-icon">💰</div>
+    <div>
+      <h2>Cotizaciones</h2>
+      <p>Generación y exportación de cotizaciones con IVA y tipo de cambio</p>
+    </div>
+    <div class="section-num">Sección 12</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Cotizaciones</div>
+    <div class="screenshot-url">http://localhost:5174/cotizaciones</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📝 Datos de la Cotización</h4>
+      <ul>
+        <li>Folio automático o personalizado</li>
+        <li>Cliente / destinatario</li>
+        <li>Líneas de productos/servicios con cantidad, precio y descripción</li>
+        <li>Moneda (MXN / USD) y tipo de cambio</li>
+        <li>Cálculo automático de IVA 16%</li>
+        <li>Fecha de vigencia</li>
+        <li>Notas y observaciones</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📤 Exportación</h4>
+      <ul>
+        <li>Generación de PDF con formato profesional</li>
+        <li>Descarga directa desde el sistema</li>
+        <li><strong>Repositorio:</strong> Acceso al catálogo de productos/servicios frecuentes para pre-llenar ítems</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>📊 Estados</h4>
+      <ul>
+        <li><span class="badge badge-green">Aprobada</span> Cotización aceptada</li>
+        <li><span class="badge badge-amber">Pendiente</span> En revisión</li>
+        <li><span class="badge badge-red">Vencida</span> Pasó la fecha de vigencia</li>
+        <li><span class="badge badge-gray">Cancelada</span> Rechazada</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  13 — FINANZAS TI                                           -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s13">
+  <div class="section-header">
+    <div class="section-icon">📊</div>
+    <div>
+      <h2>Finanzas TI</h2>
+      <p>Presupuesto, gasto real, desgloce de gastos y análisis financiero del área de TI</p>
+    </div>
+    <div class="section-num">Sección 13</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Finanzas TI — Presupuesto</div>
+    <div class="screenshot-url">http://localhost:5174/finanzas</div>
+  </div>
+
+  <div class="info-box">ℹ️ El módulo de Finanzas tiene <strong>3 pestañas</strong>: Presupuesto, Desgloce de Gastos y Configuración.</div>
+
+  <h3 style="font-size:16px;margin:24px 0 12px;color:var(--primary)">📌 Pestaña 1: Presupuesto</h3>
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>💳 KPIs Financieros</h4>
+      <ul>
+        <li><strong>Presupuesto</strong> — Total asignado para el período</li>
+        <li><strong>Gasto Real</strong> — Lo efectivamente gastado</li>
+        <li><strong>Ahorrado Soporte</strong> — Ahorro registrado por soporte TI</li>
+        <li><strong>No Ejercido</strong> — Presupuesto no utilizado</li>
+        <li><strong>Objetivo</strong> — Medidor semicircular con % ejercido</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📅 Control de Período</h4>
+      <ul>
+        <li>Vista Mensual / Trimestral / Anual</li>
+        <li>Selección de año y meses específicos</li>
+        <li>Filtro por empresa (Previta/EHT/Medclub)</li>
+        <li>Filtro por agrupador presupuestal</li>
+        <li>Gráfica de barras por período</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>📋 Detalle por Partida</h4>
+      <ul>
+        <li>Tabla de todas las partidas presupuestales</li>
+        <li>Columnas: Empresa, Agrupador, Concepto, Proveedor</li>
+        <li>Presupuesto vs Gasto Real vs Ahorro</li>
+        <li><strong>Variación</strong> = Presupuesto − Gasto Real</li>
+        <li>Búsqueda por concepto/proveedor</li>
+        <li>Columnas configurables</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="font-size:16px;margin:24px 0 12px;color:var(--primary)">📌 Pestaña 2: Desgloce de Gastos</h3>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Desgloce de Gastos — con nuevos filtros y exportación</div>
+    <div class="screenshot-url">http://localhost:5174/finanzas → pestaña "Desgloce de Gastos"</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>🔍 Filtros Avanzados <span class="badge badge-green">NUEVO</span></h4>
+      <ul>
+        <li>Búsqueda rápida (texto libre en todos los campos)</li>
+        <li>Filtrar por <strong>Proveedor</strong></li>
+        <li>Filtrar por <strong>Partida / Tipo de Servicio</strong></li>
+        <li>Filtrar por <strong>Factura / Folio</strong></li>
+        <li>Filtrar por <strong>Centro de Costos</strong></li>
+        <li>Contador de filtros activos con badge</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>📤 Exportación <span class="badge badge-green">NUEVO</span></h4>
+      <ul>
+        <li><strong>📊 Excel (.xlsx)</strong> — Hoja con todos los registros filtrados, columnas formateadas</li>
+        <li><strong>📄 CSV</strong> — Compatible con cualquier aplicación</li>
+        <li><strong>📑 PDF</strong> — Tabla con encabezado corporativo, totales, colores alternos por fila</li>
+        <li>La exportación respeta los filtros activos</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>↕️ Ordenamiento <span class="badge badge-green">NUEVO</span></h4>
+      <ul>
+        <li>Clic en cualquier encabezado de columna para ordenar</li>
+        <li><strong>A→Z / Z→A</strong> para columnas de texto</li>
+        <li><strong>Mayor→Menor / Menor→Mayor</strong> para columnas numéricas</li>
+        <li>Indicador visual ↑ ↓ en la columna activa</li>
+        <li>Columnas ordenables: Nombre, Serie, Servicio, Proveedor, Días, $/día, Subtotal, Total, CC, Tipo</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="cards" style="margin-top:8px">
+    <div class="card card-cyan">
+      <h4>➕ Nueva Línea de Gasto</h4>
+      <ul>
+        <li>Seleccionar período (mes y año)</li>
+        <li>Nombre/descripción del gasto</li>
+        <li>Partida/Proveedor del catálogo</li>
+        <li>Serie o teléfono (busca en inventario automáticamente)</li>
+        <li>Modo: días×costo_día o importe total</li>
+        <li>IVA, moneda y tipo de cambio</li>
+        <li>Centro de Costos y tipo (CAF/Administrativo)</li>
+        <li>Folio de factura</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>📋 Clonar Mes Anterior</h4>
+      <ul>
+        <li>Copia todas las líneas de gasto de un mes origen al mes actual</li>
+        <li>Ideal para servicios recurrentes</li>
+        <li>Selecciona mes origen y año, clic en <strong>"Clonar"</strong></li>
+        <li>Muestra el número de registros copiados</li>
+      </ul>
+    </div>
+    <div class="card card-red">
+      <h4>🗑️ Eliminación Masiva</h4>
+      <ul>
+        <li>Checkbox en cada fila para selección</li>
+        <li>Checkbox en encabezado para seleccionar todos</li>
+        <li>Banner rojo con conteo de seleccionados</li>
+        <li>Confirmación antes de eliminar</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3 style="font-size:16px;margin:24px 0 12px;color:var(--primary)">📌 Pestaña 3: Configuración</h3>
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>⚙️ Agrupadores y Partidas</h4>
+      <ul>
+        <li>Define agrupadores presupuestales (e.g. TI Nube, TI Licencias, TI Hardware)</li>
+        <li>Registra las partidas con su proveedor, concepto y montos mensuales</li>
+        <li>Los montos pueden ser diferentes por mes (estacionalidad)</li>
+        <li>Asigna empresa y agrupador a cada partida</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🏢 Multi-empresa</h4>
+      <ul>
+        <li>Las partidas se asignan a <strong>Previta</strong>, <strong>EHT</strong> o <strong>Medclub</strong></li>
+        <li>El presupuesto se puede ver consolidado o por empresa</li>
+        <li>Los filtros permiten separar el análisis financiero por entidad</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  14 — REPORTES                                              -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s14">
+  <div class="section-header">
+    <div class="section-icon">📈</div>
+    <div>
+      <h2>Reportes</h2>
+      <p>Generación de reportes filtrados de inventario, asignaciones, licencias y gastos</p>
+    </div>
+    <div class="section-num">Sección 14</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Reportes</div>
+    <div class="screenshot-url">http://localhost:5174/reportes</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>💻 Reporte de Inventario</h4>
+      <ul>
+        <li>Filtros por tipo de dispositivo, estado y ubicación</li>
+        <li>Exporta listado completo con todos los campos</li>
+        <li>Incluye costo/día por equipo</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🔗 Reporte de Asignaciones</h4>
+      <ul>
+        <li>Dispositivos asignados a empleados y sucursales</li>
+        <li>Historial de movimientos</li>
+        <li>Activas vs devueltas</li>
+      </ul>
+    </div>
+    <div class="card card-purple">
+      <h4>🔑 Reporte de Licencias</h4>
+      <ul>
+        <li>Licencias activas, vencidas y por vencer</li>
+        <li>Costo mensual estimado por licencia</li>
+        <li>Uso de asientos</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>💰 Reporte Gastos TI</h4>
+      <ul>
+        <li>Gasto por período y empresa</li>
+        <li>Comparativa presupuesto vs real</li>
+        <li>Detalle por partida y proveedor</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="steps">
+    <div class="step"><div class="step-content">Selecciona la <strong>pestaña del tipo de reporte</strong> (Inventario / Asignaciones / Licencias / Gastos TI)</div></div>
+    <div class="step"><div class="step-content">Aplica los <strong>filtros</strong> disponibles (tipo, estado, ubicación, período)</div></div>
+    <div class="step"><div class="step-content">Clic en <strong>"Generar reporte"</strong></div></div>
+    <div class="step"><div class="step-content">Revisa la tabla y descarga en el formato deseado</div></div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  15 — MAPA INTERACTIVO                                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s15">
+  <div class="section-header">
+    <div class="section-icon">🗺️</div>
+    <div>
+      <h2>Mapa Interactivo</h2>
+      <p>Visualización geográfica de sucursales y empleados en la República Mexicana</p>
+    </div>
+    <div class="section-num">Sección 15</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Mapa Interactivo — Distribución nacional</div>
+    <div class="screenshot-url">http://localhost:5174/mapa</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>🔵 Pines en el Mapa</h4>
+      <ul>
+        <li><strong>Azul:</strong> Sede Corporativa</li>
+        <li><strong>Verde:</strong> Sucursales</li>
+        <li><strong>Naranja:</strong> Empleados con coordenadas</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>⚙️ Funciones</h4>
+      <ul>
+        <li>Zoom in/out en el mapa</li>
+        <li>Clic en pin para ver detalle (nombre, dirección, dispositivos)</li>
+        <li>Filtrar por: Todo / Sucursales / Empleados</li>
+        <li>Panel lateral de resumen con conteos</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>📍 Requisito</h4>
+      <ul>
+        <li>Las sucursales necesitan <strong>Latitud y Longitud</strong> configuradas en Registros → Sucursales</li>
+        <li>Los empleados necesitan dirección geocodificada</li>
+        <li>Usa OpenStreetMap como mapa base</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  16 — CATÁLOGOS                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s16">
+  <div class="section-header">
+    <div class="section-icon">📚</div>
+    <div>
+      <h2>Catálogos</h2>
+      <p>Administración de los catálogos base que alimentan los formularios y filtros de toda la plataforma</p>
+    </div>
+    <div class="section-num">Sección 16</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Catálogos del Sistema</div>
+    <div class="screenshot-url">http://localhost:5174/catalogos</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>💻 Tipos de Dispositivo</h4>
+      <p>CPU, Laptop, Monitor, Impresora, Teclado, Mouse, Tablet, Celular, BAM, Cable, Cámara Web, Biométrico… (17 tipos)</p>
+    </div>
+    <div class="card card-green">
+      <h4>🔑 Tipos de Licencia</h4>
+      <p>Ofimática, Seguridad, Diseño, Desarrollo, Comunicación, Sistema Operativo… (10 tipos)</p>
+    </div>
+    <div class="card card-purple">
+      <h4>🏢 Áreas / Departamentos</h4>
+      <p>Tecnologías de la Información, Recursos Humanos, Finanzas, Operaciones, Dirección General, Legal… (9 áreas)</p>
+    </div>
+    <div class="card card-amber">
+      <h4>🏷️ Marcas</h4>
+      <p>Dell, HP, Lenovo, Apple, Asus, Acer, Samsung, Epson, Logitech… (16 marcas)</p>
+    </div>
+  </div>
+
+  <div class="info-box">ℹ️ Los registros eliminados de catálogos <strong>no afectan</strong> los dispositivos o licencias existentes que ya los tenían asignados. Solo dejan de aparecer en los selectores al crear nuevos registros.</div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  17 — USUARIOS DEL SISTEMA                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s17">
+  <div class="section-header">
+    <div class="section-icon">👤</div>
+    <div>
+      <h2>Usuarios del Sistema</h2>
+      <p>Gestión de accesos, roles, firma digital y carpeta de documentos</p>
+    </div>
+    <div class="section-num">Sección 17</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Usuarios del Sistema</div>
+    <div class="screenshot-url">http://localhost:5174/usuarios-sistema</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>🔐 Roles y Permisos</h4>
+      <div class="table-wrap" style="margin:8px 0">
+        <table>
+          <tr><th>Rol</th><th>Acceso</th></tr>
+          <tr><td><span class="badge badge-red">Super Administrador</span></td><td>Acceso total a todas las secciones</td></tr>
+          <tr><td><span class="badge badge-purple">Administrador General</span></td><td>Todas las secciones menos configuración de sistema</td></tr>
+          <tr><td><span class="badge badge-blue">Agente de Soporte TI</span></td><td>Inventario, documentos, asignaciones, licencias</td></tr>
+          <tr><td><span class="badge badge-gray">Solo Vista</span></td><td>Lectura de inventario solamente</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="card card-green">
+      <h4>✍️ Firma Digital</h4>
+      <ul>
+        <li>Cada usuario puede dibujar su firma con el cursor o trackpad</li>
+        <li>O subir una imagen de su firma</li>
+        <li>La firma se aplica automáticamente al generar documentos</li>
+        <li>Se almacena de forma segura en el sistema</li>
+      </ul>
+    </div>
+    <div class="card card-amber">
+      <h4>📁 Carpeta de Documentos</h4>
+      <ul>
+        <li>Define la <strong>ruta local / OneDrive</strong> donde se guardan los PDFs</li>
+        <li>El sistema crea subcarpetas: <code>entrada/</code>, <code>salida/</code>, <code>responsiva/</code></li>
+        <li>Solo usuarios con rol adecuado pueden modificar esta ruta</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  18 — AUDITORÍA                                             -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section" id="s18">
+  <div class="section-header">
+    <div class="section-icon">🛡️</div>
+    <div>
+      <h2>Auditoría</h2>
+      <p>Registro inmutable de todas las acciones realizadas en el sistema</p>
+    </div>
+    <div class="section-num">Sección 18</div>
+  </div>
+
+  <div class="screenshot">
+    <div class="screenshot-label">📸 Módulo de Auditoría</div>
+    <div class="screenshot-url">http://localhost:5174/auditoria</div>
+  </div>
+
+  <div class="cards">
+    <div class="card card-blue">
+      <h4>📋 Información Registrada</h4>
+      <ul>
+        <li>Fecha y hora exacta de cada acción</li>
+        <li>Usuario que realizó la acción</li>
+        <li>Tipo de acción: <span class="badge badge-green">crear</span> <span class="badge badge-blue">editar</span> <span class="badge badge-red">eliminar</span> <span class="badge badge-purple">firmar</span></li>
+        <li>Entidad afectada (Dispositivo, Empleado, Documento…)</li>
+        <li>Detalles del cambio (JSON con valores)</li>
+        <li>IP del cliente</li>
+      </ul>
+    </div>
+    <div class="card card-green">
+      <h4>🔍 Búsqueda y Filtros</h4>
+      <ul>
+        <li>Buscar por usuario o tipo de acción</li>
+        <li>Filtrar por entidad (Dispositivo, Cotización, Documento, Empleado…)</li>
+        <li>Ordenado cronológicamente (más reciente primero)</li>
+      </ul>
+    </div>
+    <div class="card card-red">
+      <h4>⚠️ Importante</h4>
+      <ul>
+        <li>Los registros de auditoría son de <strong>solo lectura</strong></li>
+        <li>No se pueden eliminar ni modificar</li>
+        <li>Disponible solo para roles con permisos de auditoría</li>
+        <li>Útil para rastrear cambios no autorizados</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  MAPA DE CONEXIONES                                         -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="network-wrap" id="snet">
+  <h2>🕸️ Mapa de Conexiones entre Módulos</h2>
+  <p>Diagrama de cómo cada sección de AthenaSys se vincula con las demás</p>
+
+  <svg viewBox="0 0 1000 720" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:960px;font-family:'Segoe UI',sans-serif">
+    <defs>
+      <!-- Gradientes para nodos -->
+      <radialGradient id="g_dash" cx="50%" cy="30%"><stop offset="0%" stop-color="#4ade80"/><stop offset="100%" stop-color="#15803d"/></radialGradient>
+      <radialGradient id="g_disp" cx="50%" cy="30%"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#1d4ed8"/></radialGradient>
+      <radialGradient id="g_asig" cx="50%" cy="30%"><stop offset="0%" stop-color="#a78bfa"/><stop offset="100%" stop-color="#5b21b6"/></radialGradient>
+      <radialGradient id="g_emp"  cx="50%" cy="30%"><stop offset="0%" stop-color="#fb923c"/><stop offset="100%" stop-color="#c2410c"/></radialGradient>
+      <radialGradient id="g_doc"  cx="50%" cy="30%"><stop offset="0%" stop-color="#f472b6"/><stop offset="100%" stop-color="#9d174d"/></radialGradient>
+      <radialGradient id="g_fin"  cx="50%" cy="30%"><stop offset="0%" stop-color="#fbbf24"/><stop offset="100%" stop-color="#92400e"/></radialGradient>
+      <radialGradient id="g_lic"  cx="50%" cy="30%"><stop offset="0%" stop-color="#34d399"/><stop offset="100%" stop-color="#065f46"/></radialGradient>
+      <radialGradient id="g_pla"  cx="50%" cy="30%"><stop offset="0%" stop-color="#94a3b8"/><stop offset="100%" stop-color="#334155"/></radialGradient>
+      <radialGradient id="g_cat"  cx="50%" cy="30%"><stop offset="0%" stop-color="#e879f9"/><stop offset="100%" stop-color="#701a75"/></radialGradient>
+      <radialGradient id="g_rep"  cx="50%" cy="30%"><stop offset="0%" stop-color="#38bdf8"/><stop offset="100%" stop-color="#0c4a6e"/></radialGradient>
+      <radialGradient id="g_map"  cx="50%" cy="30%"><stop offset="0%" stop-color="#a3e635"/><stop offset="100%" stop-color="#365314"/></radialGradient>
+      <radialGradient id="g_exp"  cx="50%" cy="30%"><stop offset="0%" stop-color="#fdba74"/><stop offset="100%" stop-color="#7c2d12"/></radialGradient>
+      <radialGradient id="g_cam"  cx="50%" cy="30%"><stop offset="0%" stop-color="#f87171"/><stop offset="100%" stop-color="#7f1d1d"/></radialGradient>
+      <radialGradient id="g_suc"  cx="50%" cy="30%"><stop offset="0%" stop-color="#6ee7b7"/><stop offset="100%" stop-color="#064e3b"/></radialGradient>
+      <radialGradient id="g_prov" cx="50%" cy="30%"><stop offset="0%" stop-color="#c4b5fd"/><stop offset="100%" stop-color="#4c1d95"/></radialGradient>
+      <radialGradient id="g_aud"  cx="50%" cy="30%"><stop offset="0%" stop-color="#fca5a5"/><stop offset="100%" stop-color="#450a0a"/></radialGradient>
+      <!-- Arrowhead -->
+      <marker id="arr" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#94a3b8"/>
+      </marker>
+      <marker id="arr_strong" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L8,3 z" fill="#1d4ed8"/>
+      </marker>
+    </defs>
+
+    <!-- ── FONDO ── -->
+    <rect width="1000" height="720" rx="16" fill="#f1f5f9"/>
+
+    <!-- ── LÍNEAS DE CONEXIÓN (primero para que queden detrás de los nodos) ── -->
+    <!-- Dashboard → todos (supervisión) -->
+    <line x1="500" y1="100" x2="160" y2="220" stroke="#bbf7d0" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <line x1="500" y1="100" x2="840" y2="220" stroke="#bbf7d0" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <line x1="500" y1="100" x2="270" y2="340" stroke="#bbf7d0" stroke-width="1.2" stroke-dasharray="4,3"/>
+    <line x1="500" y1="100" x2="730" y2="340" stroke="#bbf7d0" stroke-width="1.2" stroke-dasharray="4,3"/>
+
+    <!-- Dispositivos ↔ Asignaciones (fuerte) -->
+    <line x1="160" y1="240" x2="270" y2="330" stroke="#3b82f6" stroke-width="2.5" marker-end="url(#arr_strong)"/>
+    <!-- Asignaciones ↔ Empleados -->
+    <line x1="290" y1="360" x2="290" y2="460" stroke="#8b5cf6" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Asignaciones ↔ Sucursales -->
+    <line x1="320" y1="360" x2="420" y2="470" stroke="#8b5cf6" stroke-width="1.8" marker-end="url(#arr)"/>
+    <!-- Asignaciones ↔ Documentos -->
+    <line x1="300" y1="340" x2="500" y2="290" stroke="#c026d3" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+    <!-- Dispositivos ↔ Finanzas (costo/día) -->
+    <line x1="190" y1="250" x2="360" y2="530" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr)"/>
+    <!-- Dispositivos ↔ Cambios -->
+    <line x1="155" y1="260" x2="100" y2="460" stroke="#ef4444" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Dispositivos ↔ Expedientes -->
+    <line x1="180" y1="260" x2="570" y2="460" stroke="#f97316" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <!-- Empleados ↔ Expedientes -->
+    <line x1="320" y1="480" x2="540" y2="470" stroke="#f97316" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Empleados ↔ Licencias -->
+    <line x1="300" y1="500" x2="390" y2="590" stroke="#059669" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+    <!-- Empleados ↔ Documentos -->
+    <line x1="310" y1="470" x2="490" y2="280" stroke="#db2777" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <!-- Documentos ↔ Plantillas -->
+    <line x1="530" y1="270" x2="700" y2="210" stroke="#7c3aed" stroke-width="2" marker-end="url(#arr_strong)"/>
+    <!-- Finanzas ↔ Proveedores -->
+    <line x1="375" y1="550" x2="150" y2="600" stroke="#7c3aed" stroke-width="1.8" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+    <!-- Sucursales ↔ Mapa -->
+    <line x1="450" y1="490" x2="780" y2="580" stroke="#84cc16" stroke-width="2" marker-end="url(#arr)"/>
+    <!-- Sucursales ↔ Expedientes -->
+    <line x1="460" y1="470" x2="570" y2="462" stroke="#f97316" stroke-width="1.5" marker-end="url(#arr)"/>
+    <!-- Licencias ↔ Reportes -->
+    <line x1="430" y1="600" x2="710" y2="510" stroke="#0284c7" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <!-- Finanzas ↔ Reportes -->
+    <line x1="400" y1="530" x2="700" y2="495" stroke="#0284c7" stroke-width="2" stroke-dasharray="5,3" marker-end="url(#arr)"/>
+    <!-- Dispositivos ↔ Reportes -->
+    <line x1="185" y1="225" x2="690" y2="475" stroke="#0284c7" stroke-width="1.2" stroke-dasharray="3,4"/>
+    <!-- Catálogos → Dispositivos -->
+    <line x1="840" y1="280" x2="210" y2="230" stroke="#a21caf" stroke-width="1.5" stroke-dasharray="3,4" marker-end="url(#arr)"/>
+    <!-- Catálogos → Licencias -->
+    <line x1="840" y1="300" x2="470" y2="582" stroke="#a21caf" stroke-width="1.2" stroke-dasharray="3,4" marker-end="url(#arr)"/>
+    <!-- Proveedores → Dispositivos -->
+    <line x1="170" y1="610" x2="150" y2="265" stroke="#4f46e5" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+    <!-- Proveedores → Cambios -->
+    <line x1="148" y1="600" x2="100" y2="500" stroke="#4f46e5" stroke-width="1.5" marker-end="url(#arr)"/>
+    <!-- Auditoría ← all (supervisión invisible) -->
+    <line x1="900" y1="640" x2="730" y2="355" stroke="#fca5a5" stroke-width="1" stroke-dasharray="2,4"/>
+    <line x1="880" y1="620" x2="550" y2="280" stroke="#fca5a5" stroke-width="1" stroke-dasharray="2,4"/>
+    <!-- Cotizaciones/Reportes -->
+    <line x1="840" y1="360" x2="730" y2="480" stroke="#0284c7" stroke-width="1.2" stroke-dasharray="3,4"/>
+
+    <!-- ══════════════════════════════════════════════════════ -->
+    <!--  NODOS                                                 -->
+    <!-- ══════════════════════════════════════════════════════ -->
+
+    <!-- ● DASHBOARD — centro superior -->
+    <ellipse cx="500" cy="86" rx="70" ry="34" fill="url(#g_dash)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="500" y="80" text-anchor="middle" fill="white" font-size="11" font-weight="700">🏠 Dashboard</text>
+    <text x="500" y="96" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Panel general</text>
+
+    <!-- ● DISPOSITIVOS — izquierda alta -->
+    <ellipse cx="158" cy="232" rx="66" ry="32" fill="url(#g_disp)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="158" y="226" text-anchor="middle" fill="white" font-size="11" font-weight="700">💻 Dispositivos</text>
+    <text x="158" y="242" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Inventario hardware</text>
+
+    <!-- ● ASIGNACIONES -->
+    <ellipse cx="285" cy="344" rx="68" ry="32" fill="url(#g_asig)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="285" y="338" text-anchor="middle" fill="white" font-size="11" font-weight="700">🔗 Asignaciones</text>
+    <text x="285" y="354" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Empleado / Sucursal</text>
+
+    <!-- ● EMPLEADOS -->
+    <ellipse cx="275" cy="482" rx="64" ry="30" fill="url(#g_emp)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="275" y="476" text-anchor="middle" fill="white" font-size="11" font-weight="700">👥 Empleados</text>
+    <text x="275" y="492" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Registros RRHH</text>
+
+    <!-- ● SUCURSALES -->
+    <ellipse cx="440" cy="480" rx="64" ry="30" fill="url(#g_suc)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="440" y="474" text-anchor="middle" fill="white" font-size="11" font-weight="700">🏢 Sucursales</text>
+    <text x="440" y="490" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Ubicaciones físicas</text>
+
+    <!-- ● DOCUMENTOS — centro -->
+    <ellipse cx="500" cy="268" rx="68" ry="32" fill="url(#g_doc)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="500" y="262" text-anchor="middle" fill="white" font-size="11" font-weight="700">📄 Documentos</text>
+    <text x="500" y="278" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">PDF + Firma digital</text>
+
+    <!-- ● PLANTILLAS — derecha alta -->
+    <ellipse cx="730" cy="196" rx="70" ry="32" fill="url(#g_pla)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="730" y="190" text-anchor="middle" fill="white" font-size="11" font-weight="700">📋 Plantillas</text>
+    <text x="730" y="206" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Templates + Logo</text>
+
+    <!-- ● FINANZAS — centro-izquierda bajo -->
+    <ellipse cx="378" cy="546" rx="70" ry="32" fill="url(#g_fin)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="378" y="540" text-anchor="middle" fill="white" font-size="11" font-weight="700">📊 Finanzas TI</text>
+    <text x="378" y="556" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Presupuesto + Gastos</text>
+
+    <!-- ● LICENCIAS -->
+    <ellipse cx="420" cy="602" rx="66" ry="30" fill="url(#g_lic)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="420" y="596" text-anchor="middle" fill="white" font-size="11" font-weight="700">🔑 Licencias</text>
+    <text x="420" y="612" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Software + Asientos</text>
+
+    <!-- ● EXPEDIENTES -->
+    <ellipse cx="600" cy="462" rx="68" ry="30" fill="url(#g_exp)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="600" y="456" text-anchor="middle" fill="white" font-size="11" font-weight="700">📂 Expedientes</text>
+    <text x="600" y="472" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Historial por persona</text>
+
+    <!-- ● CAMBIOS DE EQUIPO — izquierda baja -->
+    <ellipse cx="96" cy="474" rx="68" ry="30" fill="url(#g_cam)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="96" y="468" text-anchor="middle" fill="white" font-size="11" font-weight="700">🔧 Cambios Equipo</text>
+    <text x="96" y="484" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Reparación / Baja</text>
+
+    <!-- ● REPORTES — derecha media -->
+    <ellipse cx="750" cy="496" rx="68" ry="30" fill="url(#g_rep)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="750" y="490" text-anchor="middle" fill="white" font-size="11" font-weight="700">📈 Reportes</text>
+    <text x="750" y="506" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Exportar análisis</text>
+
+    <!-- ● MAPA — derecha baja -->
+    <ellipse cx="820" cy="590" rx="68" ry="30" fill="url(#g_map)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="820" y="584" text-anchor="middle" fill="white" font-size="11" font-weight="700">🗺️ Mapa</text>
+    <text x="820" y="600" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">GPS sucursales</text>
+
+    <!-- ● CATÁLOGOS — derecha alta -->
+    <ellipse cx="858" cy="260" rx="72" ry="30" fill="url(#g_cat)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="858" y="254" text-anchor="middle" fill="white" font-size="11" font-weight="700">📚 Catálogos</text>
+    <text x="858" y="270" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Tipos / Marcas / Áreas</text>
+
+    <!-- ● COTIZACIONES — derecha media alta -->
+    <ellipse cx="858" cy="354" rx="70" ry="30" fill="url(#g_doc)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="858" y="348" text-anchor="middle" fill="white" font-size="11" font-weight="700">💰 Cotizaciones</text>
+    <text x="858" y="364" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Presupuestos a clientes</text>
+
+    <!-- ● PROVEEDORES — izquierda baja -->
+    <ellipse cx="150" cy="620" rx="68" ry="30" fill="url(#g_prov)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="150" y="614" text-anchor="middle" fill="white" font-size="11" font-weight="700">🏭 Proveedores</text>
+    <text x="150" y="630" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Directorio servicios</text>
+
+    <!-- ● AUDITORÍA — derecha esquina -->
+    <ellipse cx="910" cy="650" rx="72" ry="30" fill="url(#g_aud)" filter="drop-shadow(0 2px 6px rgba(0,0,0,.18))"/>
+    <text x="910" y="644" text-anchor="middle" fill="white" font-size="11" font-weight="700">🛡️ Auditoría</text>
+    <text x="910" y="660" text-anchor="middle" fill="rgba(255,255,255,.75)" font-size="8.5">Log de acciones</text>
+
+    <!-- ══ LEYENDA ══ -->
+    <rect x="340" y="660" width="320" height="48" rx="8" fill="white" opacity=".85" stroke="#e2e8f0"/>
+    <line x1="356" y1="675" x2="386" y2="675" stroke="#3b82f6" stroke-width="2.5"/>
+    <text x="392" y="678" font-size="10" fill="#475569">Vínculo directo (automático)</text>
+    <line x1="356" y1="692" x2="386" y2="692" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="392" y="695" font-size="10" fill="#475569">Vínculo manual / referencia</text>
+    <line x1="530" y1="675" x2="560" y2="675" stroke="#bbf7d0" stroke-width="1.5" stroke-dasharray="4,3"/>
+    <text x="566" y="678" font-size="10" fill="#475569">Supervisión Dashboard</text>
+    <line x1="530" y1="692" x2="560" y2="692" stroke="#fca5a5" stroke-width="1" stroke-dasharray="2,4"/>
+    <text x="566" y="695" font-size="10" fill="#475569">Auditoría (todos)</text>
+  </svg>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  TABLA RESUMEN DE CONEXIONES                               -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-icon">🔗</div>
+    <div>
+      <h2>Resumen de Vinculaciones</h2>
+      <p>Tabla completa de cómo se conectan los módulos entre sí</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Módulo origen</th>
+          <th>Se vincula con</th>
+          <th>Tipo de vínculo</th>
+          <th>Descripción</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Dispositivos</strong></td><td>Asignaciones</td><td><span class="badge badge-blue">Automático</span></td><td>Al asignar un dispositivo, su ubicación y estado cambian automáticamente</td></tr>
+        <tr><td><strong>Dispositivos</strong></td><td>Finanzas (Desgloce)</td><td><span class="badge badge-amber">Referencia</span></td><td>El número de serie busca en inventario y trae el costo/día para calcular gasto mensual</td></tr>
+        <tr><td><strong>Dispositivos</strong></td><td>Cambios de Equipo</td><td><span class="badge badge-blue">Automático</span></td><td>Al registrar cambio, el estado del dispositivo cambia a "En Proveedor"</td></tr>
+        <tr><td><strong>Dispositivos</strong></td><td>Expedientes</td><td><span class="badge badge-blue">Automático</span></td><td>Todo movimiento del dispositivo queda en el expediente del empleado/sucursal</td></tr>
+        <tr><td><strong>Dispositivos</strong></td><td>Documentos</td><td><span class="badge badge-blue">Automático</span></td><td>Los dispositivos se incluyen en las actas de entrada/salida/responsiva</td></tr>
+        <tr><td><strong>Asignaciones</strong></td><td>Empleados / Sucursales</td><td><span class="badge badge-blue">Automático</span></td><td>Solo empleados y sucursales registrados pueden recibir una asignación</td></tr>
+        <tr><td><strong>Asignaciones</strong></td><td>Documentos</td><td><span class="badge badge-amber">Referencia</span></td><td>Las asignaciones activas sirven de referencia para generar cartas responsivas</td></tr>
+        <tr><td><strong>Empleados</strong></td><td>Expedientes</td><td><span class="badge badge-blue">Automático</span></td><td>Cada empleado tiene un expediente que consolida todos sus movimientos y equipos</td></tr>
+        <tr><td><strong>Empleados</strong></td><td>Documentos</td><td><span class="badge badge-blue">Automático</span></td><td>El empleado es la entidad receptora de documentos de entrada, salida y responsiva</td></tr>
+        <tr><td><strong>Empleados</strong></td><td>Finanzas</td><td><span class="badge badge-amber">Referencia</span></td><td>El Centro de Costos del empleado se puede usar en el desgloce de gastos</td></tr>
+        <tr><td><strong>Empleados</strong></td><td>Licencias</td><td><span class="badge badge-amber">Referencia</span></td><td>Las licencias se pueden asignar a empleados (asientos usados)</td></tr>
+        <tr><td><strong>Sucursales</strong></td><td>Mapa Interactivo</td><td><span class="badge badge-blue">Automático</span></td><td>Si la sucursal tiene coordenadas GPS, aparece automáticamente como pin en el mapa</td></tr>
+        <tr><td><strong>Sucursales</strong></td><td>Expedientes</td><td><span class="badge badge-blue">Automático</span></td><td>Cada sucursal tiene su propio expediente con dispositivos asignados</td></tr>
+        <tr><td><strong>Documentos</strong></td><td>Plantillas</td><td><span class="badge badge-blue">Automático</span></td><td>Al crear un documento, se selecciona la plantilla que define el contenido y formato del PDF</td></tr>
+        <tr><td><strong>Documentos</strong></td><td>Auditoría</td><td><span class="badge badge-blue">Automático</span></td><td>Cada creación y firma de documento queda registrada en el log de auditoría</td></tr>
+        <tr><td><strong>Finanzas</strong></td><td>Reportes</td><td><span class="badge badge-amber">Referencia</span></td><td>La pestaña "Gastos TI" de Reportes extrae datos del módulo de Finanzas</td></tr>
+        <tr><td><strong>Finanzas</strong></td><td>Proveedores</td><td><span class="badge badge-amber">Referencia</span></td><td>Las partidas de Finanzas hacen referencia a los proveedores del directorio</td></tr>
+        <tr><td><strong>Licencias</strong></td><td>Finanzas</td><td><span class="badge badge-red">Manual</span></td><td>NO hay vínculo automático. El costo de la licencia debe registrarse manualmente en Desgloce de Gastos</td></tr>
+        <tr><td><strong>Catálogos</strong></td><td>Dispositivos, Licencias, Empleados</td><td><span class="badge badge-blue">Automático</span></td><td>Los catálogos alimentan los selectores de tipo, marca, área y tipo de licencia en todos los formularios</td></tr>
+        <tr><td><strong>Proveedores</strong></td><td>Dispositivos, Cambios, Finanzas</td><td><span class="badge badge-amber">Referencia</span></td><td>El proveedor de hardware/servicio se selecciona desde el directorio en todos los módulos que lo requieren</td></tr>
+        <tr><td><strong>Auditoría</strong></td><td>Todos los módulos</td><td><span class="badge badge-blue">Automático</span></td><td>Cada creación, edición, eliminación y firma en cualquier módulo genera un registro de auditoría</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  REFERENCIA RÁPIDA DE ROLES                                -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <div class="section-icon">🔐</div>
+    <div>
+      <h2>Referencia de Roles y Accesos</h2>
+      <p>Qué puede hacer cada tipo de usuario en la plataforma</p>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Sección</th>
+          <th><span class="badge badge-red">Super Admin</span></th>
+          <th><span class="badge badge-purple">Admin General</span></th>
+          <th><span class="badge badge-blue">Soporte TI</span></th>
+          <th><span class="badge badge-gray">Solo Vista</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Dashboard</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Dispositivos (ver)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+        <tr><td>Dispositivos (crear/editar)</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Asignaciones</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Empleados / Sucursales</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Documentos (crear/firmar)</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Plantillas (editar)</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Plantillas (logo/encabezado)</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Licencias</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Finanzas (ver presupuesto)</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Finanzas (configurar partidas)</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+        <tr><td>Cotizaciones</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Catálogos</td><td>✅</td><td>✅</td><td>✅</td><td>—</td></tr>
+        <tr><td>Usuarios del Sistema</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+        <tr><td>Configurar ruta OneDrive</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+        <tr><td>Auditoría</td><td>✅</td><td>✅</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div><!-- /container -->
+
+<div class="footer">
+  <strong>AthenaSys — Manual de Usuario v2026</strong><br>
+  Área de Tecnologías de la Información · CAMPAÑAS DE PREVENCIÓN E INFORMACIÓN MÉDICA PREVITA SA DE CV<br>
+  Documento generado el 30 de Marzo de 2026 · Para uso interno
+</div>
+
+<script>
+  // Smooth scroll for TOC links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault()
+      document.querySelector(a.getAttribute('href'))?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  })
+</script>
+</body>
+</html>

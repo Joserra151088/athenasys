@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { empleadoAPI, sucursalAPI, centroCostoAPI } from '../utils/api'
+import { empleadoAPI, sucursalAPI, centroCostoAPI, catalogosAPI } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -98,8 +99,15 @@ function CentroCostoSearch({ value, nombre, onChange }) {
 
 export default function Empleados() {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const [empleados, setEmpleados] = useState([])
-  const [sucursales, setSucursales] = useState([])
+  const [sucursales, setSucursales]   = useState([])
+  const [catPuestos, setCatPuestos]   = useState([])
+  const [catAreas, setCatAreas]       = useState([])
+  const [catSupervisores, setCatSupervisores] = useState([])
+  // Buscador de sucursal
+  const [sucursalQuery, setSucursalQuery]   = useState('')
+  const [showSucursalDrop, setShowSucursalDrop] = useState(false)
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -124,9 +132,16 @@ export default function Empleados() {
   }, [search])
 
   useEffect(() => { load(1) }, [load])
-  useEffect(() => { sucursalAPI.getAll({ limit: 300 }).then(d => setSucursales(d.data)) }, [])
+  useEffect(() => {
+    sucursalAPI.getAll({ limit: 300 }).then(d => setSucursales(d.data))
+    catalogosAPI.puestos.getAll().then(setCatPuestos).catch(() => {})
+    catalogosAPI.areas.getAll().then(setCatAreas).catch(() => {})
+    catalogosAPI.supervisores.getAll().then(setCatSupervisores).catch(() => {})
+  }, [])
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setModal(true) }
+  const openCreate = () => {
+    setEditing(null); setForm(EMPTY); setSucursalQuery(''); setModal(true)
+  }
   const openEdit = (e) => {
     setEditing(e)
     setForm({
@@ -136,8 +151,12 @@ export default function Empleados() {
       centro_costo_codigo: e.centro_costo_codigo || '',
       centro_costo_nombre: e.centro_costo_nombre || '',
       jefe_nombre: e.jefe_nombre || '', sucursal_id: e.sucursal_id || '',
+      sucursal_nombre: e.sucursal_nombre || '',
       email: e.email || '', telefono: e.telefono || ''
     })
+    // Precargar texto del buscador de sucursal
+    const suc = sucursales.find(s => s.id === e.sucursal_id)
+    setSucursalQuery(suc ? suc.nombre : (e.sucursal_nombre || ''))
     setModal(true)
   }
 
@@ -149,13 +168,18 @@ export default function Empleados() {
       else await empleadoAPI.create(form)
       setModal(false)
       load(1)
-    } catch (err) { alert(err?.message || 'Error al guardar') }
+    } catch (err) { showError(err?.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
 
   const handleDelete = async (id) => {
-    try { await empleadoAPI.delete(id); load(pagination.page) }
-    catch (err) { alert(err?.message || 'Error') }
+    try {
+      await empleadoAPI.delete(id)
+      load(pagination.page)
+      // Nota: la eliminación es un "soft delete" — el empleado se marca como
+      // inactivo (activo=0) en la base de datos pero el registro se conserva
+      // para mantener el historial de documentos y asignaciones.
+    } catch (err) { showError(err?.message || 'Error') }
   }
 
   const downloadCsvTemplate = () => {
@@ -279,13 +303,27 @@ export default function Empleados() {
               <label className="label">Número de empleado *</label>
               <input className="input" required placeholder="EMP-001" value={form.num_empleado} onChange={e => setForm(f => ({ ...f, num_empleado: e.target.value }))} />
             </div>
+            {/* Puesto — dropdown del catálogo */}
             <div>
               <label className="label">Puesto</label>
-              <input className="input" value={form.puesto} onChange={e => setForm(f => ({ ...f, puesto: e.target.value }))} />
+              <select className="input" value={form.puesto} onChange={e => setForm(f => ({ ...f, puesto: e.target.value }))}>
+                <option value="">Sin puesto</option>
+                {catPuestos.map(p => <option key={p.id} value={p.nombre}>{p.nombre}</option>)}
+                {form.puesto && !catPuestos.some(p => p.nombre === form.puesto) && (
+                  <option value={form.puesto}>{form.puesto} (actual)</option>
+                )}
+              </select>
             </div>
+            {/* Área — dropdown del catálogo */}
             <div>
               <label className="label">Área</label>
-              <input className="input" value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))} />
+              <select className="input" value={form.area} onChange={e => setForm(f => ({ ...f, area: e.target.value }))}>
+                <option value="">Sin área</option>
+                {catAreas.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+                {form.area && !catAreas.some(a => a.nombre === form.area) && (
+                  <option value={form.area}>{form.area} (actual)</option>
+                )}
+              </select>
             </div>
             <div className="col-span-2">
               <label className="label">Centro de Costos</label>
@@ -295,16 +333,53 @@ export default function Empleados() {
                 onChange={(codigo, nombre) => setForm(f => ({ ...f, centro_costo_codigo: codigo, centro_costo_nombre: nombre, centro_costos: codigo }))}
               />
             </div>
+            {/* Jefe inmediato — dropdown del catálogo de supervisores */}
             <div>
-              <label className="label">Jefe Inmediato</label>
-              <input className="input" value={form.jefe_nombre} onChange={e => setForm(f => ({ ...f, jefe_nombre: e.target.value }))} />
+              <label className="label">Jefe Inmediato / Supervisor</label>
+              <select className="input" value={form.jefe_nombre} onChange={e => setForm(f => ({ ...f, jefe_nombre: e.target.value }))}>
+                <option value="">Sin supervisor</option>
+                {catSupervisores.map(s => <option key={s.id} value={s.nombre}>{s.nombre}</option>)}
+                {form.jefe_nombre && !catSupervisores.some(s => s.nombre === form.jefe_nombre) && (
+                  <option value={form.jefe_nombre}>{form.jefe_nombre} (actual)</option>
+                )}
+              </select>
             </div>
+            {/* Sucursal — buscador */}
             <div>
               <label className="label">Sucursal</label>
-              <select className="input" value={form.sucursal_id} onChange={e => setForm(f => ({ ...f, sucursal_id: e.target.value }))}>
-                <option value="">Sin sucursal</option>
-                {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
-              </select>
+              <div className="relative">
+                <input
+                  className="input"
+                  placeholder="Buscar sucursal..."
+                  value={sucursalQuery}
+                  onChange={e => { setSucursalQuery(e.target.value); setShowSucursalDrop(true) }}
+                  onFocus={() => setShowSucursalDrop(true)}
+                  onBlur={() => setTimeout(() => setShowSucursalDrop(false), 180)}
+                />
+                {sucursalQuery && (
+                  <button type="button" onClick={() => { setSucursalQuery(''); setForm(f => ({ ...f, sucursal_id: '', sucursal_nombre: '' })); setShowSucursalDrop(false) }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-400 text-lg leading-none">×</button>
+                )}
+                {showSucursalDrop && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+                    {sucursales
+                      .filter(s => !sucursalQuery || s.nombre.toLowerCase().includes(sucursalQuery.toLowerCase()))
+                      .slice(0, 20)
+                      .map(s => (
+                        <div key={s.id} onMouseDown={() => {
+                          setForm(f => ({ ...f, sucursal_id: s.id, sucursal_nombre: s.nombre }))
+                          setSucursalQuery(s.nombre)
+                          setShowSucursalDrop(false)
+                        }} className="px-3 py-2 hover:bg-primary-50 cursor-pointer text-sm text-gray-700">
+                          {s.nombre}
+                        </div>
+                      ))}
+                    {sucursales.filter(s => !sucursalQuery || s.nombre.toLowerCase().includes(sucursalQuery.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-sm text-gray-400">Sin resultados</div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
             <div>
               <label className="label">Email</label>
@@ -322,7 +397,13 @@ export default function Empleados() {
         </form>
       </Modal>
 
-      <ConfirmDialog open={!!deleteId} onClose={() => setDeleteId(null)} onConfirm={() => handleDelete(deleteId)} title="Eliminar empleado" message="¿Estás seguro de que deseas eliminar este empleado?" />
+      <ConfirmDialog
+        open={!!deleteId}
+        onClose={() => setDeleteId(null)}
+        onConfirm={() => handleDelete(deleteId)}
+        title="Desactivar empleado"
+        message="El empleado será marcado como inactivo (activo = 0) y ya no aparecerá en la plataforma. El registro se conserva en la base de datos para mantener el historial de documentos y asignaciones. ¿Continuar?"
+      />
 
       {/* Modal importar CSV */}
       <Modal open={csvModal} onClose={() => setCsvModal(false)} title="Importar Empleados desde CSV" size="md">

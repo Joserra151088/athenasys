@@ -8,11 +8,13 @@ import Pagination from '../components/Pagination'
 import { PlusIcon, MagnifyingGlassIcon, CheckCircleIcon, EyeIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useNotification } from '../context/NotificationContext'
 
 const EMPTY = { dispositivo_id: '', tipo_cambio: 'reparacion', proveedor_id: '', motivo: '', descripcion: '', fecha_estimada_retorno: '' }
 
 export default function Cambios() {
   const { canEdit } = useAuth()
+  const { showError } = useNotification()
   const [cambios, setCambios] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
@@ -54,7 +56,7 @@ export default function Cambios() {
       await cambioAPI.create(form)
       setModal(null)
       load(1)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -67,7 +69,7 @@ export default function Cambios() {
         headers: { Authorization: `Bearer ${localStorage.getItem('ti_token')}`, 'Content-Type': 'application/json' }
       })
       if (res.ok) load(pagination.page)
-    } catch (err) { alert('Error al completar') }
+    } catch (err) { showError(err?.message || 'Error al completar') }
   }
 
   const completeChange = async (id) => {
@@ -78,8 +80,8 @@ export default function Cambios() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
       })
       if (res.ok) load(pagination.page)
-      else alert('Error al completar cambio')
-    } catch { alert('Error') }
+      else showError('Error al completar cambio')
+    } catch { showError('Error') }
   }
 
   return (

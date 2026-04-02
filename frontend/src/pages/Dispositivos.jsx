@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { deviceAPI, proveedorAPI, catalogosAPI } from '../utils/api'
 import { DEVICE_TYPES, DEVICE_STATUS, LOCATION_TYPES, DEVICE_DAILY_RATES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import Badge from '../components/Badge'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
@@ -79,6 +80,7 @@ function CostoPreview({ tipo }) {
 
 export default function Dispositivos() {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const [dispositivos, setDispositivos] = useState([])
   const [proveedores, setProveedores] = useState([])
   const [tiposDispositivo, setTiposDispositivo] = useState([])
@@ -124,7 +126,7 @@ export default function Dispositivos() {
       setModal(false)
       load(1)
     } catch (err) {
-      alert(err?.message || 'Error al guardar')
+      showError(err?.message || 'Error al guardar')
     } finally {
       setSaving(false)
     }
@@ -135,7 +137,7 @@ export default function Dispositivos() {
       await deviceAPI.delete(id)
       load(pagination.page)
     } catch (err) {
-      alert(err?.message || 'No se puede eliminar')
+      showError(err?.message || 'No se puede eliminar')
     }
   }
 

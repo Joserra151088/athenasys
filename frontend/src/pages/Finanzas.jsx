@@ -1,14 +1,20 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell
 } from 'recharts'
 import {
   CurrencyDollarIcon, ChartBarIcon, Cog6ToothIcon, PlusIcon,
   PencilSquareIcon, TrashIcon, ArrowPathIcon, MagnifyingGlassIcon,
-  CheckCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon
+  CheckCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon,
+  FunnelIcon, ArrowsUpDownIcon, DocumentArrowDownIcon, XMarkIcon,
+  ChevronDownIcon, ChevronRightIcon, Square2StackIcon
 } from '@heroicons/react/24/outline'
 import { presupuestoAPI } from '../utils/api'
+import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
+import jsPDF from 'jspdf'
 
 // ── CentroCostoSearch ─────────────────────────────────────────────────────────
 function CentroCostoSearch({ value, nombre, onChange }) {
@@ -201,6 +207,7 @@ const COL_DEFS = [
 ]
 
 function TabPresupuesto() {
+  const { showError } = useNotification()
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filtros, setFiltros] = useState({ anio: new Date().getFullYear(), empresa: '', agrupador: '', proveedor: '' })
@@ -256,7 +263,7 @@ function TabPresupuesto() {
       })
       setModalGasto(null)
       load()
-    } catch(e) { alert(e?.message || 'Error') }
+    } catch(e) { showError(e?.message || 'Error') }
     finally { setSavingGasto(false) }
   }
 
@@ -443,7 +450,7 @@ function TabPresupuesto() {
                 const presupuestoPeriodo = periodo.meses.reduce((s, m) => s + (montosArr[m-1] || 0), 0)
                 const gastoPeriodo = mesesElapsed.reduce((s, m) => s + (gastosArr[m-1] || 0), 0)
                 const ahoorroPeriodo = mesesElapsed.reduce((s, m) => s + (ahorroArr[m-1] || 0), 0)
-                const variacion = presupuestoPeriodo - gastoPeriodo - ahoorroPeriodo
+                const variacion = presupuestoPeriodo - gastoPeriodo
                 const colMap = {
                   empresa:     <td key="empresa" className="px-4 py-2.5"><span className="text-xs bg-navy-100 text-navy-700 px-2 py-0.5 rounded-full">{p.empresa}</span></td>,
                   agrupador:   <td key="agrupador" className="px-4 py-2.5 text-gray-600 text-xs">{p.agrupador}</td>,
@@ -527,6 +534,7 @@ function BulkDeleteConfirm({ count, onConfirm, onCancel, loading }) {
 
 // ── Tab Desgloce de Gastos ────────────────────────────────────────────────────
 function TabDesgloce() {
+  const { showError, showSuccess } = useNotification()
   const now = new Date()
   const [mes, setMes] = useState(now.getMonth() + 1)
   const [anio, setAnio] = useState(now.getFullYear())
@@ -541,6 +549,203 @@ function TabDesgloce() {
   const [selected, setSelected] = useState(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [showBulkConfirm, setShowBulkConfirm] = useState(false)
+
+  // ── Filtros y ordenamiento ──────────────────────────────────────────────────
+  const [showFilters, setShowFilters] = useState(false)
+  const [filtros, setFiltros] = useState({ proveedor: '', partida: '', factura: '', centroCosto: '', texto: '' })
+  const [sortConfig, setSortConfig] = useState({ campo: '', dir: 'asc' })
+  // ── Vista agrupada ──────────────────────────────────────────────────────────
+  const [agrupar, setAgrupar] = useState(false)
+  const [expandedGroups, setExpandedGroups] = useState(new Set())
+  const toggleGroup = (key) => setExpandedGroups(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  })
+
+  const setFiltro = (key, val) => setFiltros(f => ({ ...f, [key]: val }))
+  const limpiarFiltros = () => setFiltros({ proveedor: '', partida: '', factura: '', centroCosto: '', texto: '' })
+  const filtrosActivos = Object.values(filtros).some(v => v.trim() !== '')
+
+  const toggleSort = (campo) => {
+    setSortConfig(prev => prev.campo === campo
+      ? { campo, dir: prev.dir === 'asc' ? 'desc' : 'asc' }
+      : { campo, dir: 'asc' }
+    )
+  }
+
+  const detalleFiltrado = useMemo(() => {
+    let rows = [...detalle]
+
+    if (filtros.proveedor)    rows = rows.filter(d => (d.proveedor || '').toLowerCase().includes(filtros.proveedor.toLowerCase()))
+    if (filtros.partida)      rows = rows.filter(d => (d.tipo_servicio || d.nombre || '').toLowerCase().includes(filtros.partida.toLowerCase()))
+    if (filtros.factura)      rows = rows.filter(d => (d.factura_folio || '').toLowerCase().includes(filtros.factura.toLowerCase()))
+    if (filtros.centroCosto)  rows = rows.filter(d => (d.centro_costo_codigo || d.centro_costo_nombre || '').toLowerCase().includes(filtros.centroCosto.toLowerCase()))
+    if (filtros.texto)        rows = rows.filter(d => JSON.stringify(d).toLowerCase().includes(filtros.texto.toLowerCase()))
+
+    if (sortConfig.campo) {
+      rows.sort((a, b) => {
+        let va = a[sortConfig.campo] ?? ''
+        let vb = b[sortConfig.campo] ?? ''
+        if (typeof va === 'number' && typeof vb === 'number') {
+          return sortConfig.dir === 'asc' ? va - vb : vb - va
+        }
+        va = String(va).toLowerCase(); vb = String(vb).toLowerCase()
+        if (va < vb) return sortConfig.dir === 'asc' ? -1 : 1
+        if (va > vb) return sortConfig.dir === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    return rows
+  }, [detalle, filtros, sortConfig])
+
+  // ── Agrupado por partida ─────────────────────────────────────────────────────
+  const agrupadoData = useMemo(() => {
+    const grupos = {}
+    detalleFiltrado.forEach(d => {
+      // Agrupar por: nombre + tipo_servicio + proveedor + partida_id (mismo concepto de la misma partida)
+      const key = `${d.nombre || ''}||${d.tipo_servicio || ''}||${d.proveedor || ''}||${d.partida_id || ''}`
+      if (!grupos[key]) {
+        grupos[key] = {
+          key,
+          nombre: d.nombre,
+          tipo_servicio: d.tipo_servicio,
+          proveedor: d.proveedor,
+          partida_id: d.partida_id,
+          identificador: d.identificador,
+          centro_costo_codigo: d.centro_costo_codigo,
+          costo_dia: d.costo_dia,
+          dias_facturados: d.dias_facturados,
+          aplica_iva: d.aplica_iva,
+          lines: [],
+          subtotal: 0, iva_monto: 0, total: 0,
+        }
+      }
+      grupos[key].lines.push(d)
+      grupos[key].subtotal  += parseFloat(d.subtotal)  || 0
+      grupos[key].iva_monto += parseFloat(d.iva_monto) || 0
+      grupos[key].total     += parseFloat(d.total)     || 0
+    })
+    return Object.values(grupos)
+  }, [detalleFiltrado])
+
+  // ── Exportar ────────────────────────────────────────────────────────────────
+  const buildExportRows = () => detalleFiltrado.map(d => ({
+    'Nombre / Descripción': d.nombre || '',
+    'Serie / Teléfono':     d.telefono_serie || '',
+    'Tipo Servicio':        d.tipo_servicio || '',
+    'Proveedor':            d.proveedor || '',
+    'Factura':              d.factura_folio || '',
+    'Días':                 d.dias_facturados || 0,
+    'Costo/Día':            d.costo_dia || 0,
+    'Subtotal':             d.subtotal || 0,
+    'IVA':                  d.iva_monto || 0,
+    'Total':                d.total || 0,
+    'Centro Costo':         d.centro_costo_codigo || '',
+    'Tipo':                 d.identificador || '',
+    'Departamento':         d.departamento || '',
+    'Factura Folio':        d.factura_folio || '',
+  }))
+
+  const exportCSV = () => {
+    const rows = buildExportRows()
+    if (!rows.length) return showError('No hay datos para exportar')
+    const headers = Object.keys(rows[0])
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(r => headers.map(h => `"${String(r[h]).replace(/"/g, '""')}"`).join(','))
+    ].join('\n')
+    const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
+    saveAs(blob, `desgloce_gastos_${MESES[mes-1]}_${anio}.csv`)
+    showSuccess('CSV exportado correctamente')
+  }
+
+  const exportExcel = () => {
+    const rows = buildExportRows()
+    if (!rows.length) return showError('No hay datos para exportar')
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const colWidths = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, 16) }))
+    ws['!cols'] = colWidths
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, `${MESES[mes-1]} ${anio}`)
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
+    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `desgloce_gastos_${MESES[mes-1]}_${anio}.xlsx`)
+    showSuccess('Excel exportado correctamente')
+  }
+
+  const exportPDF = () => {
+    const rows = buildExportRows()
+    if (!rows.length) return showError('No hay datos para exportar')
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
+    const pageW = doc.internal.pageSize.getWidth()
+
+    // Encabezado
+    doc.setFillColor(30, 41, 59)
+    doc.rect(0, 0, pageW, 46, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text(`Desgloce de Gastos — ${MESES[mes-1]} ${anio}`, 24, 28)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Exportado: ${new Date().toLocaleDateString('es-MX')}   Registros: ${rows.length}`, 24, 40)
+
+    // Tabla manual
+    const cols = ['Nombre','Serie/Tel','Servicio','Proveedor','Factura','Días','Subtotal','IVA','Total','CC','Tipo']
+    const fields = ['Nombre / Descripción','Serie / Teléfono','Tipo Servicio','Proveedor','Factura','Días','Subtotal','IVA','Total','Centro Costo','Tipo']
+    const colW =  [120, 70, 80, 90, 65, 30, 65, 55, 65, 50, 50]
+    const startX = 20
+    let y = 66
+
+    // Encabezado tabla
+    doc.setFillColor(241, 245, 249)
+    doc.rect(startX, y - 12, colW.reduce((a,b)=>a+b,0), 16, 'F')
+    doc.setTextColor(71, 85, 105)
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'bold')
+    let cx = startX
+    cols.forEach((c, i) => { doc.text(c, cx + 3, y); cx += colW[i] })
+    y += 8
+
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    const fmtN = (n) => new Intl.NumberFormat('es-MX', { style:'currency', currency:'MXN', minimumFractionDigits:0 }).format(n||0)
+
+    rows.forEach((r, ri) => {
+      if (y > 520) {
+        doc.addPage()
+        y = 30
+      }
+      if (ri % 2 === 0) {
+        doc.setFillColor(248, 250, 252)
+        doc.rect(startX, y - 10, colW.reduce((a,b)=>a+b,0), 14, 'F')
+      }
+      doc.setTextColor(30, 41, 59)
+      cx = startX
+      fields.forEach((f, i) => {
+        let val = String(r[f] ?? '')
+        if (['Subtotal','IVA','Total'].includes(cols[i])) val = fmtN(r[f])
+        if (['Días'].includes(cols[i])) val = String(r[f] || 0)
+        const maxW = colW[i] - 6
+        const truncated = doc.getStringUnitWidth(val) * 7 > maxW ? val.slice(0, Math.floor(maxW / 4.2)) + '…' : val
+        doc.text(truncated, cx + 3, y)
+        cx += colW[i]
+      })
+      y += 14
+    })
+
+    // Totales
+    y += 8
+    const totalSum = rows.reduce((s, r) => s + (r['Total'] || 0), 0)
+    const ivaSum   = rows.reduce((s, r) => s + (r['IVA'] || 0), 0)
+    const subSum   = rows.reduce((s, r) => s + (r['Subtotal'] || 0), 0)
+    doc.setFillColor(30, 41, 59); doc.rect(startX, y - 12, colW.reduce((a,b)=>a+b,0), 18, 'F')
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8)
+    doc.text(`Subtotal: ${fmtN(subSum)}   IVA: ${fmtN(ivaSum)}   Total: ${fmtN(totalSum)}`, startX + 6, y)
+
+    doc.save(`desgloce_gastos_${MESES[mes-1]}_${anio}.pdf`)
+    showSuccess('PDF exportado correctamente')
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -624,7 +829,7 @@ function TabDesgloce() {
 
       setModal(null)
       load()
-    } catch(e) { alert(e?.message || 'Error') }
+    } catch(e) { showError(e?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -642,7 +847,7 @@ function TabDesgloce() {
       setShowBulkConfirm(false)
       setSelected(new Set())
       load()
-    } catch(e) { alert(e?.message || 'Error al eliminar') }
+    } catch(e) { showError(e?.message || 'Error al eliminar') }
     finally { setBulkDeleting(false) }
   }
 
@@ -652,8 +857,8 @@ function TabDesgloce() {
       const r = await presupuestoAPI.clonarMes({ ...clonarForm, mes_destino: mes, anio_destino: anio })
       setModal(null)
       load()
-      alert(`${r.clonados} registros clonados correctamente`)
-    } catch(e) { alert(e?.message || 'Error') }
+      showSuccess(`${r.clonados} registros clonados correctamente`)
+    } catch(e) { showError(e?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -665,11 +870,19 @@ function TabDesgloce() {
   const partidaBudgetMes = selPartida
     ? (_mpm ? (_mpm[(form.mes || mes) - 1] || 0) : (selPartida.monto_mensual || 0))
     : 0
-  const diferencia = partidaBudgetMes - total
+
+  // Gasto acumulado = suma de TODAS las líneas de la misma partida en el mismo mes,
+  // excluyendo la línea que se está editando (para no duplicarla) + total del form actual
+  const gastoOtrasLineas = detalle
+    .filter(d => d.partida_id === form.partida_id && d.id !== form.id)
+    .reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+  const gastoAcumulado = gastoOtrasLineas + total
+
+  const diferencia = partidaBudgetMes - gastoAcumulado
   const ahorroVal = parseFloat(form.ahorro_soporte) || 0
   const noEjercidoVal = Math.max(0, diferencia - ahorroVal)
 
-  const totalesGlobal = detalle.reduce((acc, d) => ({
+  const totalesGlobal = detalleFiltrado.reduce((acc, d) => ({
     subtotal: acc.subtotal + (d.subtotal || 0),
     iva: acc.iva + (d.iva_monto || 0),
     total: acc.total + (d.total || 0)
@@ -685,7 +898,65 @@ function TabDesgloce() {
         <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={anio} onChange={e => setAnio(parseInt(e.target.value))}>
           {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
         </select>
+
+        {/* Búsqueda rápida */}
+        <div className="relative">
+          <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <input
+            className="border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm w-48"
+            placeholder="Búsqueda rápida…"
+            value={filtros.texto}
+            onChange={e => setFiltro('texto', e.target.value)}
+          />
+          {filtros.texto && (
+            <button onClick={() => setFiltro('texto', '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <XMarkIcon className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+
+        {/* Filtros avanzados toggle */}
+        <button
+          onClick={() => setShowFilters(v => !v)}
+          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm transition-colors ${showFilters || filtrosActivos ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+        >
+          <FunnelIcon className="h-4 w-4" />
+          Filtros
+          {filtrosActivos && <span className="ml-1 bg-primary-600 text-white text-xs rounded-full px-1.5 py-0.5">
+            {Object.values(filtros).filter(v => v.trim() !== '').length}
+          </span>}
+        </button>
+
+        {/* Agrupar por partida */}
+        <button
+          onClick={() => { setAgrupar(v => !v); setExpandedGroups(new Set()) }}
+          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm transition-colors ${agrupar ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+          title="Agrupar líneas por partida y sumar totales"
+        >
+          <Square2StackIcon className="h-4 w-4" />
+          {agrupar ? 'Vista agrupada' : 'Agrupar'}
+        </button>
+
         <div className="flex-1" />
+
+        {/* Exportar */}
+        <div className="relative group">
+          <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+            <DocumentArrowDownIcon className="h-4 w-4" /> Exportar ▾
+          </button>
+          <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-xl z-30 hidden group-hover:block">
+            <button onClick={exportExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 text-green-700 font-medium rounded-t-xl flex items-center gap-2">
+              <span>📊</span> Excel (.xlsx)
+            </button>
+            <button onClick={exportCSV} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 text-blue-700 font-medium flex items-center gap-2">
+              <span>📄</span> CSV
+            </button>
+            <button onClick={exportPDF} className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-50 text-red-700 font-medium rounded-b-xl flex items-center gap-2">
+              <span>📑</span> PDF
+            </button>
+          </div>
+        </div>
+
         <button onClick={() => setModal('clonar')} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
           <DocumentDuplicateIcon className="h-4 w-4" /> Clonar mes anterior
         </button>
@@ -694,8 +965,67 @@ function TabDesgloce() {
         </button>
       </div>
 
+      {/* Panel de filtros avanzados */}
+      {showFilters && (
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+              <FunnelIcon className="h-4 w-4 text-slate-500" /> Filtros avanzados
+            </span>
+            {filtrosActivos && (
+              <button onClick={limpiarFiltros} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+                <XMarkIcon className="h-3.5 w-3.5" /> Limpiar filtros
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Proveedor</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                placeholder="Filtrar por proveedor…"
+                value={filtros.proveedor}
+                onChange={e => setFiltro('proveedor', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Partida / Servicio</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                placeholder="Tipo servicio o concepto…"
+                value={filtros.partida}
+                onChange={e => setFiltro('partida', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Factura / Folio</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                placeholder="Número de factura…"
+                value={filtros.factura}
+                onChange={e => setFiltro('factura', e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 mb-1">Centro de Costos</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                placeholder="Código o nombre CC…"
+                value={filtros.centroCosto}
+                onChange={e => setFiltro('centroCosto', e.target.value)}
+              />
+            </div>
+          </div>
+          {filtrosActivos && (
+            <p className="mt-2 text-xs text-primary-600">
+              Mostrando <strong>{detalleFiltrado.length}</strong> de <strong>{detalle.length}</strong> registros
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Totals banner */}
-      {detalle.length > 0 && (
+      {detalleFiltrado.length > 0 && (
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
             <div className="text-xs text-gray-500">Subtotal</div>
@@ -733,64 +1063,186 @@ function TabDesgloce() {
                 <th className="px-3 py-2.5 w-10">
                   <input type="checkbox"
                     className="rounded border-gray-300"
-                    checked={selected.size === detalle.length && detalle.length > 0}
-                    onChange={e => setSelected(e.target.checked ? new Set(detalle.map(d => d.id)) : new Set())}
+                    checked={selected.size === detalleFiltrado.length && detalleFiltrado.length > 0}
+                    onChange={e => setSelected(e.target.checked ? new Set(detalleFiltrado.map(d => d.id)) : new Set())}
                   />
                 </th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Nombre</th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Serie/Tel</th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Servicio</th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Proveedor</th>
-                <th className="px-3 py-2.5 text-right text-gray-500 font-medium">Días</th>
-                <th className="px-3 py-2.5 text-right text-gray-500 font-medium">$/día</th>
-                <th className="px-3 py-2.5 text-right text-gray-500 font-medium">Subtotal</th>
-                <th className="px-3 py-2.5 text-center text-gray-500 font-medium">IVA</th>
-                <th className="px-3 py-2.5 text-right text-gray-500 font-medium">Total</th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">CC</th>
-                <th className="px-3 py-2.5 text-left text-gray-500 font-medium">Tipo</th>
+                {[
+                  { label: 'Nombre', campo: 'nombre', align: 'left' },
+                  { label: 'Serie/Tel', campo: 'telefono_serie', align: 'left' },
+                  { label: 'Servicio', campo: 'tipo_servicio', align: 'left' },
+                  { label: 'Proveedor', campo: 'proveedor', align: 'left' },
+                  { label: 'Días', campo: 'dias_facturados', align: 'right' },
+                  { label: '$/día', campo: 'costo_dia', align: 'right' },
+                  { label: 'Subtotal', campo: 'subtotal', align: 'right' },
+                  { label: 'IVA', campo: null, align: 'center' },
+                  { label: 'Total', campo: 'total', align: 'right' },
+                  { label: 'CC', campo: 'centro_costo_codigo', align: 'left' },
+                  { label: 'Tipo', campo: 'identificador', align: 'left' },
+                ].map(col => (
+                  <th key={col.label}
+                    className={`px-3 py-2.5 text-${col.align} text-gray-500 font-medium ${col.campo ? 'cursor-pointer select-none hover:text-primary-600' : ''}`}
+                    onClick={() => col.campo && toggleSort(col.campo)}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      {col.campo && (
+                        <ArrowsUpDownIcon className={`h-3 w-3 transition-colors ${sortConfig.campo === col.campo ? 'text-primary-600' : 'text-gray-300'}`} />
+                      )}
+                      {sortConfig.campo === col.campo && (
+                        <span className="text-primary-600 text-xs">{sortConfig.dir === 'asc' ? '↑' : '↓'}</span>
+                      )}
+                    </span>
+                  </th>
+                ))}
                 <th className="px-3 py-2.5 text-center text-gray-500 font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={13} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
-              ) : detalle.length === 0 ? (
-                <tr><td colSpan={13} className="py-10 text-center text-gray-400">No hay registros para este período. Agrega líneas o clona el mes anterior.</td></tr>
-              ) : detalle.map(d => (
-                <tr key={d.id} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 w-10">
-                    <input type="checkbox"
-                      className="rounded border-gray-300"
-                      checked={selected.has(d.id)}
-                      onChange={e => setSelected(prev => {
-                        const next = new Set(prev)
-                        if (e.target.checked) next.add(d.id)
-                        else next.delete(d.id)
-                        return next
-                      })}
-                    />
-                  </td>
-                  <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px] truncate">{d.nombre}</td>
-                  <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
-                  <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
-                  <td className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>
-                  <td className="px-3 py-2 text-right font-mono">{d.dias_facturados}</td>
-                  <td className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>
-                  <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>
-                  <td className="px-3 py-2 text-center">
-                    {d.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right font-mono font-semibold text-primary-700">{fmtDec(d.total)}</td>
-                  <td className="px-3 py-2"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{d.centro_costo_codigo || '—'}</span></td>
-                  <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
-                  <td className="px-3 py-2">
-                    <div className="flex justify-center gap-1">
-                      <button onClick={() => openEdit(d)} className="p-1 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600"><PencilSquareIcon className="h-3.5 w-3.5"/></button>
-                      <button onClick={() => handleDelete(d.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon className="h-3.5 w-3.5"/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              ) : detalleFiltrado.length === 0 ? (
+                <tr><td colSpan={13} className="py-10 text-center text-gray-400">
+                  {filtrosActivos ? 'Ningún registro coincide con los filtros aplicados.' : 'No hay registros para este período. Agrega líneas o clona el mes anterior.'}
+                </td></tr>
+
+              ) : agrupar ? (
+                // ── Vista agrupada: una fila resumen por grupo + detalle colapsable ──
+                agrupadoData.map(grupo => {
+                  const isOpen = expandedGroups.has(grupo.key)
+                  const count = grupo.lines.length
+                  return (
+                    <Fragment key={grupo.key}>
+                      {/* Fila resumen del grupo */}
+                      <tr
+                        className="bg-slate-50 hover:bg-slate-100 cursor-pointer select-none border-l-4 border-indigo-400"
+                        onClick={() => toggleGroup(grupo.key)}
+                      >
+                        <td className="px-3 py-2.5 w-10">
+                          {isOpen
+                            ? <ChevronDownIcon className="h-4 w-4 text-indigo-500" />
+                            : <ChevronRightIcon className="h-4 w-4 text-gray-400" />}
+                        </td>
+                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[160px]">
+                          <div className="truncate">{grupo.nombre}</div>
+                          {count > 1 && (
+                            <div className="text-xs font-normal text-indigo-600 mt-0.5">
+                              {count} líneas · expandir para ver detalle
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-400 text-xs font-mono">
+                          {count > 1 ? `${count} equipos` : (grupo.lines[0]?.telefono_serie || '—')}
+                        </td>
+                        <td className="px-3 py-2.5 text-gray-600">{grupo.tipo_servicio || '—'}</td>
+                        <td className="px-3 py-2.5 text-gray-500">{grupo.proveedor || '—'}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-500">
+                          {count > 1 ? <span className="text-xs">×{count} días</span> : grupo.dias_facturados}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-500">{fmtDec(grupo.costo_dia)}</td>
+                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-700">{fmtDec(grupo.subtotal)}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          {grupo.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-indigo-700 text-sm">{fmtDec(grupo.total)}</td>
+                        <td className="px-3 py-2.5"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{grupo.centro_costo_codigo || '—'}</span></td>
+                        <td className="px-3 py-2.5"><span className={`px-1.5 py-0.5 rounded text-xs ${grupo.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{grupo.identificador}</span></td>
+                        <td className="px-3 py-2.5 text-center text-xs text-gray-400">—</td>
+                      </tr>
+
+                      {/* Filas de detalle del grupo (visibles solo si expandido) */}
+                      {isOpen && grupo.lines.map((d, li) => (
+                        <tr key={d.id} className="hover:bg-blue-50 bg-white">
+                          <td className="px-3 py-1.5 w-10">
+                            <input type="checkbox"
+                              className="rounded border-gray-300 ml-3"
+                              checked={selected.has(d.id)}
+                              onChange={e => setSelected(prev => {
+                                const next = new Set(prev)
+                                if (e.target.checked) next.add(d.id); else next.delete(d.id)
+                                return next
+                              })}
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </td>
+                          <td className="px-3 py-1.5 pl-8 text-gray-600 text-xs max-w-[160px] truncate">
+                            <span className="text-gray-300 mr-1">{li + 1}.</span>{d.nombre}
+                          </td>
+                          <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.telefono_serie || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-500 text-xs">{d.tipo_servicio || '—'}</td>
+                          <td className="px-3 py-1.5 text-gray-400 text-xs">{d.proveedor || '—'}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-xs">{d.dias_facturados}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-xs">{fmtDec(d.costo_dia)}</td>
+                          <td className="px-3 py-1.5 text-right font-mono text-gray-600 text-xs">{fmtDec(d.subtotal)}</td>
+                          <td className="px-3 py-1.5 text-center">
+                            {d.aplica_iva ? <CheckCircleIcon className="h-3.5 w-3.5 text-primary-400 mx-auto" /> : <span className="text-gray-200">—</span>}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-primary-600 text-xs">{fmtDec(d.total)}</td>
+                          <td className="px-3 py-1.5 text-xs"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{d.centro_costo_codigo || '—'}</span></td>
+                          <td className="px-3 py-1.5 text-xs"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
+                          <td className="px-3 py-1.5">
+                            <div className="flex justify-center gap-1">
+                              <button onClick={() => openEdit(d)} className="p-1 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600"><PencilSquareIcon className="h-3 w-3"/></button>
+                              <button onClick={() => handleDelete(d.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon className="h-3 w-3"/></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* Fila subtotal del grupo (solo si tiene más de 1 línea y está expandido) */}
+                      {isOpen && count > 1 && (
+                        <tr key={`sub-${grupo.key}`} className="bg-indigo-50 border-b-2 border-indigo-200">
+                          <td colSpan={7} className="px-3 py-1.5 pl-8 text-xs text-indigo-600 font-semibold">
+                            Subtotal — {grupo.nombre} ({count} líneas)
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-indigo-700 text-xs">{fmtDec(grupo.subtotal)}</td>
+                          <td className="px-3 py-1.5 text-center text-xs text-indigo-400">IVA</td>
+                          <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-800 text-sm">{fmtDec(grupo.total)}</td>
+                          <td colSpan={3} />
+                        </tr>
+                      )}
+                    </Fragment>
+                  )
+                })
+
+              ) : (
+                // ── Vista detallada normal (una fila por línea) ──────────────────
+                detalleFiltrado.map(d => (
+                  <tr key={d.id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 w-10">
+                      <input type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={selected.has(d.id)}
+                        onChange={e => setSelected(prev => {
+                          const next = new Set(prev)
+                          if (e.target.checked) next.add(d.id)
+                          else next.delete(d.id)
+                          return next
+                        })}
+                      />
+                    </td>
+                    <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px] truncate">{d.nombre}</td>
+                    <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
+                    <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
+                    <td className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>
+                    <td className="px-3 py-2 text-right font-mono">{d.dias_facturados}</td>
+                    <td className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>
+                    <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>
+                    <td className="px-3 py-2 text-center">
+                      {d.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-primary-700">{fmtDec(d.total)}</td>
+                    <td className="px-3 py-2"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{d.centro_costo_codigo || '—'}</span></td>
+                    <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-center gap-1">
+                        <button onClick={() => openEdit(d)} className="p-1 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600"><PencilSquareIcon className="h-3.5 w-3.5"/></button>
+                        <button onClick={() => handleDelete(d.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon className="h-3.5 w-3.5"/></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -944,27 +1396,33 @@ function TabDesgloce() {
           {/* Comparativa vs partida */}
           {selPartida && (
             <div className="col-span-2">
-              {total > partidaBudgetMes ? (
+              {gastoAcumulado > partidaBudgetMes ? (
                 <div className="bg-red-50 border border-red-300 rounded-xl p-3 flex items-start gap-2">
                   <span className="text-red-500 text-lg mt-0.5">⚠️</span>
                   <div>
                     <p className="text-sm font-semibold text-red-700">Excede el presupuesto de la partida</p>
                     <p className="text-xs text-red-500 mt-0.5">
-                      Gasto registrado <span className="font-bold">{fmtDec(total)}</span> &gt; Presupuesto <span className="font-bold">{fmtDec(partidaBudgetMes)}</span>
+                      Gasto acumulado <span className="font-bold">{fmtDec(gastoAcumulado)}</span> &gt; Presupuesto <span className="font-bold">{fmtDec(partidaBudgetMes)}</span>
                     </p>
+                    {gastoOtrasLineas > 0 && (
+                      <p className="text-xs text-red-400 mt-1">Incluye {fmtDec(gastoOtrasLineas)} de otras líneas de esta partida</p>
+                    )}
                   </div>
                 </div>
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 space-y-3">
-                  {/* Resumen presupuesto vs gasto */}
+                  {/* Resumen presupuesto vs gasto acumulado */}
                   <div className="grid grid-cols-3 gap-2 text-center text-xs">
                     <div>
                       <div className="text-gray-400">Presupuesto partida</div>
                       <div className="font-bold text-gray-700 mt-0.5">{fmtDec(partidaBudgetMes)}</div>
                     </div>
                     <div>
-                      <div className="text-gray-400">Gasto registrado</div>
-                      <div className="font-bold text-primary-700 mt-0.5">{fmtDec(total)}</div>
+                      <div className="text-gray-400">Gasto acumulado</div>
+                      <div className="font-bold text-primary-700 mt-0.5">{fmtDec(gastoAcumulado)}</div>
+                      {gastoOtrasLineas > 0 && (
+                        <div className="text-gray-400 mt-0.5" style={{fontSize:'10px'}}>({fmtDec(gastoOtrasLineas)} otras líneas)</div>
+                      )}
                     </div>
                     <div>
                       <div className="text-gray-400">Diferencia</div>
@@ -1087,6 +1545,7 @@ function TabDesgloce() {
 
 // ── Tab Configuración ─────────────────────────────────────────────────────────
 function TabConfig() {
+  const { showError, showSuccess } = useNotification()
   const [partidas, setPartidas] = useState([])
   const [agrupadores, setAgrupadores] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1130,7 +1589,7 @@ function TabConfig() {
       if (modal === 'partida') await presupuestoAPI.createPartida(payload)
       else await presupuestoAPI.updatePartida(form.id, payload)
       setModal(null); load()
-    } catch(e) { alert(e?.message || 'Error') }
+    } catch(e) { showError(e?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -1146,7 +1605,7 @@ function TabConfig() {
       if (modal === 'agrupador') await presupuestoAPI.createAgrupador({ nombre: form.nombre })
       else await presupuestoAPI.updateAgrupador(form.id, { nombre: form.nombre })
       setModal(null); load()
-    } catch(e) { alert(e?.message || 'Error') }
+    } catch(e) { showError(e?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -1306,9 +1765,9 @@ function TabConfig() {
             if (!confirm('¿Importar los datos del presupuesto 2026? Se crearán las partidas, agrupadores y gastos reales de enero-marzo.')) return
             try {
               const r = await presupuestoAPI.seedExcel()
-              alert(r.mensaje)
+              showSuccess(r.mensaje)
               load()
-            } catch(e) { alert(e?.message || 'Error al importar') }
+            } catch(e) { showError(e?.message || 'Error al importar') }
           }}
           className="px-4 py-2 bg-amber-500 text-white rounded-lg text-sm hover:bg-amber-600 font-medium whitespace-nowrap ml-4"
         >

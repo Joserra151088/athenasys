@@ -79,5 +79,7 @@ router.use('/tipos-dispositivo', buildCatalogRouter('catalogo_tipos_dispositivo'
 router.use('/tipos-licencia',    buildCatalogRouter('catalogo_tipos_licencia'))
 router.use('/areas',             buildCatalogRouter('catalogo_areas'))
 router.use('/marcas',            buildCatalogRouter('catalogo_marcas'))
+router.use('/supervisores',      buildCatalogRouter('catalogo_supervisores'))
+router.use('/puestos',           buildCatalogRouter('catalogo_puestos'))
 
 module.exports = router

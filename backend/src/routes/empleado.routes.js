@@ -139,11 +139,12 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
   res.json(updated)
 })
 
-router.delete('/:id', requireRoles('super_admin'), auditLog('eliminar', 'empleado'), (req, res) => {
+router.delete('/:id', requireRoles('super_admin'), auditLog('eliminar', 'empleado'), async (req, res) => {
   const item = db.get('empleados').find({ id: req.params.id, activo: true }).value()
   if (!item) return res.status(404).json({ message: 'Empleado no encontrado' })
-  db.get('empleados').find({ id: req.params.id }).assign({ activo: false }).write()
-  res.json({ message: 'Empleado eliminado' })
+  // Soft-delete: activo=false en memoria + MySQL (conserva historial de documentos/asignaciones)
+  db.get('empleados').find({ id: req.params.id }).assign({ activo: false, updated_at: new Date().toISOString() }).write()
+  res.json({ message: 'Empleado desactivado', id: req.params.id })
 })
 
 module.exports = router

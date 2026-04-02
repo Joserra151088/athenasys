@@ -24,8 +24,10 @@ const JSON_FIELDS = {
 }
 
 // ─── Store en memoria ────────────────────────────────────────────────────────
-const _data = {}
-let   _pool = null
+const _data    = {}
+let   _pool    = null
+// Caché de columnas reales por tabla (se llena al hacer loadTable)
+const _columns = {}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 // Columnas que MySQL espera como DATETIME / DATE
@@ -87,18 +89,35 @@ async function loadTable(table) {
   try {
     const [rows] = await _pool.query(`SELECT * FROM \`${table}\``)
     _data[table] = rows.map(r => deserialize(table, r))
+    // Guardar columnas reales del resultado para filtrar SETs/INSERTs
+    if (rows.length > 0) {
+      _columns[table] = Object.keys(rows[0])
+    } else {
+      // Si la tabla está vacía, consultar el schema directamente
+      const [cols] = await _pool.query(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? ORDER BY ORDINAL_POSITION`,
+        [table]
+      )
+      _columns[table] = cols.map(c => c.COLUMN_NAME)
+    }
   } catch (_) {
     _data[table] = []
   }
+}
+
+function filterToKnownCols(table, row) {
+  const known = _columns[table]
+  if (!known || !known.length) return row   // sin caché → pasar todo
+  return Object.fromEntries(Object.entries(row).filter(([k]) => known.includes(k)))
 }
 
 async function persistInsert(table, items) {
   if (!_pool || !items.length) return
   try {
     for (const item of items) {
-      const row = serialize(table, item)
-      const cols = Object.keys(row).map(k => `\`${k}\``).join(', ')
-      const vals = Object.values(row)
+      const raw  = filterToKnownCols(table, serialize(table, item))
+      const cols = Object.keys(raw).map(k => `\`${k}\``).join(', ')
+      const vals = Object.values(raw)
       const phs  = vals.map(() => '?').join(', ')
       await _pool.query(
         `INSERT INTO \`${table}\` (${cols}) VALUES (${phs}) ON DUPLICATE KEY UPDATE \`id\`=\`id\``,
@@ -113,9 +132,9 @@ async function persistInsert(table, items) {
 async function persistBulkInsert(table, items) {
   if (!_pool || !items.length) return
   try {
-    const sample = serialize(table, items[0])
+    const sample = filterToKnownCols(table, serialize(table, items[0]))
     const cols   = Object.keys(sample).map(k => `\`${k}\``).join(', ')
-    const values = items.map(item => Object.values(serialize(table, item)))
+    const values = items.map(item => Object.values(filterToKnownCols(table, serialize(table, item))))
     const phs    = values.map(r => `(${r.map(() => '?').join(', ')})`).join(', ')
     const flat   = values.flat()
     await _pool.query(
@@ -130,12 +149,21 @@ async function persistBulkInsert(table, items) {
 async function persistUpdate(table, id, updates) {
   if (!_pool) return
   try {
-    const row = serialize(table, updates)
-    const sets = Object.keys(row).map(k => `\`${k}\` = ?`).join(', ')
-    const vals = [...Object.values(row), id]
-    await _pool.query(`UPDATE \`${table}\` SET ${sets} WHERE \`id\` = ?`, vals)
+    const raw  = filterToKnownCols(table, serialize(table, updates))
+    // Nunca actualizar el id en un SET
+    delete raw.id
+    if (!Object.keys(raw).length) {
+      console.warn(`[DB] UPDATE [${table}] id=${id}: sin columnas válidas — revisa que las columnas existen en MySQL`)
+      return
+    }
+    const sets = Object.keys(raw).map(k => `\`${k}\` = ?`).join(', ')
+    const vals = [...Object.values(raw), id]
+    const [result] = await _pool.query(`UPDATE \`${table}\` SET ${sets} WHERE \`id\` = ?`, vals)
+    if (result.affectedRows === 0) {
+      console.warn(`[DB] UPDATE [${table}] id=${id}: 0 filas afectadas (¿el id existe en MySQL?)`)
+    }
   } catch (e) {
-    console.error(`[DB] UPDATE error [${table}]:`, e.message)
+    console.error(`[DB] UPDATE error [${table}] id=${id}:`, e.message, '| Columnas intentadas:', Object.keys(serialize(table, updates)).join(','))
   }
 }
 
@@ -228,11 +256,15 @@ class QueryBuilder {
     if (type === 'insert') {
       const big = items.length > 50
       ;(big ? persistBulkInsert(this._table, items) : persistInsert(this._table, items))
-        .catch(console.error)
+        .catch(e => console.error(`[DB] INSERT [${this._table}]:`, e.message))
     } else if (type === 'update' && id) {
-      persistUpdate(this._table, id, updates).catch(console.error)
+      persistUpdate(this._table, id, updates)
+        .catch(e => console.error(`[DB] UPDATE [${this._table}]:`, e.message))
     } else if (type === 'delete' && ids?.length) {
-      for (const rid of ids) persistDelete(this._table, rid).catch(console.error)
+      for (const rid of ids) {
+        persistDelete(this._table, rid)
+          .catch(e => console.error(`[DB] DELETE [${this._table}]:`, e.message))
+      }
     }
     return this
   }
@@ -501,6 +533,37 @@ const DDL = [
     \`archivo\` LONGTEXT,
     \`nombre_archivo\` VARCHAR(500),
     \`created_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`catalogo_supervisores\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`nombre\` VARCHAR(200) NOT NULL,
+    \`orden\` INT DEFAULT 0,
+    \`activo\` TINYINT(1) DEFAULT 1,
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`catalogo_puestos\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`nombre\` VARCHAR(200) NOT NULL,
+    \`orden\` INT DEFAULT 0,
+    \`activo\` TINYINT(1) DEFAULT 1,
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`firma_tokens\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`token\` VARCHAR(64) UNIQUE NOT NULL,
+    \`documento_id\` VARCHAR(36) NOT NULL,
+    \`estado\` ENUM('pendiente','firmado','expirado','cancelado') DEFAULT 'pendiente',
+    \`expires_at\` DATETIME NOT NULL,
+    \`firma_receptor\` MEDIUMTEXT,
+    \`firmado_at\` DATETIME,
+    \`ip_firmante\` VARCHAR(100),
+    \`created_at\` DATETIME,
+    \`created_by\` VARCHAR(36)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS \`licencias\` (
@@ -855,6 +918,22 @@ async function seedCatalogos() {
   }
 }
 
+// ─── Lista de tablas que carga en memoria ─────────────────────────────────────
+const ALL_TABLES = [
+  'usuarios_sistema','dispositivos','empleados','sucursales',
+  'asignaciones','documentos','plantillas','cambios',
+  'cotizaciones','repositorio_cotizacion','proveedores',
+  'licencias','asignaciones_licencias','centros_costo',
+  'tarifas_equipo','auditoria',
+  'presupuesto_agrupadores','presupuesto_partidas','presupuesto_gastos_mes',
+  'presupuesto_cambios','finanzas_detalle',
+  'catalogo_tipos_dispositivo','catalogo_tipos_licencia',
+  'catalogo_areas','catalogo_marcas',
+  'catalogo_supervisores','catalogo_puestos',
+  'configuracion','proveedor_documentos',
+  'firma_tokens',
+]
+
 // ─── Inicialización principal ─────────────────────────────────────────────────
 async function initDB() {
   _pool = mysql.createPool({
@@ -866,11 +945,14 @@ async function initDB() {
     connectionLimit: parseInt(process.env.DB_CONNECTION_LIMIT) || 10,
     timezone:        '+00:00',
     decimalNumbers:  true,
+    charset:         'utf8mb4',          // ← UTF-8 completo (ñ, acentos, emojis)
   })
 
-  // Test conexión
+  // Test conexión y forzar utf8mb4 en la sesión
   const conn = await _pool.getConnection()
-  console.log(`✓ MySQL conectado → ${process.env.DB_NAME || 'athenasys'}`)
+  await conn.query("SET NAMES 'utf8mb4' COLLATE 'utf8mb4_unicode_ci'")
+  await conn.query("SET CHARACTER SET utf8mb4")
+  console.log(`✓ MySQL conectado (utf8mb4) → ${process.env.DB_NAME || 'athenasys'}`)
   conn.release()
 
   // Crear tablas
@@ -921,23 +1003,38 @@ async function initDB() {
   await alterIfNotExists('proveedores', 'updated_at',      'DATETIME')
   // Cotizaciones nueva columna
   await alterIfNotExists('cotizaciones', 'fecha_vencimiento', 'DATE')
+  // ── Columnas updated_at faltantes (causan que UPDATE no llegue a MySQL) ──
+  await alterIfNotExists('empleados',  'updated_at', 'DATETIME')
+  await alterIfNotExists('sucursales', 'updated_at', 'DATETIME')
+  await alterIfNotExists('licencias',  'updated_at',       'DATETIME')
+  await alterIfNotExists('licencias',  'tipo_asignacion',  "VARCHAR(20) DEFAULT 'empleados'")
+  // ── Columnas faltantes en documentos ──────────────────────────────────────
+  // El DDL original no tenía estas columnas; sin ellas el firma-route
+  // no puede persistir local_pdf_path, firmas, datos del empleado, etc.
+  await alterIfNotExists('documentos', 'updated_at',           'DATETIME')
+  await alterIfNotExists('documentos', 'firma_agente_path',    'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'firma_receptor_path',  'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'local_pdf_path',       'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'pdf_pendiente_path',   'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'entidad_num_empleado', 'VARCHAR(100)')
+  await alterIfNotExists('documentos', 'entidad_area',         'VARCHAR(200)')
+  await alterIfNotExists('documentos', 'entidad_puesto',       'VARCHAR(200)')
+  await alterIfNotExists('documentos', 'entidad_email',        'VARCHAR(200)')
+  await alterIfNotExists('documentos', 'entidad_departamento', 'VARCHAR(200)')
+  // ── Firma online (envío de link al receptor) ──────────────────────────────
+  await alterIfNotExists('documentos', 'firma_online_estado', "VARCHAR(20) DEFAULT NULL")
+  await alterIfNotExists('documentos', 'firma_online_token',  'VARCHAR(64) DEFAULT NULL')
+  // ── Asegurar utf8mb4 en tablas principales ────────────────────────────────
+  for (const tbl of ['empleados','sucursales','dispositivos','documentos','plantillas','configuracion']) {
+    try {
+      await _pool.query(`ALTER TABLE \`${tbl}\` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`)
+    } catch (_) { /* ya está en utf8mb4 */ }
+  }
 
   console.log('✓ Tablas verificadas/creadas')
 
   // Cargar datos en memoria
-  const tables = [
-    'usuarios_sistema','dispositivos','empleados','sucursales',
-    'asignaciones','documentos','plantillas','cambios',
-    'cotizaciones','repositorio_cotizacion','proveedores',
-    'licencias','asignaciones_licencias','centros_costo',
-    'tarifas_equipo','auditoria',
-    'presupuesto_agrupadores','presupuesto_partidas','presupuesto_gastos_mes',
-    'presupuesto_cambios','finanzas_detalle',
-    'catalogo_tipos_dispositivo','catalogo_tipos_licencia',
-    'catalogo_areas','catalogo_marcas',
-    'configuracion','proveedor_documentos',
-  ]
-  for (const t of tables) await loadTable(t)
+  for (const t of ALL_TABLES) await loadTable(t)
 
   // Seed si está vacío
   await runSeed()
@@ -949,8 +1046,29 @@ async function initDB() {
     await loadTable(t)
   }
 
-  console.log(`✓ DB lista en memoria (${Object.entries(_data).map(([k,v])=>`${k}:${v.length}`).join(', ')})`)
+  console.log(`✓ DB lista en memoria (${Object.entries(_data).map(([k,v])=>`${k}:${Array.isArray(v)?v.length:0}`).join(', ')})`)
+
+  // ── Auto-recarga periódica desde MySQL cada 5 minutos ────────────────────
+  // Esto garantiza que cambios directos en la BD se reflejen sin reiniciar.
+  setInterval(async () => {
+    try {
+      for (const t of ALL_TABLES) await loadTable(t)
+      console.log(`[DB] ♻ Caché recargado desde MySQL (${new Date().toLocaleTimeString('es-MX')})`)
+    } catch (e) {
+      console.error('[DB] Error en auto-recarga:', e.message)
+    }
+  }, 5 * 60 * 1000) // cada 5 minutos
+
   return db
+}
+
+// ── Método para recargar manualmente una o todas las tablas ───────────────────
+db.reload = async (table) => {
+  if (table) {
+    await loadTable(table)
+  } else {
+    for (const t of ALL_TABLES) await loadTable(t)
+  }
 }
 
 module.exports = db

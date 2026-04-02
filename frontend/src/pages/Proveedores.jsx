@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { proveedorAPI } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { PlusIcon, PencilIcon, TrashIcon, DocumentTextIcon, ArrowDownTrayIcon, XMarkIcon, PaperClipIcon } from '@heroicons/react/24/outline'
@@ -30,6 +31,7 @@ function ProveedorAvatar({ imagen, nombre, size = 60 }) {
 
 function DocumentosModal({ proveedor, onClose }) {
   const { canEdit } = useAuth()
+  const { showError } = useNotification()
   const [docs, setDocs] = useState([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState({ nombre: '', tipo: 'otro' })
@@ -64,7 +66,7 @@ function DocumentosModal({ proveedor, onClose }) {
       setForm({ nombre: '', tipo: 'otro' })
       setFileB64(null); setFileName('')
       if (fileRef.current) fileRef.current.value = ''
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -141,6 +143,7 @@ function DocumentosModal({ proveedor, onClose }) {
 
 export default function Proveedores() {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const [proveedores, setProveedores] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -186,7 +189,7 @@ export default function Proveedores() {
       else await proveedorAPI.create(form)
       setModal(false)
       load()
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 

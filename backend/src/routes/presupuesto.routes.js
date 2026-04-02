@@ -27,20 +27,20 @@ function syncGastoReal(partida_id, mes, anio) {
 router.get('/agrupadores', (req, res) => {
   res.json(db.get('presupuesto_agrupadores').filter(x => x.activo).value())
 })
-router.post('/agrupadores', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/agrupadores', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const { nombre } = req.body
   if (!nombre) return res.status(400).json({ message: 'Nombre requerido' })
   const item = { id: uuidv4(), nombre, activo: true, created_at: new Date().toISOString() }
   db.get('presupuesto_agrupadores').push(item).write()
   res.status(201).json(item)
 })
-router.put('/agrupadores/:id', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.put('/agrupadores/:id', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const item = db.get('presupuesto_agrupadores').find({ id: req.params.id }).value()
   if (!item) return res.status(404).json({ message: 'No encontrado' })
   db.get('presupuesto_agrupadores').find({ id: req.params.id }).assign({ nombre: req.body.nombre, updated_at: new Date().toISOString() }).write()
   res.json(db.get('presupuesto_agrupadores').find({ id: req.params.id }).value())
 })
-router.delete('/agrupadores/:id', requireRoles('super_admin'), (req, res) => {
+router.delete('/agrupadores/:id', requireRoles('super_admin', 'administrador_general'), (req, res) => {
   db.get('presupuesto_agrupadores').find({ id: req.params.id }).assign({ activo: false }).write()
   res.json({ ok: true })
 })
@@ -53,7 +53,7 @@ router.get('/partidas', (req, res) => {
   if (agrupador) items = items.filter(p => p.agrupador === agrupador)
   res.json(items)
 })
-router.post('/partidas', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/partidas', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const { empresa, agrupador, proveedor, concepto, monto_mensual } = req.body
   if (!empresa || !agrupador || !concepto) return res.status(400).json({ message: 'Empresa, agrupador y concepto son requeridos' })
   const item = {
@@ -65,7 +65,7 @@ router.post('/partidas', requireRoles('super_admin', 'agente_soporte'), (req, re
   db.get('presupuesto_partidas').push(item).write()
   res.status(201).json(item)
 })
-router.put('/partidas/:id', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.put('/partidas/:id', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const item = db.get('presupuesto_partidas').find({ id: req.params.id }).value()
   if (!item) return res.status(404).json({ message: 'No encontrada' })
   const { empresa, agrupador, proveedor, concepto, monto_mensual } = req.body
@@ -79,7 +79,7 @@ router.put('/partidas/:id', requireRoles('super_admin', 'agente_soporte'), (req,
   }).write()
   res.json(db.get('presupuesto_partidas').find({ id: req.params.id }).value())
 })
-router.delete('/partidas/:id', requireRoles('super_admin'), (req, res) => {
+router.delete('/partidas/:id', requireRoles('super_admin', 'administrador_general'), (req, res) => {
   db.get('presupuesto_partidas').find({ id: req.params.id }).assign({ activo: false, updated_at: new Date().toISOString() }).write()
   res.json({ ok: true })
 })
@@ -107,7 +107,7 @@ router.get('/gastos', (req, res) => {
   if (anio) items = items.filter(g => g.anio === parseInt(anio))
   res.json(items)
 })
-router.post('/gastos', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/gastos', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const { partida_id, mes, anio, gasto_real, factura_folio, ahorro_soporte, ahorro_descripcion } = req.body
   if (!partida_id || !mes || !anio) return res.status(400).json({ message: 'partida_id, mes y anio son requeridos' })
   // Upsert: si ya existe para esta partida+mes+anio, actualizar
@@ -141,7 +141,7 @@ router.get('/cambios', (req, res) => {
   if (partida_id) items = items.filter(c => c.partida_id === partida_id)
   res.json(items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)))
 })
-router.post('/cambios', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/cambios', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const { partida_id, mes, anio, monto_nuevo, nota } = req.body
   const partida = db.get('presupuesto_partidas').find({ id: partida_id }).value()
   if (!partida) return res.status(404).json({ message: 'Partida no encontrada' })
@@ -170,7 +170,7 @@ router.get('/detalle', (req, res) => {
   if (identificador) items = items.filter(d => d.identificador === identificador)
   res.json({ data: items, total: items.length })
 })
-router.post('/detalle/clonar', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/detalle/clonar', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const { mes_origen, anio_origen, mes_destino, anio_destino } = req.body
   const origen = db.get('finanzas_detalle').filter({ mes: parseInt(mes_origen), anio: parseInt(anio_origen) }).value()
   if (!origen.length) return res.status(404).json({ message: 'No hay registros en el mes origen' })
@@ -183,7 +183,7 @@ router.post('/detalle/clonar', requireRoles('super_admin', 'agente_soporte'), (r
   for (const n of nuevos) db.get('finanzas_detalle').push(n).write()
   res.status(201).json({ clonados: nuevos.length, data: nuevos })
 })
-router.post('/detalle', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const body = req.body
   // Calculate totals
   const modo_calculo = body.modo_calculo || 'dias'
@@ -228,7 +228,7 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte'), (req, res
   syncGastoReal(item.partida_id, item.mes, item.anio)
   res.status(201).json(item)
 })
-router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const item = db.get('finanzas_detalle').find({ id: req.params.id }).value()
   if (!item) return res.status(404).json({ message: 'No encontrado' })
   const body = req.body
@@ -263,7 +263,7 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (req, 
   syncGastoReal(updated.partida_id, updated.mes, updated.anio)
   res.json(updated)
 })
-router.delete('/detalle', requireRoles('super_admin', 'agente_soporte'), async (req, res) => {
+router.delete('/detalle', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), async (req, res) => {
   const { ids } = req.body
   if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'IDs requeridos' })
   let eliminados = 0
@@ -277,7 +277,7 @@ router.delete('/detalle', requireRoles('super_admin', 'agente_soporte'), async (
   }
   res.json({ eliminados })
 })
-router.delete('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (req, res) => {
+router.delete('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const toDelete = db.get('finanzas_detalle').find({ id: req.params.id }).value()
   db.get('finanzas_detalle').remove({ id: req.params.id }).write()
   if (toDelete) syncGastoReal(toDelete.partida_id, toDelete.mes, toDelete.anio)
@@ -285,7 +285,7 @@ router.delete('/detalle/:id', requireRoles('super_admin', 'agente_soporte'), (re
 })
 
 // ── Re-sync masivo gasto_real desde finanzas_detalle (ruta de mantenimiento) ──
-router.post('/sync-gastos', requireRoles('super_admin'), (req, res) => {
+router.post('/sync-gastos', requireRoles('super_admin', 'administrador_general'), (req, res) => {
   const all = db.get('finanzas_detalle').filter(d => d.partida_id).value()
   const keys = new Set(all.map(d => `${d.partida_id}|${d.mes}|${d.anio}`))
   let synced = 0
@@ -386,7 +386,7 @@ router.get('/dashboard', (req, res) => {
   })
 })
 
-router.post('/seed-excel', requireRoles('super_admin'), (req, res) => {
+router.post('/seed-excel', requireRoles('super_admin', 'administrador_general'), (req, res) => {
   // Check if already seeded
   const existing = db.get('presupuesto_partidas').filter(x => x.activo).value()
   if (existing.length >= 10) {

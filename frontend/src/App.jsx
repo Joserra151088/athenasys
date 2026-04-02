@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { NotificationProvider } from './context/NotificationContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -22,6 +23,7 @@ import Finanzas from './pages/Finanzas'
 import Tarifas from './pages/Tarifas'
 import Reportes from './pages/Reportes'
 import Catalogos from './pages/Catalogos'
+import FirmaOnline from './pages/FirmaOnline'
 
 function ProtectedRoute({ children, roles }) {
   const { user, loading } = useAuth()
@@ -62,6 +64,8 @@ function AppRoutes() {
         <Route path="usuarios-sistema" element={<ProtectedRoute roles={['super_admin']}><UsuariosSistema /></ProtectedRoute>} />
         <Route path="auditoria" element={<ProtectedRoute roles={['super_admin']}><Auditoria /></ProtectedRoute>} />
       </Route>
+      {/* Ruta pública — sin autenticación requerida */}
+      <Route path="/firmar/:token" element={<FirmaOnline />} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
@@ -70,9 +74,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <NotificationProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </NotificationProvider>
     </AuthProvider>
   )
 }

@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import { catalogosAPI } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
 import {
   PlusIcon, PencilIcon, TrashIcon, BookOpenIcon,
-  ComputerDesktopIcon, KeyIcon, BuildingOfficeIcon, TagIcon
+  ComputerDesktopIcon, KeyIcon, BuildingOfficeIcon, TagIcon,
+  UserGroupIcon, BriefcaseIcon
 } from '@heroicons/react/24/outline'
 
 // ─── Configuración de cada catálogo ──────────────────────────────────────────
@@ -47,11 +49,30 @@ const CATALOGOS = [
     iconBg: 'bg-amber-100',
     iconColor: 'text-amber-600',
   },
+  {
+    key: 'supervisores',
+    label: 'Supervisores',
+    desc: 'Lista de supervisores / jefes inmediatos asignables a empleados',
+    icon: UserGroupIcon,
+    color: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+    iconBg: 'bg-indigo-100',
+    iconColor: 'text-indigo-600',
+  },
+  {
+    key: 'puestos',
+    label: 'Puestos',
+    desc: 'Cargos y posiciones del personal dentro de la organización',
+    icon: BriefcaseIcon,
+    color: 'bg-rose-50 text-rose-700 border-rose-200',
+    iconBg: 'bg-rose-100',
+    iconColor: 'text-rose-600',
+  },
 ]
 
 // ─── Panel de un catálogo ─────────────────────────────────────────────────────
 function CatalogoPanel({ config }) {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const api = catalogosAPI[config.key]
 
   const [items, setItems]       = useState([])
@@ -88,7 +109,7 @@ function CatalogoPanel({ config }) {
 
   const handleDelete = async (id) => {
     try { await api.delete(id); load() }
-    catch (err) { alert(err?.message || 'No se puede eliminar') }
+    catch (err) { showError(err?.message || 'No se puede eliminar') }
   }
 
   const Icon = config.icon

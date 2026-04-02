@@ -24,16 +24,18 @@ const finanzasRoutes = require('./routes/finanzas.routes')
 const presupuestoRoutes = require('./routes/presupuesto.routes')
 const reportesRoutes = require('./routes/reportes.routes')
 const catalogosRoutes = require('./routes/catalogos.routes')
-const configRoutes = require('./routes/config.routes')
+const configRoutes     = require('./routes/config.routes')
+const firmaOnlineRoutes = require('./routes/firma-online.routes')
 
 const { initDB } = require('./data/db')
+const { tryRetryPendingDocs } = require('./services/pdfRetry')
 
 const app = express()
 const PORT = process.env.PORT || 3002
 
 app.use(cors({ origin: '*', credentials: true }))
-app.use(express.json({ limit: '25mb' }))
-app.use(express.urlencoded({ extended: true, limit: '25mb' }))
+app.use(express.json({ limit: '50mb' }))
+app.use(express.urlencoded({ extended: true, limit: '50mb' }))
 
 // Servir archivos subidos (firmas, pdfs)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
@@ -61,6 +63,7 @@ app.use('/api/presupuesto', presupuestoRoutes)
 app.use('/api/reportes', reportesRoutes)
 app.use('/api/catalogos', catalogosRoutes)
 app.use('/api/config', configRoutes)
+app.use('/api/firma-online', firmaOnlineRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }))
@@ -76,6 +79,9 @@ initDB()
   .then(() => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 AthenaSys Backend corriendo en http://0.0.0.0:${PORT}`)
+      // Iniciar job de reintento de PDFs pendientes
+      tryRetryPendingDocs()
+      setInterval(tryRetryPendingDocs, 60 * 60 * 1000) // cada hora
     })
   })
   .catch(err => {

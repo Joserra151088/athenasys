@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { sucursalAPI, centroCostoAPI } from '../utils/api'
 import { RECORD_TYPES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
+import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -90,6 +91,7 @@ function CentroCostoSearch({ value, nombre, onChange }) {
 
 export default function Sucursales() {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const [sucursales, setSucursales] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
@@ -137,13 +139,13 @@ export default function Sucursales() {
       else await sucursalAPI.create(form)
       setModal(false)
       load(1)
-    } catch (err) { alert(err?.message || 'Error al guardar') }
+    } catch (err) { showError(err?.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
 
   const handleDelete = async (id) => {
     try { await sucursalAPI.delete(id); load(pagination.page) }
-    catch (err) { alert(err?.message || 'Error') }
+    catch (err) { showError(err?.message || 'Error') }
   }
 
   const downloadCsvTemplate = () => {

@@ -14,12 +14,20 @@ import {
 } from '@heroicons/react/24/outline'
 import { format, differenceInDays } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useNotification } from '../context/NotificationContext'
 
 const EMPTY_FORM = {
   nombre: '', tipo: '', proveedor_id: '', clave_licencia: '', version: '',
   descripcion: '', costo: '', moneda: 'MXN', tipo_costo: 'mensual',
-  tipo_cambio: 17.15, fecha_inicio: '', fecha_vencimiento: '', total_asientos: 1
+  tipo_cambio: 17.15, fecha_inicio: '', fecha_vencimiento: '', total_asientos: 1,
+  tipo_asignacion: 'empleados'
 }
+
+const TIPO_ASIGNACION_OPTS = [
+  { value: 'empleados',  label: '👤 Empleados',           badge: 'bg-blue-100 text-blue-700' },
+  { value: 'sucursales', label: '🏢 Sucursales',           badge: 'bg-violet-100 text-violet-700' },
+  { value: 'ambos',      label: '👥 Empleados y sucursales', badge: 'bg-amber-100 text-amber-700' },
+]
 
 function StatCard({ icon: Icon, label, value, sub, color }) {
   return (
@@ -38,6 +46,7 @@ function StatCard({ icon: Icon, label, value, sub, color }) {
 
 export default function Licencias() {
   const { canEdit, isAdmin } = useAuth()
+  const { showError } = useNotification()
   const [licencias, setLicencias] = useState([])
   const [stats, setStats] = useState(null)
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
@@ -118,7 +127,8 @@ export default function Licencias() {
       moneda: l.moneda || 'MXN', tipo_costo: l.tipo_costo || 'mensual',
       tipo_cambio: l.tipo_cambio || exchangeRate,
       fecha_inicio: l.fecha_inicio || '', fecha_vencimiento: l.fecha_vencimiento || '',
-      total_asientos: l.total_asientos || 1
+      total_asientos: l.total_asientos || 1,
+      tipo_asignacion: l.tipo_asignacion || 'empleados'
     })
     setModal('edit')
   }
@@ -131,13 +141,13 @@ export default function Licencias() {
       else await licenciaAPI.create(form)
       setModal(null)
       load(1)
-    } catch (err) { alert(err?.message || 'Error al guardar') }
+    } catch (err) { showError(err?.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
 
   const handleDelete = async (id) => {
     try { await licenciaAPI.delete(id); load(pagination.page) }
-    catch (err) { alert(err?.message || 'No se puede eliminar') }
+    catch (err) { showError(err?.message || 'No se puede eliminar') }
   }
 
   // ── Asignaciones ───────────────────────────────────────────────────────────
@@ -164,7 +174,7 @@ export default function Licencias() {
       setAsignaciones(asg)
       setSelectedEmpId('')
       load(1)
-    } catch (err) { alert(err?.message || 'Error al asignar') }
+    } catch (err) { showError(err?.message || 'Error al asignar') }
     finally { setSaving(false) }
   }
 
@@ -174,7 +184,7 @@ export default function Licencias() {
       const asg = await licenciaAPI.getAsignaciones(selected.id)
       setAsignaciones(asg)
       load(1)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
   }
 
   const empleadosDisponibles = empleados.filter(e => {
@@ -256,6 +266,7 @@ export default function Licencias() {
               <tr>
                 <th className="table-header">Licencia</th>
                 <th className="table-header">Tipo</th>
+                <th className="table-header">Asignada a</th>
                 <th className="table-header">Costo</th>
                 <th className="table-header">Asientos</th>
                 <th className="table-header">Vencimiento</th>
@@ -265,11 +276,11 @@ export default function Licencias() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="py-12 text-center">
+                <tr><td colSpan={8} className="py-12 text-center">
                   <div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" />
                 </td></tr>
               ) : licencias.length === 0 ? (
-                <tr><td colSpan={7} className="py-12 text-center text-gray-400">No se encontraron licencias</td></tr>
+                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No se encontraron licencias</td></tr>
               ) : licencias.map(l => {
                 const dias = diasRestantes(l.fecha_vencimiento)
                 const mensual = costoMensualMXN(l)
@@ -292,6 +303,12 @@ export default function Licencias() {
                     </td>
                     <td className="table-cell">
                       <span className="badge bg-indigo-100 text-indigo-700">{l.tipo}</span>
+                    </td>
+                    <td className="table-cell">
+                      {(() => {
+                        const opt = TIPO_ASIGNACION_OPTS.find(o => o.value === (l.tipo_asignacion || 'empleados'))
+                        return <span className={`badge ${opt?.badge || 'bg-gray-100 text-gray-600'}`}>{opt?.label || l.tipo_asignacion}</span>
+                      })()}
                     </td>
                     <td className="table-cell">
                       <div className="font-medium text-sm">{fmt(l.costo, l.moneda)}</div>
@@ -452,6 +469,12 @@ export default function Licencias() {
               <input type="number" min="1" className="input" value={form.total_asientos} onChange={e => setForm(f => ({ ...f, total_asientos: e.target.value }))} />
             </div>
             <div>
+              <label className="label">Asignada a</label>
+              <select className="input" value={form.tipo_asignacion} onChange={e => setForm(f => ({ ...f, tipo_asignacion: e.target.value }))}>
+                {TIPO_ASIGNACION_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
               <label className="label">Fecha de inicio</label>
               <input type="date" className="input" value={form.fecha_inicio} onChange={e => setForm(f => ({ ...f, fecha_inicio: e.target.value }))} />
             </div>
@@ -479,6 +502,13 @@ export default function Licencias() {
               <div>
                 <span className="text-gray-500">Tipo: </span>
                 <span className="font-medium">{selected.tipo}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Asignada a: </span>
+                {(() => {
+                  const opt = TIPO_ASIGNACION_OPTS.find(o => o.value === (selected.tipo_asignacion || 'empleados'))
+                  return <span className={`badge text-xs ${opt?.badge || 'bg-gray-100 text-gray-600'}`}>{opt?.label || selected.tipo_asignacion || 'Empleados'}</span>
+                })()}
               </div>
               <div>
                 <span className="text-gray-500">Costo: </span>

@@ -164,7 +164,14 @@ export const exchangeAPI = {
 // Configuración global (logo, etc.)
 export const configAPI = {
   getLogo: () => api.get('/config/logo'),
-  setLogo: (logo) => api.put('/config/logo', { logo })
+  setLogo: (logo) => api.put('/config/logo', { logo }),
+  getDocsPath: () => api.get('/config/docs-path'),
+  setDocsPath: (docPath) => api.put('/config/docs-path', { path: docPath }),
+  getHeaderConfig: () => api.get('/config/header'),
+  setHeaderConfig: (cfg) => api.put('/config/header', cfg),
+  triggerPdfRetry: () => api.post('/config/pdf-retry'),
+  reloadDb: () => api.post('/config/reload-db'),
+  browseFolder: () => api.get('/config/browse-folder'),
 }
 
 // Centros de Costo
@@ -248,6 +255,20 @@ export const catalogosAPI = {
   tiposLicencia:    makeCatalogAPI('tipos-licencia'),
   areas:            makeCatalogAPI('areas'),
   marcas:           makeCatalogAPI('marcas'),
+  supervisores:     makeCatalogAPI('supervisores'),
+  puestos:          makeCatalogAPI('puestos'),
+}
+
+// Firma Online
+// solicitar/getEstado usan el interceptor con auth; getDocumento/firmar son públicos
+const publicApi = axios.create({ baseURL: API_URL })
+publicApi.interceptors.response.use(r => r.data, err => Promise.reject(err.response?.data || err))
+
+export const firmaOnlineAPI = {
+  solicitar:    (documento_id) => api.post('/firma-online/solicitar', { documento_id }),
+  getDocumento: (token)        => publicApi.get(`/firma-online/${token}`),
+  firmar:       (token, data)  => publicApi.post(`/firma-online/${token}/firmar`, data),
+  getEstado:    (documento_id) => api.get(`/firma-online/estado/${documento_id}`),
 }
 
 export default api

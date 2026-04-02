@@ -7,10 +7,11 @@ import Badge from '../components/Badge'
 import {
   PlusIcon, PencilIcon, ClockIcon, ChevronDownIcon,
   EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon,
-  BoldIcon, ItalicIcon, UnderlineIcon
+  BuildingOfficeIcon, CheckIcon
 } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useNotification } from '../context/NotificationContext'
 
 // ── Tags organizados por categoría ──────────────────────────────────────────
 const TAG_GROUPS = [
@@ -100,7 +101,10 @@ function renderPreview(html) {
   return out
 }
 
-function renderRealPreview(html, logo) {
+function renderRealPreview(html, logo, headerCfg = {}) {
+  const empresa = headerCfg.empresa || 'AthenaSys'
+  const subtitulo = headerCfg.subtitulo || 'Área de Tecnologías de la Información'
+  const color = headerCfg.color || '#1e293b'
   let body = html
   for (const [tag, val] of Object.entries(SAMPLE_DATA)) {
     body = body.split(tag).join(val)
@@ -110,12 +114,12 @@ function renderRealPreview(html, logo) {
     : ''
   return `
     <div style="font-family:Georgia,serif;color:#1e293b;line-height:1.7">
-      <div style="background:#1e293b;color:white;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;border-radius:8px 8px 0 0">
+      <div style="background:${color};color:white;padding:20px 28px;display:flex;align-items:center;justify-content:space-between;border-radius:8px 8px 0 0">
         <div style="display:flex;align-items:center;gap:12px">
           ${logoHtml}
           <div>
-            <div style="font-weight:bold;font-size:18px">AthenaSys</div>
-            <div style="font-size:11px;color:#94a3b8">Área de Tecnologías de la Información</div>
+            <div style="font-weight:bold;font-size:18px">${empresa}</div>
+            <div style="font-size:11px;color:#94a3b8">${subtitulo}</div>
           </div>
         </div>
         <div style="text-align:right">
@@ -127,13 +131,13 @@ function renderRealPreview(html, logo) {
       <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:24px 28px">
         ${body}
         <div style="margin-top:48px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
-          <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+          <div style="border-top:2px solid ${color};padding-top:8px;text-align:center">
             <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del receptor</div>
             <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{receptor_nombre}}']}</div>
             <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{receptor_puesto}}']}</div>
           </div>
-          <div style="border-top:2px solid #1e293b;padding-top:8px;text-align:center">
+          <div style="border-top:2px solid ${color};padding-top:8px;text-align:center">
             <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del agente TI</div>
             <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{agente_nombre}}']}</div>
@@ -146,7 +150,7 @@ function renderRealPreview(html, logo) {
 }
 
 // ── WYSIWYG Toolbar usando document.execCommand ───────────────────────────────
-function RichToolbar({ editorRef, onInput }) {
+function RichToolbar({ editorRef, onInput, logo }) {
   const exec = (cmd, value = null) => {
     editorRef.current?.focus()
     document.execCommand(cmd, false, value)
@@ -233,6 +237,26 @@ function RichToolbar({ editorRef, onInput }) {
         {FONT_SIZES.map(s => <option key={s.val} value={s.val}>{s.label}</option>)}
       </select>
 
+      {/* Tipo de fuente */}
+      <select
+        title="Tipo de fuente"
+        className="text-xs border border-gray-200 rounded px-1 py-0.5 bg-white h-7 cursor-pointer"
+        style={{ maxWidth: 130 }}
+        defaultValue=""
+        onChange={e => { if (e.target.value) exec('fontName', e.target.value); e.target.value = '' }}
+      >
+        <option value="">Fuente</option>
+        <option value="Georgia, serif">Georgia</option>
+        <option value="'Times New Roman', Times, serif">Times New Roman</option>
+        <option value="Garamond, serif">Garamond</option>
+        <option value="Arial, Helvetica, sans-serif">Arial</option>
+        <option value="Verdana, Geneva, sans-serif">Verdana</option>
+        <option value="Tahoma, Geneva, sans-serif">Tahoma</option>
+        <option value="Calibri, Candara, sans-serif">Calibri</option>
+        <option value="'Courier New', Courier, monospace">Courier New</option>
+        <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+      </select>
+
       <div className="w-px h-5 bg-gray-300 mx-1" />
 
       {/* Colores */}
@@ -258,12 +282,33 @@ function RichToolbar({ editorRef, onInput }) {
         title="Limpiar formato" className="p-1.5 rounded hover:bg-gray-200 text-gray-500 text-xs h-7 px-2">
         ✕ Fmt
       </button>
+
+      {/* Insertar logo */}
+      {logo && (
+        <>
+          <div className="w-px h-5 bg-gray-300 mx-1" />
+          <button
+            type="button"
+            onMouseDown={e => {
+              e.preventDefault()
+              editorRef.current?.focus()
+              document.execCommand('insertHTML', false, `<img src="${logo}" alt="Logo" style="max-height:56px;object-fit:contain;vertical-align:middle;margin:4px 0" />`)
+              setTimeout(onInput, 0)
+            }}
+            title="Insertar logo en el documento"
+            className="p-1.5 rounded hover:bg-gray-200 text-gray-500 text-xs h-7 px-2 flex items-center gap-1"
+          >
+            <PhotoIcon className="h-3.5 w-3.5" /> Logo
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
 export default function Plantillas() {
   const { canEdit } = useAuth()
+  const { showError, showSuccess } = useNotification()
   const [plantillas, setPlantillas] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -284,6 +329,12 @@ export default function Plantillas() {
   const [logoPreview, setLogoPreview] = useState(null)
   const [logoSaving, setLogoSaving] = useState(false)
 
+  // Header config
+  const [headerConfig, setHeaderConfig] = useState({ empresa: 'AthenaSys', subtitulo: 'Área de Tecnologías de la Información', color: '#1e293b' })
+  const [showHeaderEdit, setShowHeaderEdit] = useState(false)
+  const [headerSaving, setHeaderSaving] = useState(false)
+  const [headerSaved, setHeaderSaved] = useState(false)
+
   const load = () => {
     setLoading(true)
     plantillaAPI.getAll().then(setPlantillas).finally(() => setLoading(false))
@@ -292,6 +343,10 @@ export default function Plantillas() {
   useEffect(() => {
     load()
     configAPI.getLogo().then(r => setGlobalLogo(r.logo)).catch(() => {})
+    configAPI.getHeaderConfig().then(r => {
+      setHeaderConfig({ empresa: r.empresa, subtitulo: r.subtitulo, color: r.color })
+      if (r.logo) setGlobalLogo(r.logo)
+    }).catch(() => {})
   }, [])
 
   // Sincronizar contenido del editor cuando se abre el modal o cambia de tab
@@ -326,7 +381,7 @@ export default function Plantillas() {
     // Capturar contenido actualizado del editor antes de guardar
     const textoFinal = editorRef.current?.innerHTML || form.texto_legal
     if (!textoFinal.trim() || textoFinal === '<br>') {
-      alert('El texto legal no puede estar vacío')
+      showError('El texto legal no puede estar vacío', 'Campo requerido')
       return
     }
     setSaving(true)
@@ -336,7 +391,7 @@ export default function Plantillas() {
       else await plantillaAPI.create(payload)
       setModal(false)
       load()
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -385,8 +440,19 @@ export default function Plantillas() {
       await configAPI.setLogo(logoPreview)
       setGlobalLogo(logoPreview)
       setLogoModal(false)
-    } catch (err) { alert(err?.message || 'Error al guardar logo') }
+    } catch (err) { showError(err?.message || 'Error al guardar logo') }
     finally { setLogoSaving(false) }
+  }
+
+  const handleSaveHeaderConfig = async () => {
+    setHeaderSaving(true)
+    try {
+      await configAPI.setHeaderConfig(headerConfig)
+      setHeaderSaved(true)
+      showSuccess('Encabezado guardado correctamente')
+      setTimeout(() => setHeaderSaved(false), 3000)
+    } catch (err) { showError(err?.message || 'Error al guardar encabezado') }
+    finally { setHeaderSaving(false) }
   }
 
   const handleLogoRemove = async () => {
@@ -396,7 +462,7 @@ export default function Plantillas() {
       setGlobalLogo(null)
       setLogoPreview(null)
       setLogoModal(false)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setLogoSaving(false) }
   }
 
@@ -527,6 +593,106 @@ export default function Plantillas() {
             </div>
           </div>
 
+          {/* ── Encabezado del documento ─────────────────────────────────── */}
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowHeaderEdit(!showHeaderEdit)}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-700 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <BuildingOfficeIcon className="h-4 w-4 text-gray-500" />
+                Encabezado del documento
+                <span className="text-xs font-normal text-gray-400">— empresa, subtítulo, color y logo</span>
+              </span>
+              <ChevronDownIcon className={`h-4 w-4 text-gray-400 transition-transform ${showHeaderEdit ? 'rotate-180' : ''}`} />
+            </button>
+
+            {showHeaderEdit && (
+              <div className="p-4 border-t border-gray-200 grid grid-cols-2 gap-4 bg-white">
+                {/* Logo */}
+                <div className="col-span-2">
+                  <label className="label text-xs mb-1">Logo del encabezado</label>
+                  <div className="flex items-center gap-3">
+                    {globalLogo ? (
+                      <img src={globalLogo} alt="Logo" className="h-12 object-contain border border-gray-200 rounded-lg p-1.5 bg-gray-50" />
+                    ) : (
+                      <div className="h-12 w-24 border border-dashed border-gray-300 rounded-lg flex items-center justify-center text-xs text-gray-400">Sin logo</div>
+                    )}
+                    <button
+                      type="button"
+                      className="btn-secondary text-xs py-1.5 flex items-center gap-1"
+                      onClick={() => { setLogoPreview(globalLogo); setLogoModal(true) }}
+                    >
+                      <PhotoIcon className="h-3.5 w-3.5" />
+                      {globalLogo ? 'Cambiar logo' : 'Subir logo'}
+                    </button>
+                    {globalLogo && (
+                      <button
+                        type="button"
+                        className="text-xs text-red-500 hover:text-red-700 underline"
+                        onClick={handleLogoRemove}
+                      >Quitar logo</button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Empresa */}
+                <div>
+                  <label className="label text-xs">Nombre de empresa</label>
+                  <input
+                    className="input text-sm"
+                    value={headerConfig.empresa || ''}
+                    onChange={e => setHeaderConfig(h => ({ ...h, empresa: e.target.value }))}
+                    placeholder="AthenaSys"
+                  />
+                </div>
+
+                {/* Subtítulo */}
+                <div>
+                  <label className="label text-xs">Subtítulo / Departamento</label>
+                  <input
+                    className="input text-sm"
+                    value={headerConfig.subtitulo || ''}
+                    onChange={e => setHeaderConfig(h => ({ ...h, subtitulo: e.target.value }))}
+                    placeholder="Área de Tecnologías de la Información"
+                  />
+                </div>
+
+                {/* Color */}
+                <div>
+                  <label className="label text-xs">Color del encabezado</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={headerConfig.color || '#1e293b'}
+                      onChange={e => setHeaderConfig(h => ({ ...h, color: e.target.value }))}
+                      className="h-9 w-14 rounded border border-gray-200 cursor-pointer p-0.5"
+                    />
+                    <span className="text-xs font-mono text-gray-600">{headerConfig.color || '#1e293b'}</span>
+                  </div>
+                </div>
+
+                {/* Preview mini + Save */}
+                <div className="flex items-end justify-end">
+                  <button
+                    type="button"
+                    className="btn-primary text-sm flex items-center gap-1.5 py-2"
+                    onClick={handleSaveHeaderConfig}
+                    disabled={headerSaving}
+                  >
+                    {headerSaved
+                      ? <><CheckIcon className="h-4 w-4" /> Guardado</>
+                      : headerSaving
+                        ? 'Guardando...'
+                        : <><CheckIcon className="h-4 w-4" /> Guardar encabezado</>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tabs */}
           <div className="flex items-center gap-1 border-b border-gray-200 -mb-2">
             {[
@@ -558,7 +724,7 @@ export default function Plantillas() {
                 </label>
 
                 {/* Toolbar */}
-                <RichToolbar editorRef={editorRef} onInput={handleEditorInput} />
+                <RichToolbar editorRef={editorRef} onInput={handleEditorInput} logo={globalLogo} />
 
                 {/* ContentEditable editor */}
                 <div
@@ -675,7 +841,7 @@ export default function Plantillas() {
               <div
                 className="flex-1 bg-white border border-gray-200 rounded-xl overflow-y-auto shadow-inner p-4"
                 style={{ minHeight: '380px' }}
-                dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo) }}
+                dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo, headerConfig) }}
               />
             </div>
           )}

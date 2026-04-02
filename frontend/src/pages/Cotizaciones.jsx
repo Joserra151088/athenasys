@@ -10,6 +10,7 @@ import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, PrinterIcon, Bookmar
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import jsPDF from 'jspdf'
+import { useNotification } from '../context/NotificationContext'
 import html2canvas from 'html2canvas'
 
 const ESTADO_COLORS = { borrador: 'bg-gray-100 text-gray-600', enviada: 'bg-blue-100 text-blue-700', aceptada: 'bg-emerald-100 text-emerald-700', rechazada: 'bg-red-100 text-red-700' }
@@ -32,6 +33,7 @@ function formatDateEs(dateStr) {
 
 export default function Cotizaciones() {
   const { canEdit, user } = useAuth()
+  const { showError } = useNotification()
   const [cotizaciones, setCotizaciones] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
@@ -150,7 +152,7 @@ export default function Cotizaciones() {
 
   const handleDelete = async (id) => {
     try { await cotizacionAPI.delete(id); loadCotizaciones(pagination.page) }
-    catch (err) { alert(err?.message || 'Error') }
+    catch (err) { showError(err?.message || 'Error') }
     finally { setDeleteId(null) }
   }
 
@@ -531,6 +533,7 @@ function catLabel(cat) {
 }
 
 function RepositorioManager({ repositorio, onChange }) {
+  const { showError } = useNotification()
   const EMPTY = { nombre: '', descripcion: '', precio: '', moneda: 'MXN', categoria: 'otro', unidad: 'pieza' }
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
@@ -544,7 +547,7 @@ function RepositorioManager({ repositorio, onChange }) {
       const updated = await cotizacionAPI.getRepositorio()
       onChange(updated)
       setForm(EMPTY)
-    } catch { alert('Error al agregar') }
+    } catch { showError('Error al agregar') }
     finally { setSaving(false) }
   }
 

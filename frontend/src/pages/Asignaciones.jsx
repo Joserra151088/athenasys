@@ -9,9 +9,11 @@ import { DEVICE_STATUS, LOCATION_TYPES } from '../utils/constants'
 import { PlusIcon, MagnifyingGlassIcon, XCircleIcon, ArrowsRightLeftIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useNotification } from '../context/NotificationContext'
 
 export default function Asignaciones() {
   const { canEdit } = useAuth()
+  const { showError } = useNotification()
   const [asignaciones, setAsignaciones] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
@@ -83,13 +85,13 @@ export default function Asignaciones() {
       }
       setModal(false)
       load(1)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 
   const handleCancel = async (id) => {
     try { await asignacionAPI.desasignar(id); load(pagination.page) }
-    catch (err) { alert(err?.message || 'Error') }
+    catch (err) { showError(err?.message || 'Error') }
   }
 
   const filteredDevs = dispositivosDisponibles.filter(d =>

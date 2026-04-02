@@ -84,6 +84,11 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     plantilla_id: plantilla_id || null,
     entidad_tipo, entidad_id,
     entidad_nombre: entidad_tipo === 'empleado' ? entidad.nombre_completo : entidad.nombre,
+    // Datos adicionales del empleado/sucursal para reemplazar tags en plantilla
+    entidad_num_empleado: entidad_tipo === 'empleado' ? (entidad.num_empleado || entidad.numero_empleado || '') : '',
+    entidad_area:         entidad_tipo === 'empleado' ? (entidad.area || entidad.departamento || '') : '',
+    entidad_puesto:       entidad_tipo === 'empleado' ? (entidad.puesto || '') : '',
+    entidad_email:        entidad_tipo === 'empleado' ? (entidad.email || '') : '',
     dispositivos: dispositivosEnriquecidos,
     agente_id: req.user.id, agente_nombre: req.user.nombre,
     firma_agente: null, firma_agente_path: null,
@@ -114,21 +119,26 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   const firmaAgenteData = firma_agente || agentUser?.firma_base64
   if (!firmaAgenteData) return res.status(400).json({ message: 'Se requiere la firma del agente (sube tu firma en tu perfil de usuario)' })
 
-  // Guardar firmas como archivos
-  const agentePath = path.join(uploadsDir, `${doc.id}_agente.png`)
+  // Guardar firmas como archivos (con try-catch para no dejar la request colgada)
+  const agentePath   = path.join(uploadsDir, `${doc.id}_agente.png`)
   const receptorPath = path.join(uploadsDir, `${doc.id}_receptor.png`)
-  const base64Agente = firmaAgenteData.replace(/^data:image\/\w+;base64,/, '')
-  const base64Receptor = firma_receptor.replace(/^data:image\/\w+;base64,/, '')
-  fs.writeFileSync(agentePath, Buffer.from(base64Agente, 'base64'))
-  fs.writeFileSync(receptorPath, Buffer.from(base64Receptor, 'base64'))
+  try {
+    const base64Agente   = firmaAgenteData.replace(/^data:[^;]+;base64,/, '')
+    const base64Receptor = firma_receptor.replace(/^data:[^;]+;base64,/, '')
+    if (base64Agente)   fs.writeFileSync(agentePath,   Buffer.from(base64Agente,   'base64'))
+    if (base64Receptor) fs.writeFileSync(receptorPath, Buffer.from(base64Receptor, 'base64'))
+  } catch (writeErr) {
+    console.error('[Firma] Error guardando archivo de firma:', writeErr.message)
+    // Continuar aunque no se haya podido guardar el archivo físico
+  }
 
   const now = new Date().toISOString()
   const updated = {
     ...doc,
     firma_agente: firmaAgenteData,
-    firma_agente_path: `/uploads/firmas/${doc.id}_agente.png`,
+    firma_agente_path: fs.existsSync(agentePath)   ? `/uploads/firmas/${doc.id}_agente.png`   : null,
     firma_receptor,
-    firma_receptor_path: `/uploads/firmas/${doc.id}_receptor.png`,
+    firma_receptor_path: fs.existsSync(receptorPath) ? `/uploads/firmas/${doc.id}_receptor.png` : null,
     firmado: true, fecha_firma: now, updated_at: now,
     // SharePoint — se rellenan abajo si el servicio está activo
     sharepoint_item_id:      null,
@@ -139,8 +149,9 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   // ── Subir PDF a SharePoint (si viene en el body y SP está configurado) ──────
   if (SP_ENABLED && req.body.pdf_base64) {
     try {
+      // Usar regex robusto: jsPDF añade "filename=..." al data URI → /^data:[^,]+,/ captura todo antes de la coma
       const pdfBuffer = Buffer.from(
-        req.body.pdf_base64.replace(/^data:application\/pdf;base64,/, ''),
+        req.body.pdf_base64.replace(/^data:[^,]+,/, ''),
         'base64'
       )
       const safeName = `${doc.folio}_${doc.entidad_nombre.replace(/\s+/g, '_')}.pdf`
@@ -157,6 +168,64 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
       // No bloquear la firma si SP falla — solo registrar
       console.error('[SharePoint] Error al subir documento:', spErr.message)
     }
+  }
+
+  // ── Guardar PDF en carpeta local ──────────────────────────────────────────
+  let pdfSaveInfo = { attempted: false, success: false, path: null, error: null, reason: null }
+
+  if (req.body.pdf_base64) {
+    try {
+      const localCfg = db.get('configuracion').find({ clave: 'docs_local_path' }).value()
+      const localDocsPath = (localCfg?.valor !== undefined && localCfg.valor !== null && localCfg.valor !== '')
+        ? String(localCfg.valor).trim()
+        : (process.env.LOCAL_DOCS_PATH || '').trim()
+
+      if (!localDocsPath) {
+        pdfSaveInfo.reason = 'Ruta de documentos no configurada. Ve a Usuarios del Sistema → Carpeta de documentos.'
+        console.warn('[LocalDocs] Ruta no configurada — PDF no guardado localmente.')
+      } else {
+        pdfSaveInfo.attempted = true
+        // Usar regex robusto: jsPDF añade "filename=..." al data URI → /^data:[^,]+,/ captura todo antes de la coma
+        const rawBase64 = req.body.pdf_base64.replace(/^data:[^,]+,/, '')
+        const pdfBuffer = Buffer.from(rawBase64, 'base64')
+        // Normalizar separadores de ruta para Windows
+        const normalizedBase = path.normalize(localDocsPath)
+        const subfolder = path.join(normalizedBase, doc.tipo)
+        if (!fs.existsSync(subfolder)) fs.mkdirSync(subfolder, { recursive: true })
+        const safeName = `${doc.folio}_${(doc.entidad_nombre || 'doc').replace(/[\\/:*?"<>|]/g, '_')}.pdf`
+        const fullPath = path.normalize(path.join(subfolder, safeName))
+        fs.writeFileSync(fullPath, pdfBuffer)
+        // Verificar que el archivo realmente existe en disco
+        if (fs.existsSync(fullPath)) {
+          updated.local_pdf_path = fullPath
+          pdfSaveInfo.success = true
+          pdfSaveInfo.path = fullPath
+          pdfSaveInfo.subfolder = subfolder
+          console.log(`[LocalDocs] ✓ PDF guardado y verificado: ${fullPath}`)
+        } else {
+          throw new Error(`El archivo fue escrito pero no se puede verificar en: ${fullPath}`)
+        }
+      }
+    } catch (localErr) {
+      pdfSaveInfo.error = localErr.message
+      console.error('[LocalDocs] Error al guardar PDF local:', localErr.message)
+      // Encolar para reintento: guardar en carpeta temporal
+      try {
+        const pendingDir = path.join(__dirname, '../../uploads/pdf_pending')
+        if (!fs.existsSync(pendingDir)) fs.mkdirSync(pendingDir, { recursive: true })
+        const pendingPath = path.join(pendingDir, `${doc.folio}_${doc.id}.pdf`)
+        const rawBase64 = req.body.pdf_base64.replace(/^data:[^,]+,/, '')
+        const pdfBuf = Buffer.from(rawBase64, 'base64')
+        fs.writeFileSync(pendingPath, pdfBuf)
+        updated.pdf_pendiente_path = pendingPath
+        console.log(`[LocalDocs] ⏳ PDF encolado para reintento: ${pendingPath}`)
+      } catch (queueErr) {
+        console.error('[LocalDocs] Error al encolar PDF:', queueErr.message)
+      }
+    }
+  } else {
+    pdfSaveInfo.reason = 'El frontend no envió pdf_base64 (error de generación en el navegador).'
+    console.warn('[LocalDocs] pdf_base64 no recibido — PDF no guardado.')
   }
 
   db.get('documentos').find({ id: req.params.id }).assign(updated).write()
@@ -218,7 +287,12 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     }
   }
 
-  res.json(updated)
+  try {
+    res.json({ ...updated, pdf_save_info: pdfSaveInfo })
+  } catch (resErr) {
+    console.error('[Firma] Error enviando respuesta:', resErr.message)
+    if (!res.headersSent) res.status(500).json({ message: 'Error al firmar el documento: ' + resErr.message })
+  }
 })
 
 // ── Eliminar documento (y archivo de SharePoint si aplica) ───────────────────

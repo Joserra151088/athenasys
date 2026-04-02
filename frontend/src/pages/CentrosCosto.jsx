@@ -4,6 +4,7 @@ import {
   ArrowUpTrayIcon, CheckCircleIcon, XMarkIcon, ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 import { centroCostoAPI } from '../utils/api'
+import { useNotification } from '../context/NotificationContext'
 
 const LIMIT = 50
 
@@ -27,6 +28,7 @@ function parseCSV(text) {
 }
 
 export default function CentrosCosto() {
+  const { showError } = useNotification()
   const [items,    setItems]    = useState([])
   const [total,    setTotal]    = useState(0)
   const [loading,  setLoading]  = useState(true)
@@ -102,7 +104,7 @@ export default function CentrosCosto() {
       if (cc.activo) await centroCostoAPI.remove(cc.id)
       else await centroCostoAPI.activate(cc.id)
       load()
-    } catch (e) { alert(e?.response?.data?.message || 'Error') }
+    } catch (e) { showError(e?.response?.data?.message || 'Error') }
   }
 
   // ── Import ──────────────────────────────────────────────────────────────────
@@ -116,13 +118,13 @@ export default function CentrosCosto() {
 
   const handleAnalizar = async () => {
     const rows = parseCSV(importText)
-    if (!rows.length) { alert('No se encontraron filas válidas. Verifica el formato del archivo.'); return }
+    if (!rows.length) { showError('No se encontraron filas válidas. Verifica el formato del archivo.'); return }
     setImportLoading(true)
     setImportApplied(false)
     try {
       const res = await centroCostoAPI.importCompare(rows, false)
       setImportResult(res)
-    } catch (e) { alert(e?.response?.data?.message || 'Error al analizar') }
+    } catch (e) { showError(e?.response?.data?.message || 'Error al analizar') }
     finally { setImportLoading(false) }
   }
 
@@ -134,7 +136,7 @@ export default function CentrosCosto() {
       setImportResult(res)
       setImportApplied(true)
       load()
-    } catch (e) { alert(e?.response?.data?.message || 'Error al aplicar') }
+    } catch (e) { showError(e?.response?.data?.message || 'Error al aplicar') }
     finally { setImportLoading(false) }
   }
 

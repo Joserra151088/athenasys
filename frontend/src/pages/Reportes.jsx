@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import { reportesAPI } from '../utils/api'
+import { useNotification } from '../context/NotificationContext'
 import { DEVICE_TYPES } from '../utils/constants'
 import {
   DocumentArrowDownIcon, FunnelIcon, TableCellsIcon,
@@ -160,6 +161,7 @@ const COLOR_MAP = {
 }
 
 export default function Reportes() {
+  const { showError } = useNotification()
   const [tab, setTab]     = useState('inventario')
   const [filters, setFilters] = useState({ fecha_inicio: INICIO_MES, fecha_fin: HOY })
   const [result, setResult]   = useState(null)
@@ -180,7 +182,7 @@ export default function Reportes() {
       setResult(res.data || [])
       setMeta({ titulo: res.titulo, total: res.total, total_mxn: res.total_mxn, generado: res.generado })
     } catch (err) {
-      alert(err?.message || 'Error al generar reporte')
+      showError(err?.message || 'Error al generar reporte')
     } finally {
       setLoading(false)
     }

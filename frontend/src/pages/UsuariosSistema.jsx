@@ -1,19 +1,21 @@
 import { useState, useEffect, useRef } from 'react'
-import { usuarioSistemaAPI } from '../utils/api'
+import { usuarioSistemaAPI, configAPI } from '../utils/api'
 import { USER_ROLES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FirmaCanvas from '../components/FirmaCanvas'
-import { PlusIcon, PencilIcon, UserMinusIcon, KeyIcon, PencilSquareIcon, TrashIcon, CheckIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, PencilIcon, UserMinusIcon, KeyIcon, PencilSquareIcon, TrashIcon, CheckIcon, FolderIcon, FolderOpenIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useNotification } from '../context/NotificationContext'
 
 const EMPTY = { username: '', password: '', nombre: '', email: '', rol: 'agente_soporte' }
 
 export default function UsuariosSistema() {
   const { user: currentUser } = useAuth()
+  const { showError } = useNotification()
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -29,6 +31,19 @@ export default function UsuariosSistema() {
   const [firmaSaving, setFirmaSaving] = useState(false)
   const firmaCanvasRef = useRef(null)
 
+  // Carpeta local para PDFs
+  const [docsPath, setDocsPath] = useState('')
+  const [docsPathInput, setDocsPathInput] = useState('')
+  const [docsPathSaving, setDocsPathSaving] = useState(false)
+  const [docsPathSaved, setDocsPathSaved] = useState(false)
+
+  // Selector de carpeta
+  const [folderBrowsing, setFolderBrowsing] = useState(false)
+
+  // Recarga de caché de BD
+  const [dbReloading, setDbReloading] = useState(false)
+  const [dbReloadMsg, setDbReloadMsg] = useState(null)
+
   const load = () => {
     setLoading(true)
     usuarioSistemaAPI.getAll().then(setUsuarios).finally(() => setLoading(false))
@@ -39,7 +54,48 @@ export default function UsuariosSistema() {
     usuarioSistemaAPI.getMyFirma().then(d => setMyFirma(d.firma_base64 || null)).finally(() => setFirmaLoading(false))
   }
 
-  useEffect(() => { load(); loadMyFirma() }, [])
+  const loadDocsPath = () => {
+    configAPI.getDocsPath().then(d => { setDocsPath(d.path || ''); setDocsPathInput(d.path || '') }).catch(() => {})
+  }
+
+  const handleBrowseFolder = async () => {
+    setFolderBrowsing(true)
+    try {
+      const res = await configAPI.browseFolder()
+      if (res.path) setDocsPathInput(res.path)
+    } catch (err) {
+      showError('No se pudo abrir el selector de carpetas. Asegúrate de que el servidor esté corriendo en Windows.', 'Error')
+    } finally {
+      setFolderBrowsing(false)
+    }
+  }
+
+  const handleReloadDb = async () => {
+    setDbReloading(true)
+    setDbReloadMsg(null)
+    try {
+      const res = await configAPI.reloadDb()
+      setDbReloadMsg({ ok: true, text: res.message || 'Caché recargado correctamente' })
+    } catch (err) {
+      setDbReloadMsg({ ok: false, text: err?.message || 'Error al recargar' })
+    } finally {
+      setDbReloading(false)
+      setTimeout(() => setDbReloadMsg(null), 5000)
+    }
+  }
+
+  const handleSaveDocsPath = async () => {
+    setDocsPathSaving(true)
+    try {
+      const res = await configAPI.setDocsPath(docsPathInput.trim())
+      setDocsPath(res.path || '')
+      setDocsPathSaved(true)
+      setTimeout(() => setDocsPathSaved(false), 3000)
+    } catch (err) { showError(err?.message || 'Error al guardar ruta') }
+    finally { setDocsPathSaving(false) }
+  }
+
+  useEffect(() => { load(); loadMyFirma(); loadDocsPath() }, [])
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setModal(true) }
   const openEdit = (u) => { setEditing(u); setForm({ username: u.username, password: '', nombre: u.nombre, email: u.email, rol: u.rol }); setModal(true) }
@@ -52,7 +108,7 @@ export default function UsuariosSistema() {
       else await usuarioSistemaAPI.create(form)
       setModal(false)
       load()
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
   }
 
@@ -63,13 +119,13 @@ export default function UsuariosSistema() {
 
   const handleSaveFirmaFromCanvas = async () => {
     const data = firmaCanvasRef.current?.getDataURL()
-    if (!data) { alert('Dibuja tu firma primero'); return }
+    if (!data) { showError('Dibuja tu firma primero', 'Firma requerida'); return }
     setFirmaSaving(true)
     try {
       await usuarioSistemaAPI.saveMyFirma(data)
       setMyFirma(data)
       setFirmaMode(null)
-    } catch (err) { alert(err?.message || 'Error al guardar firma') }
+    } catch (err) { showError(err?.message || 'Error al guardar firma') }
     finally { setFirmaSaving(false) }
   }
 
@@ -84,7 +140,7 @@ export default function UsuariosSistema() {
         await usuarioSistemaAPI.saveMyFirma(data)
         setMyFirma(data)
         setFirmaMode(null)
-      } catch (err) { alert(err?.message || 'Error al guardar firma') }
+      } catch (err) { showError(err?.message || 'Error al guardar firma') }
       finally { setFirmaSaving(false) }
     }
     reader.readAsDataURL(file)
@@ -95,7 +151,7 @@ export default function UsuariosSistema() {
     try {
       await usuarioSistemaAPI.deleteMyFirma()
       setMyFirma(null)
-    } catch (err) { alert(err?.message || 'Error') }
+    } catch (err) { showError(err?.message || 'Error') }
   }
 
   return (
@@ -169,6 +225,76 @@ export default function UsuariosSistema() {
             </div>
           </div>
         )}
+      </div>
+
+      {/* ── Carpeta local para PDFs ───────────────────────────────────────── */}
+      <div className="card space-y-4">
+        <div>
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><FolderIcon className="h-5 w-5 text-primary-600" /> Carpeta de Documentos Firmados</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Ruta local donde se guardan automáticamente los PDFs al firmar. Se crean subcarpetas <span className="font-mono">entrada/</span>, <span className="font-mono">salida/</span> y <span className="font-mono">responsiva/</span>.</p>
+        </div>
+        <div className="flex gap-2 items-center">
+          <input
+            className="input flex-1 font-mono text-sm"
+            placeholder="Ej: C:\jestrada\Documentos\AthenaSys"
+            value={docsPathInput}
+            onChange={e => setDocsPathInput(e.target.value)}
+          />
+          <button
+            type="button"
+            className="btn-secondary text-sm flex items-center gap-1.5 flex-shrink-0"
+            onClick={handleBrowseFolder}
+            disabled={folderBrowsing}
+            title="Abrir explorador de carpetas"
+          >
+            <FolderOpenIcon className="h-4 w-4" />
+            {folderBrowsing ? 'Abriendo...' : 'Explorar'}
+          </button>
+          <button
+            className="btn-primary text-sm flex items-center gap-1.5 flex-shrink-0"
+            onClick={handleSaveDocsPath}
+            disabled={docsPathSaving}
+          >
+            {docsPathSaved ? <><CheckIcon className="h-4 w-4" /> Guardado</> : docsPathSaving ? 'Guardando...' : <><CheckIcon className="h-4 w-4" /> Guardar</>}
+          </button>
+        </div>
+        {docsPath && (
+          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
+            📁 PDFs actualmente se guardan en: <span className="font-mono text-gray-700">{docsPath}</span>
+          </div>
+        )}
+        {!docsPath && (
+          <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+            ⚠️ No hay carpeta configurada. Los PDFs no se guardarán localmente al firmar.
+          </div>
+        )}
+      </div>
+
+      {/* ── Sincronización de base de datos ── */}
+      <div className="card p-5 mb-2 space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <ArrowPathIcon className="h-5 w-5 text-indigo-500" />
+          <h3 className="font-semibold text-gray-900">Sincronización de base de datos</h3>
+        </div>
+        <p className="text-xs text-gray-500 leading-relaxed">
+          El sistema mantiene un caché en memoria que se refresca automáticamente cada 5 minutos. Si realizaste cambios directos en MySQL
+          y necesitas verlos de inmediato en la plataforma, usa este botón para forzar la recarga ahora.
+        </p>
+        <div className="flex items-center gap-3">
+          <button
+            className="btn-secondary text-sm flex items-center gap-2"
+            onClick={handleReloadDb}
+            disabled={dbReloading}
+          >
+            <ArrowPathIcon className={`h-4 w-4 ${dbReloading ? 'animate-spin' : ''}`} />
+            {dbReloading ? 'Recargando...' : 'Recargar BD ahora'}
+          </button>
+          {dbReloadMsg && (
+            <span className={`text-xs font-medium px-3 py-1.5 rounded-lg ${dbReloadMsg.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+              {dbReloadMsg.ok ? '✅' : '❌'} {dbReloadMsg.text}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-2">
