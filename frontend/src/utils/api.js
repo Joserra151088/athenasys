@@ -148,7 +148,8 @@ export const licenciaAPI = {
   delete: (id) => api.delete(`/licencias/${id}`),
   getAsignaciones: (id) => api.get(`/licencias/${id}/asignaciones`),
   asignar: (id, data) => api.post(`/licencias/${id}/asignar`, data),
-  liberar: (asignacionId) => api.delete(`/licencias/asignaciones/${asignacionId}`)
+  liberar: (asignacionId) => api.delete(`/licencias/asignaciones/${asignacionId}`),
+  getAsignacionesByEmpleado: (empleado_id) => api.get(`/licencias/empleado/${empleado_id}/asignaciones`),
 }
 
 // Auditoría
@@ -206,7 +207,8 @@ export const reportesAPI = {
   asignaciones: (params) => api.get('/reportes/asignaciones', { params }),
   licencias: (params) => api.get('/reportes/licencias', { params }),
   centrosCosto: (params) => api.get('/reportes/centros-costo', { params }),
-  gastos: (params) => api.get('/reportes/gastos', { params })
+  gastos: (params) => api.get('/reportes/gastos', { params }),
+  gastosHistorico: (params) => api.get('/reportes/gastos-historico', { params }),
 }
 
 export const presupuestoAPI = {

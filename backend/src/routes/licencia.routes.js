@@ -73,6 +73,19 @@ router.get('/', (req, res) => {
   res.json({ data: items.slice(offset, offset + parseInt(limit)), total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) })
 })
 
+// ─── LICENCIAS POR EMPLEADO (debe ir ANTES de /:id para evitar colisiones) ────
+router.get('/empleado/:empleado_id/asignaciones', (req, res) => {
+  const { empleado_id } = req.params
+  const asignaciones = db.get('asignaciones_licencias')
+    .filter(a => a.empleado_id === empleado_id && a.activo)
+    .value()
+    .map(a => {
+      const lic = db.get('licencias').find({ id: a.licencia_id }).value()
+      return { ...a, licencia: lic }
+    })
+  res.json(asignaciones)
+})
+
 // ─── OBTENER POR ID ───────────────────────────────────────────────────────────
 router.get('/:id', (req, res) => {
   const item = db.get('licencias').find({ id: req.params.id, activo: true }).value()
@@ -80,8 +93,9 @@ router.get('/:id', (req, res) => {
 
   const asignaciones = db.get('asignaciones_licencias').filter({ licencia_id: item.id, activo: true }).value()
     .map(a => {
-      const emp = db.get('empleados').find({ id: a.empleado_id }).value()
-      return { ...a, empleado: emp }
+      const emp = a.empleado_id ? db.get('empleados').find({ id: a.empleado_id }).value() : null
+      const suc = a.sucursal_id ? db.get('sucursales').find({ id: a.sucursal_id }).value() : null
+      return { ...a, empleado: emp, sucursal: suc }
     })
 
   res.json({ ...item, asignaciones, asientos_usados: asignaciones.length })
@@ -150,8 +164,9 @@ router.delete('/:id', requireRoles('super_admin'), auditLog('eliminar', 'licenci
 router.get('/:id/asignaciones', (req, res) => {
   const asignaciones = db.get('asignaciones_licencias').filter({ licencia_id: req.params.id }).value()
     .map(a => {
-      const emp = db.get('empleados').find({ id: a.empleado_id }).value()
-      return { ...a, empleado: emp }
+      const emp = a.empleado_id ? db.get('empleados').find({ id: a.empleado_id }).value() : null
+      const suc = a.sucursal_id ? db.get('sucursales').find({ id: a.sucursal_id }).value() : null
+      return { ...a, empleado: emp, sucursal: suc }
     })
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   res.json(asignaciones)
@@ -161,29 +176,52 @@ router.post('/:id/asignar', requireRoles('super_admin', 'agente_soporte'), audit
   const licencia = db.get('licencias').find({ id: req.params.id, activo: true }).value()
   if (!licencia) return res.status(404).json({ message: 'Licencia no encontrada' })
 
-  const { empleado_id } = req.body
-  if (!empleado_id) return res.status(400).json({ message: 'Empleado requerido' })
-
-  const empleado = db.get('empleados').find({ id: empleado_id, activo: true }).value()
-  if (!empleado) return res.status(404).json({ message: 'Empleado no encontrado' })
-
-  // Verificar que el empleado no tenga ya esta licencia activa
-  const yaAsignada = db.get('asignaciones_licencias').find({ licencia_id: req.params.id, empleado_id, activo: true }).value()
-  if (yaAsignada) return res.status(409).json({ message: 'Este empleado ya tiene esta licencia asignada' })
+  const { empleado_id, sucursal_id } = req.body
+  if (!empleado_id && !sucursal_id) return res.status(400).json({ message: 'Se requiere un empleado o sucursal' })
 
   // Verificar asientos disponibles
   const usados = db.get('asignaciones_licencias').filter({ licencia_id: req.params.id, activo: true }).size().value()
   if (usados >= licencia.total_asientos) return res.status(409).json({ message: `Sin asientos disponibles (${licencia.total_asientos}/${licencia.total_asientos} usados)` })
 
   const now = new Date().toISOString()
-  const asignacion = {
-    id: uuidv4(), licencia_id: req.params.id,
-    licencia_nombre: licencia.nombre,
-    empleado_id, empleado_nombre: empleado.nombre_completo,
-    asignado_por_id: req.user.id, asignado_por_nombre: req.user.nombre,
-    fecha_asignacion: now, fecha_liberacion: null,
-    activo: true, created_at: now
+  let asignacion
+
+  if (empleado_id) {
+    const empleado = db.get('empleados').find({ id: empleado_id, activo: true }).value()
+    if (!empleado) return res.status(404).json({ message: 'Empleado no encontrado' })
+
+    const yaAsignada = db.get('asignaciones_licencias').find({ licencia_id: req.params.id, empleado_id, activo: true }).value()
+    if (yaAsignada) return res.status(409).json({ message: 'Este empleado ya tiene esta licencia asignada' })
+
+    asignacion = {
+      id: uuidv4(), licencia_id: req.params.id,
+      licencia_nombre: licencia.nombre,
+      tipo_asignado: 'empleado',
+      empleado_id, empleado_nombre: empleado.nombre_completo,
+      sucursal_id: null, sucursal_nombre: null,
+      asignado_por_id: req.user.id, asignado_por_nombre: req.user.nombre,
+      fecha_asignacion: now, fecha_liberacion: null,
+      activo: true, created_at: now
+    }
+  } else {
+    const sucursal = db.get('sucursales').find({ id: sucursal_id, activo: true }).value()
+    if (!sucursal) return res.status(404).json({ message: 'Sucursal no encontrada' })
+
+    const yaAsignada = db.get('asignaciones_licencias').find({ licencia_id: req.params.id, sucursal_id, activo: true }).value()
+    if (yaAsignada) return res.status(409).json({ message: 'Esta sucursal ya tiene esta licencia asignada' })
+
+    asignacion = {
+      id: uuidv4(), licencia_id: req.params.id,
+      licencia_nombre: licencia.nombre,
+      tipo_asignado: 'sucursal',
+      empleado_id: null, empleado_nombre: null,
+      sucursal_id, sucursal_nombre: sucursal.nombre,
+      asignado_por_id: req.user.id, asignado_por_nombre: req.user.nombre,
+      fecha_asignacion: now, fecha_liberacion: null,
+      activo: true, created_at: now
+    }
   }
+
   db.get('asignaciones_licencias').push(asignacion).write()
   res.status(201).json(asignacion)
 })

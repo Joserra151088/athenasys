@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { empleadoAPI, sucursalAPI, centroCostoAPI, catalogosAPI } from '../utils/api'
+import { empleadoAPI, sucursalAPI, centroCostoAPI, catalogosAPI, licenciaAPI } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, KeyIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
 const EMPTY = {
@@ -116,6 +116,7 @@ export default function Empleados() {
   const [form, setForm] = useState(EMPTY)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
+  const [empLicencias, setEmpLicencias] = useState([])
   const [csvModal, setCsvModal] = useState(false)
   const [csvResult, setCsvResult] = useState(null)
   const [csvImporting, setCsvImporting] = useState(false)
@@ -140,9 +141,9 @@ export default function Empleados() {
   }, [])
 
   const openCreate = () => {
-    setEditing(null); setForm(EMPTY); setSucursalQuery(''); setModal(true)
+    setEditing(null); setForm(EMPTY); setSucursalQuery(''); setEmpLicencias([]); setModal(true)
   }
-  const openEdit = (e) => {
+  const openEdit = async (e) => {
     setEditing(e)
     setForm({
       nombre_completo: e.nombre_completo, num_empleado: e.num_empleado,
@@ -157,6 +158,11 @@ export default function Empleados() {
     // Precargar texto del buscador de sucursal
     const suc = sucursales.find(s => s.id === e.sucursal_id)
     setSucursalQuery(suc ? suc.nombre : (e.sucursal_nombre || ''))
+    // Cargar licencias activas del empleado
+    setEmpLicencias([])
+    licenciaAPI.getAsignacionesByEmpleado(e.id)
+      .then(setEmpLicencias)
+      .catch(() => setEmpLicencias([]))
     setModal(true)
   }
 
@@ -367,11 +373,18 @@ export default function Empleados() {
                       .slice(0, 20)
                       .map(s => (
                         <div key={s.id} onMouseDown={() => {
-                          setForm(f => ({ ...f, sucursal_id: s.id, sucursal_nombre: s.nombre }))
+                          setForm(f => ({
+                            ...f,
+                            sucursal_id: s.id,
+                            sucursal_nombre: s.nombre,
+                            // Auto-completar email con el de la sucursal si el empleado no tiene uno
+                            email: f.email || s.email || f.email
+                          }))
                           setSucursalQuery(s.nombre)
                           setShowSucursalDrop(false)
                         }} className="px-3 py-2 hover:bg-primary-50 cursor-pointer text-sm text-gray-700">
-                          {s.nombre}
+                          <div>{s.nombre}</div>
+                          {s.email && <div className="text-xs text-gray-400">{s.email}</div>}
                         </div>
                       ))}
                     {sucursales.filter(s => !sucursalQuery || s.nombre.toLowerCase().includes(sucursalQuery.toLowerCase())).length === 0 && (
@@ -390,6 +403,52 @@ export default function Empleados() {
               <input className="input" value={form.telefono} onChange={e => setForm(f => ({ ...f, telefono: e.target.value }))} />
             </div>
           </div>
+          {/* Sección inferior — depende del tipo de sucursal del empleado */}
+          {editing && (() => {
+            const sucEmpleado = sucursales.find(s => s.id === form.sucursal_id)
+            const esSucursalNoCorpo = sucEmpleado && sucEmpleado.tipo !== 'corporativo'
+
+            // Empleado de sucursal no corporativa: solo mostrar correo de la sucursal
+            if (esSucursalNoCorpo) {
+              return sucEmpleado.email ? (
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-lg px-3 py-2">
+                    <span className="text-teal-500">📧</span>
+                    <div>
+                      <span className="text-xs text-teal-700 font-medium">Correo de sucursal: </span>
+                      <span className="text-xs text-teal-800 font-semibold">{sucEmpleado.email}</span>
+                      <div className="text-xs text-teal-500 mt-0.5">{sucEmpleado.nombre}</div>
+                    </div>
+                  </div>
+                </div>
+              ) : null
+            }
+
+            // Empleado de corporativo (o sin sucursal): mostrar licencias individuales
+            return (
+              <div className="border-t border-gray-100 pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Licencias asignadas</span>
+                  {empLicencias.length > 0 && (
+                    <span className="text-xs text-gray-400">{empLicencias.length} activa{empLicencias.length !== 1 ? 's' : ''}</span>
+                  )}
+                </div>
+                {empLicencias.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">Sin licencias asignadas</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {empLicencias.map(a => (
+                      <div key={a.id} className="flex items-center gap-1.5 bg-indigo-50 border border-indigo-100 text-indigo-700 px-2.5 py-1 rounded-lg text-xs">
+                        <KeyIcon className="h-3 w-3 flex-shrink-0" />
+                        <span className="font-semibold">{a.licencia?.nombre || a.licencia_nombre}</span>
+                        {a.licencia?.tipo && <span className="text-indigo-400">· {a.licencia.tipo}</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" className="btn-secondary" onClick={() => setModal(false)}>Cancelar</button>
             <button type="submit" className="btn-primary" disabled={saving}>{saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Agregar'}</button>

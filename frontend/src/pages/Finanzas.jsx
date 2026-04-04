@@ -16,6 +16,55 @@ import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
 
+// ── EmpleadoSearch ────────────────────────────────────────────────────────────
+function EmpleadoSearch({ value, display, onSelect, onClear }) {
+  const [query, setQuery] = useState(display || '')
+  const [results, setResults] = useState([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => { if (!value) setQuery('') }, [value])
+
+  const search = async (q) => {
+    setQuery(q)
+    if (q.length < 2) { setResults([]); setOpen(false); return }
+    try {
+      const data = await fetch(`/api/empleados?search=${encodeURIComponent(q)}&limit=10`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('ti_token')}` }
+      }).then(r => r.json())
+      setResults((data.data || data).slice(0, 10))
+      setOpen(true)
+    } catch(_) {}
+  }
+  const select = (emp) => { setQuery(emp.nombre_completo); setOpen(false); onSelect(emp) }
+  const clear = () => { setQuery(''); setResults([]); setOpen(false); onClear() }
+
+  return (
+    <div className="relative">
+      <div className="flex gap-1">
+        <input
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          value={query}
+          onChange={e => search(e.target.value)}
+          onFocus={() => query && results.length && setOpen(true)}
+          placeholder="Buscar por nombre o número..."
+        />
+        {value && (
+          <button type="button" onClick={clear} className="px-2 text-gray-400 hover:text-red-400 text-lg">×</button>
+        )}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+          {results.map(e => (
+            <div key={e.id} onClick={() => select(e)} className="px-3 py-2 hover:bg-primary-50 cursor-pointer">
+              <div className="text-xs font-semibold text-gray-800">{e.nombre_completo}</div>
+              <div className="text-xs text-gray-400">{[e.num_empleado && `#${e.num_empleado}`, e.puesto, e.sucursal_nombre].filter(Boolean).join(' · ')}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── CentroCostoSearch ─────────────────────────────────────────────────────────
 function CentroCostoSearch({ value, nombre, onChange }) {
   const [query, setQuery] = useState(nombre || '')
@@ -68,6 +117,14 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 const EMPRESAS = ['Previta','EHT','Medclub']
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0)
 const fmtDec = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0)
+
+// Calcula el total en MXN de un registro de detalle (usa total_mxn si ya está calculado)
+const calcTotalMXN = (d) => {
+  if (d.total_mxn != null) return parseFloat(d.total_mxn) || 0
+  const total = parseFloat(d.total) || 0
+  if (d.moneda === 'USD') return total * (parseFloat(d.tipo_cambio) || 1)
+  return total
+}
 
 // ── Gauge (medidor semicircular) ──────────────────────────────────────────────
 function GaugeMeter({ porcentaje = 0 }) {
@@ -599,34 +656,29 @@ function TabDesgloce() {
     return rows
   }, [detalle, filtros, sortConfig])
 
-  // ── Agrupado por partida ─────────────────────────────────────────────────────
+  // ── Agrupado por proveedor ──────────────────────────────────────────────────
   const agrupadoData = useMemo(() => {
     const grupos = {}
     detalleFiltrado.forEach(d => {
-      // Agrupar por: nombre + tipo_servicio + proveedor + partida_id (mismo concepto de la misma partida)
-      const key = `${d.nombre || ''}||${d.tipo_servicio || ''}||${d.proveedor || ''}||${d.partida_id || ''}`
+      // Agrupar por proveedor
+      const key = d.proveedor || '(Sin proveedor)'
       if (!grupos[key]) {
         grupos[key] = {
           key,
-          nombre: d.nombre,
-          tipo_servicio: d.tipo_servicio,
-          proveedor: d.proveedor,
-          partida_id: d.partida_id,
-          identificador: d.identificador,
-          centro_costo_codigo: d.centro_costo_codigo,
-          costo_dia: d.costo_dia,
-          dias_facturados: d.dias_facturados,
-          aplica_iva: d.aplica_iva,
+          proveedor: d.proveedor || '(Sin proveedor)',
+          aplica_iva: false,
           lines: [],
-          subtotal: 0, iva_monto: 0, total: 0,
+          subtotal: 0, iva_monto: 0, total: 0, total_mxn: 0,
         }
       }
       grupos[key].lines.push(d)
       grupos[key].subtotal  += parseFloat(d.subtotal)  || 0
       grupos[key].iva_monto += parseFloat(d.iva_monto) || 0
       grupos[key].total     += parseFloat(d.total)     || 0
+      grupos[key].total_mxn += calcTotalMXN(d)
+      if (d.aplica_iva) grupos[key].aplica_iva = true
     })
-    return Object.values(grupos)
+    return Object.values(grupos).sort((a, b) => a.proveedor.localeCompare(b.proveedor))
   }, [detalleFiltrado])
 
   // ── Exportar ────────────────────────────────────────────────────────────────
@@ -641,6 +693,8 @@ function TabDesgloce() {
     'Subtotal':             d.subtotal || 0,
     'IVA':                  d.iva_monto || 0,
     'Total':                d.total || 0,
+    'Total MXN':            calcTotalMXN(d),
+    'Moneda':               d.moneda || 'MXN',
     'Centro Costo':         d.centro_costo_codigo || '',
     'Tipo':                 d.identificador || '',
     'Departamento':         d.departamento || '',
@@ -769,7 +823,8 @@ function TabDesgloce() {
       aplica_iva: true,
       identificador: 'Administrativo',
       centro_costo_codigo: '', centro_costo_nombre: '',
-      ahorro_soporte: '', ahorro_descripcion: ''
+      ahorro_soporte: '', ahorro_descripcion: '',
+      es_gasto_usuario: false, empleado_id: null, empleado_nombre: ''
     })
     setModal('new')
   }
@@ -780,7 +835,10 @@ function TabDesgloce() {
       tiene_vigencia: !!d.tiene_vigencia,
       modo_calculo: d.modo_calculo || 'dias',
       subtotal_directo: d.modo_calculo === 'total' ? d.subtotal : '',
-      ahorro_soporte: '', ahorro_descripcion: ''
+      ahorro_soporte: '', ahorro_descripcion: '',
+      es_gasto_usuario: !!d.es_gasto_usuario,
+      empleado_id: d.empleado_id || null,
+      empleado_nombre: d.empleado_nombre || ''
     })
     setModal('edit')
   }
@@ -793,6 +851,15 @@ function TabDesgloce() {
     } catch(_) {}
   }
 
+  // Convierte el total de una línea guardada a MXN (para comparativas de presupuesto)
+  const toMXN = (d) => {
+    // Preferir total_mxn si ya está calculado (líneas nuevas/editadas)
+    if (d.total_mxn != null) return parseFloat(d.total_mxn) || 0
+    const total = parseFloat(d.total) || 0
+    const tc    = parseFloat(d.tipo_cambio) || 1
+    return d.moneda === 'USD' ? total * tc : total
+  }
+
   const calcTotals = (f) => {
     let subtotal
     if (f.modo_calculo === 'total') {
@@ -801,8 +868,12 @@ function TabDesgloce() {
       subtotal = (parseFloat(f.dias_facturados) || 0) * (parseFloat(f.costo_dia) || 0)
     }
     const aplica = f.aplica_iva === true || f.aplica_iva === 1
-    const iva = aplica ? subtotal * 0.16 : 0
-    return { subtotal, iva_monto: iva, total: subtotal + iva }
+    const iva    = aplica ? subtotal * 0.16 : 0
+    const total  = subtotal + iva
+    // Equivalente en MXN para comparativa vs presupuesto (partida siempre es MXN)
+    const tc       = parseFloat(f.tipo_cambio) || 1
+    const totalMXN = f.moneda === 'USD' ? parseFloat((total * tc).toFixed(2)) : total
+    return { subtotal, iva_monto: iva, total, totalMXN }
   }
 
   const handleSave = async () => {
@@ -862,7 +933,7 @@ function TabDesgloce() {
     finally { setSaving(false) }
   }
 
-  const { subtotal, iva_monto, total } = calcTotals(form)
+  const { subtotal, iva_monto, total, totalMXN } = calcTotals(form)
 
   // Presupuesto de la partida seleccionada para el mes del form
   const selPartida = proveedoresLista.find(p => p.partida_id === form.partida_id)
@@ -871,22 +942,26 @@ function TabDesgloce() {
     ? (_mpm ? (_mpm[(form.mes || mes) - 1] || 0) : (selPartida.monto_mensual || 0))
     : 0
 
-  // Gasto acumulado = suma de TODAS las líneas de la misma partida en el mismo mes,
-  // excluyendo la línea que se está editando (para no duplicarla) + total del form actual
+  // Gasto acumulado en MXN = suma de TODAS las líneas de la misma partida en el mismo mes,
+  // excluyendo la línea que se está editando (para no duplicarla) + total MXN del form actual
   const gastoOtrasLineas = detalle
     .filter(d => d.partida_id === form.partida_id && d.id !== form.id)
-    .reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
-  const gastoAcumulado = gastoOtrasLineas + total
+    .reduce((s, d) => s + toMXN(d), 0)
+  const gastoAcumulado = gastoOtrasLineas + totalMXN
 
   const diferencia = partidaBudgetMes - gastoAcumulado
   const ahorroVal = parseFloat(form.ahorro_soporte) || 0
   const noEjercidoVal = Math.max(0, diferencia - ahorroVal)
 
-  const totalesGlobal = detalleFiltrado.reduce((acc, d) => ({
-    subtotal: acc.subtotal + (d.subtotal || 0),
-    iva: acc.iva + (d.iva_monto || 0),
-    total: acc.total + (d.total || 0)
-  }), { subtotal: 0, iva: 0, total: 0 })
+  const totalesGlobal = detalleFiltrado.reduce((acc, d) => {
+    const tc  = parseFloat(d.tipo_cambio) || 1
+    const mxnFactor = d.moneda === 'USD' ? tc : 1
+    return {
+      subtotal: acc.subtotal + (parseFloat(d.subtotal) || 0) * mxnFactor,
+      iva:      acc.iva      + (parseFloat(d.iva_monto) || 0) * mxnFactor,
+      total:    acc.total    + toMXN(d),
+    }
+  }, { subtotal: 0, iva: 0, total: 0 })
 
   return (
     <div className="space-y-4">
@@ -1036,8 +1111,9 @@ function TabDesgloce() {
             <div className="text-lg font-bold text-amber-700">{fmtDec(totalesGlobal.iva)}</div>
           </div>
           <div className="bg-primary-50 rounded-xl p-3 text-center border border-primary-200">
-            <div className="text-xs text-primary-600">Total</div>
+            <div className="text-xs text-primary-600">Total MXN</div>
             <div className="text-lg font-bold text-primary-700">{fmtDec(totalesGlobal.total)}</div>
+            <div className="text-[10px] text-primary-400 mt-0.5">Conversión incluida</div>
           </div>
         </div>
       )}
@@ -1077,7 +1153,8 @@ function TabDesgloce() {
                   { label: 'Subtotal', campo: 'subtotal', align: 'right' },
                   { label: 'IVA', campo: null, align: 'center' },
                   { label: 'Total', campo: 'total', align: 'right' },
-                  { label: 'CC', campo: 'centro_costo_codigo', align: 'left' },
+                  { label: 'Total MXN', campo: 'total_mxn', align: 'right' },
+                  { label: 'Centro de Costos', campo: 'centro_costo_codigo', align: 'left' },
                   { label: 'Tipo', campo: 'identificador', align: 'left' },
                 ].map(col => (
                   <th key={col.label}
@@ -1100,9 +1177,9 @@ function TabDesgloce() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={13} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
+                <tr><td colSpan={14} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
               ) : detalleFiltrado.length === 0 ? (
-                <tr><td colSpan={13} className="py-10 text-center text-gray-400">
+                <tr><td colSpan={14} className="py-10 text-center text-gray-400">
                   {filtrosActivos ? 'Ningún registro coincide con los filtros aplicados.' : 'No hay registros para este período. Agrega líneas o clona el mes anterior.'}
                 </td></tr>
 
@@ -1123,31 +1200,33 @@ function TabDesgloce() {
                             ? <ChevronDownIcon className="h-4 w-4 text-indigo-500" />
                             : <ChevronRightIcon className="h-4 w-4 text-gray-400" />}
                         </td>
-                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[160px]">
-                          <div className="truncate">{grupo.nombre}</div>
-                          {count > 1 && (
-                            <div className="text-xs font-normal text-indigo-600 mt-0.5">
-                              {count} líneas · expandir para ver detalle
-                            </div>
-                          )}
+                        {/* colSpan=4 cubre: Nombre + Serie/Tel + Servicio + Proveedor → deja alineado desde Días en adelante */}
+                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[200px]" colSpan={4}>
+                          <div className="truncate text-indigo-800">{grupo.proveedor}</div>
+                          <div className="text-xs font-normal text-indigo-500 mt-0.5">
+                            {count} {count === 1 ? 'línea' : 'líneas'} · expandir para ver detalle
+                          </div>
                         </td>
-                        <td className="px-3 py-2.5 text-gray-400 text-xs font-mono">
-                          {count > 1 ? `${count} equipos` : (grupo.lines[0]?.telefono_serie || '—')}
-                        </td>
-                        <td className="px-3 py-2.5 text-gray-600">{grupo.tipo_servicio || '—'}</td>
-                        <td className="px-3 py-2.5 text-gray-500">{grupo.proveedor || '—'}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-gray-500">
-                          {count > 1 ? <span className="text-xs">×{count} días</span> : grupo.dias_facturados}
-                        </td>
-                        <td className="px-3 py-2.5 text-right font-mono text-gray-500">{fmtDec(grupo.costo_dia)}</td>
+                        {/* Días */}
+                        <td className="px-3 py-2.5 text-right font-mono text-gray-400 text-xs">×{count}</td>
+                        {/* $/día */}
+                        <td className="px-3 py-2.5 text-center text-gray-300">—</td>
+                        {/* Subtotal */}
                         <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-700">{fmtDec(grupo.subtotal)}</td>
-                        <td className="px-3 py-2.5 text-center">
-                          {grupo.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                        {/* IVA — monto acumulado */}
+                        <td className="px-3 py-2.5 text-right font-mono text-xs">
+                          {grupo.iva_monto > 0
+                            ? <span className="font-semibold text-amber-600">{fmtDec(grupo.iva_monto)}</span>
+                            : <span className="text-gray-300">—</span>}
                         </td>
+                        {/* Total (en moneda original) */}
                         <td className="px-3 py-2.5 text-right font-mono font-bold text-indigo-700 text-sm">{fmtDec(grupo.total)}</td>
-                        <td className="px-3 py-2.5"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{grupo.centro_costo_codigo || '—'}</span></td>
-                        <td className="px-3 py-2.5"><span className={`px-1.5 py-0.5 rounded text-xs ${grupo.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{grupo.identificador}</span></td>
-                        <td className="px-3 py-2.5 text-center text-xs text-gray-400">—</td>
+                        {/* Total MXN (conversión) */}
+                        <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700 text-sm">{fmtDec(grupo.total_mxn)}</td>
+                        {/* Centro Costos, Tipo, Acciones */}
+                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
+                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
                       </tr>
 
                       {/* Filas de detalle del grupo (visibles solo si expandido) */}
@@ -1165,8 +1244,11 @@ function TabDesgloce() {
                               onClick={e => e.stopPropagation()}
                             />
                           </td>
-                          <td className="px-3 py-1.5 pl-8 text-gray-600 text-xs max-w-[160px] truncate">
-                            <span className="text-gray-300 mr-1">{li + 1}.</span>{d.nombre}
+                          <td className="px-3 py-1.5 pl-8 text-gray-600 text-xs max-w-[160px]">
+                            <div className="truncate"><span className="text-gray-300 mr-1">{li + 1}.</span>{d.nombre}</div>
+                            {d.empleado_nombre && (
+                              <div className="text-xs text-blue-500 mt-0.5 truncate">👤 {d.empleado_nombre}</div>
+                            )}
                           </td>
                           <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.telefono_serie || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-500 text-xs">{d.tipo_servicio || '—'}</td>
@@ -1177,8 +1259,21 @@ function TabDesgloce() {
                           <td className="px-3 py-1.5 text-center">
                             {d.aplica_iva ? <CheckCircleIcon className="h-3.5 w-3.5 text-primary-400 mx-auto" /> : <span className="text-gray-200">—</span>}
                           </td>
-                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-primary-600 text-xs">{fmtDec(d.total)}</td>
-                          <td className="px-3 py-1.5 text-xs"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{d.centro_costo_codigo || '—'}</span></td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-primary-600 text-xs">
+                            <div>{fmtDec(d.total)}</div>
+                            {d.moneda === 'USD' && <div className="text-[10px] text-gray-400 font-normal">USD</div>}
+                          </td>
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-emerald-700 text-xs">
+                            {fmtDec(calcTotalMXN(d))}
+                          </td>
+                          <td className="px-3 py-1.5 text-xs">
+                            {d.centro_costo_codigo ? (
+                              <div>
+                                <span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs font-mono">{d.centro_costo_codigo}</span>
+                                {d.centro_costo_nombre && <div className="text-xs text-gray-400 mt-0.5 max-w-[130px] truncate">{d.centro_costo_nombre}</div>}
+                              </div>
+                            ) : <span className="text-gray-300">—</span>}
+                          </td>
                           <td className="px-3 py-1.5 text-xs"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
                           <td className="px-3 py-1.5">
                             <div className="flex justify-center gap-1">
@@ -1193,11 +1288,20 @@ function TabDesgloce() {
                       {isOpen && count > 1 && (
                         <tr key={`sub-${grupo.key}`} className="bg-indigo-50 border-b-2 border-indigo-200">
                           <td colSpan={7} className="px-3 py-1.5 pl-8 text-xs text-indigo-600 font-semibold">
-                            Subtotal — {grupo.nombre} ({count} líneas)
+                            Subtotal — {grupo.proveedor} ({count} líneas)
                           </td>
+                          {/* Subtotal */}
                           <td className="px-3 py-1.5 text-right font-mono font-semibold text-indigo-700 text-xs">{fmtDec(grupo.subtotal)}</td>
-                          <td className="px-3 py-1.5 text-center text-xs text-indigo-400">IVA</td>
+                          {/* IVA acumulado */}
+                          <td className="px-3 py-1.5 text-right font-mono text-xs">
+                            {grupo.iva_monto > 0
+                              ? <span className="font-semibold text-amber-700">{fmtDec(grupo.iva_monto)}</span>
+                              : <span className="text-indigo-300">—</span>}
+                          </td>
+                          {/* Total */}
                           <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-800 text-sm">{fmtDec(grupo.total)}</td>
+                          {/* Total MXN */}
+                          <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-700 text-sm">{fmtDec(grupo.total_mxn)}</td>
                           <td colSpan={3} />
                         </tr>
                       )}
@@ -1221,7 +1325,14 @@ function TabDesgloce() {
                         })}
                       />
                     </td>
-                    <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px] truncate">{d.nombre}</td>
+                    <td className="px-3 py-2 font-medium text-gray-800 max-w-[160px]">
+                      <div className="truncate">{d.nombre}</div>
+                      {d.empleado_nombre && (
+                        <div className="text-xs text-blue-600 mt-0.5 flex items-center gap-1 truncate">
+                          <span>👤</span> {d.empleado_nombre}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
                     <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
                     <td className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>
@@ -1231,8 +1342,21 @@ function TabDesgloce() {
                     <td className="px-3 py-2 text-center">
                       {d.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
                     </td>
-                    <td className="px-3 py-2 text-right font-mono font-semibold text-primary-700">{fmtDec(d.total)}</td>
-                    <td className="px-3 py-2"><span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs">{d.centro_costo_codigo || '—'}</span></td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-primary-700">
+                      <div>{fmtDec(d.total)}</div>
+                      {d.moneda === 'USD' && <div className="text-[10px] text-gray-400 font-normal">USD</div>}
+                    </td>
+                    <td className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">
+                      {fmtDec(calcTotalMXN(d))}
+                    </td>
+                    <td className="px-3 py-2">
+                      {d.centro_costo_codigo ? (
+                        <div>
+                          <span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs font-mono">{d.centro_costo_codigo}</span>
+                          {d.centro_costo_nombre && <div className="text-xs text-gray-500 mt-0.5 max-w-[140px] truncate">{d.centro_costo_nombre}</div>}
+                        </div>
+                      ) : <span className="text-gray-300 text-xs">—</span>}
+                    </td>
                     <td className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
                     <td className="px-3 py-2">
                       <div className="flex justify-center gap-1">
@@ -1303,7 +1427,64 @@ function TabDesgloce() {
           {/* Departamento */}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Departamento</label>
-            <input className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm" value={form.departamento || ''} onChange={e => setForm(f => ({...f, departamento: e.target.value}))} />
+            <input
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm"
+              value={form.departamento || ''}
+              onChange={e => setForm(f => ({...f, departamento: e.target.value}))}
+              readOnly={!!form.empleado_id}
+            />
+          </div>
+
+          {/* ¿Es gasto de usuario? */}
+          <div className="col-span-2">
+            <div className="flex items-center gap-3 mb-2">
+              <label className="block text-xs font-medium text-gray-600">¿Es gasto de usuario?</label>
+              <div className="flex gap-1">
+                <button type="button"
+                  onClick={() => setForm(f => ({...f, es_gasto_usuario: false, empleado_id: null, empleado_nombre: ''}))}
+                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${!form.es_gasto_usuario ? 'bg-gray-200 text-gray-700 border-gray-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+                  No
+                </button>
+                <button type="button"
+                  onClick={() => setForm(f => ({...f, es_gasto_usuario: true}))}
+                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${form.es_gasto_usuario ? 'bg-blue-100 text-blue-700 border-blue-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+                  Sí — vincular empleado
+                </button>
+              </div>
+            </div>
+            {form.es_gasto_usuario && (
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-2">
+                <label className="block text-xs font-semibold text-blue-700 mb-1">Empleado asignado</label>
+                {form.empleado_id ? (
+                  <div className="flex items-start justify-between bg-white border border-blue-200 rounded-lg px-3 py-2.5">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{form.empleado_nombre}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {[form.puesto, form.departamento].filter(Boolean).join(' · ')}
+                      </div>
+                      {form.email && <div className="text-xs text-gray-400 mt-0.5">{form.email}</div>}
+                    </div>
+                    <button type="button"
+                      onClick={() => setForm(f => ({...f, empleado_id: null, empleado_nombre: '', puesto: '', departamento: '', email: ''}))}
+                      className="ml-3 text-gray-400 hover:text-red-400 text-xl leading-none">×</button>
+                  </div>
+                ) : (
+                  <EmpleadoSearch
+                    value={form.empleado_id}
+                    display={form.empleado_nombre}
+                    onSelect={emp => setForm(f => ({
+                      ...f,
+                      empleado_id: emp.id,
+                      empleado_nombre: emp.nombre_completo,
+                      email: f.email || emp.email || '',
+                      departamento: f.departamento || emp.area || emp.departamento_nombre || '',
+                      puesto: f.puesto || emp.puesto || ''
+                    }))}
+                    onClear={() => setForm(f => ({...f, empleado_id: null, empleado_nombre: ''}))}
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           {/* Vigencia — toggle + campo condicional */}
@@ -1372,7 +1553,7 @@ function TabDesgloce() {
                 <input type="number" min="1" max="31" className="w-full border border-white rounded-lg px-3 py-2 text-sm text-center font-mono bg-white" value={form.dias_facturados || 30} onChange={e => setForm(f => ({...f, dias_facturados: parseInt(e.target.value) || 30}))} />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Costo por Día (MXN)</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Costo por Día ({form.moneda || 'MXN'})</label>
                 <input type="number" min="0" step="0.0001" className="w-full border border-white rounded-lg px-3 py-2 text-sm text-right font-mono bg-white" value={form.costo_dia || ''} onChange={e => setForm(f => ({...f, costo_dia: e.target.value}))} placeholder="0.00" />
               </div>
             </div>
@@ -1388,9 +1569,21 @@ function TabDesgloce() {
 
           {/* Totals preview */}
           <div className="col-span-2 grid grid-cols-3 gap-2 text-center">
-            <div className="bg-white rounded-lg border p-2.5"><div className="text-xs text-gray-400">Subtotal</div><div className="font-bold text-gray-700">{fmtDec(subtotal)}</div></div>
-            <div className="bg-amber-50 rounded-lg border border-amber-200 p-2.5"><div className="text-xs text-amber-500">IVA 16%</div><div className="font-bold text-amber-700">{fmtDec(iva_monto)}</div></div>
-            <div className="bg-primary-50 rounded-lg border border-primary-200 p-2.5"><div className="text-xs text-primary-500">Total</div><div className="font-bold text-primary-700 text-lg">{fmtDec(total)}</div></div>
+            <div className="bg-white rounded-lg border p-2.5">
+              <div className="text-xs text-gray-400">Subtotal {form.moneda === 'USD' ? '(USD)' : ''}</div>
+              <div className="font-bold text-gray-700">{fmtDec(subtotal)}</div>
+            </div>
+            <div className="bg-amber-50 rounded-lg border border-amber-200 p-2.5">
+              <div className="text-xs text-amber-500">IVA 16%</div>
+              <div className="font-bold text-amber-700">{fmtDec(iva_monto)}</div>
+            </div>
+            <div className="bg-primary-50 rounded-lg border border-primary-200 p-2.5">
+              <div className="text-xs text-primary-500">Total {form.moneda === 'USD' ? '(USD)' : '(MXN)'}</div>
+              <div className="font-bold text-primary-700 text-lg">{fmtDec(total)}</div>
+              {form.moneda === 'USD' && totalMXN !== total && (
+                <div className="text-xs text-gray-400 mt-0.5">≈ {fmtDec(totalMXN)} MXN</div>
+              )}
+            </div>
           </div>
 
           {/* Comparativa vs partida */}

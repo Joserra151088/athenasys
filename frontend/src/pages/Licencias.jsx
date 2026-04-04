@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { licenciaAPI, empleadoAPI, proveedorAPI, exchangeAPI } from '../utils/api'
-import { LICENSE_TYPES, LICENSE_COST_TYPES, LICENSE_STATUS } from '../utils/constants'
+import { licenciaAPI, empleadoAPI, sucursalAPI, proveedorAPI, exchangeAPI, catalogosAPI } from '../utils/api'
+import { LICENSE_COST_TYPES, LICENSE_STATUS } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Badge from '../components/Badge'
 import Modal from '../components/Modal'
@@ -63,12 +63,17 @@ export default function Licencias() {
 
   // Asignación
   const [empleados, setEmpleados] = useState([])
+  const [sucursales, setSucursales] = useState([])
   const [searchEmp, setSearchEmp] = useState('')
+  const [searchSuc, setSearchSuc] = useState('')
   const [selectedEmpId, setSelectedEmpId] = useState('')
+  const [selectedSucId, setSelectedSucId] = useState('')
+  const [assignMode, setAssignMode] = useState('empleado') // 'empleado' | 'sucursal'
   const [asignaciones, setAsignaciones] = useState([])
   const [liberarId, setLiberarId] = useState(null)
   const [proveedores, setProveedores] = useState([])
   const [exchangeRate, setExchangeRate] = useState(17.15)
+  const [tiposLicencia, setTiposLicencia] = useState([])
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -92,6 +97,9 @@ export default function Licencias() {
       setExchangeRate(r.usd_mxn)
       setForm(f => ({ ...f, tipo_cambio: r.usd_mxn }))
     })
+    catalogosAPI.tiposLicencia.getAll().then(items => {
+      setTiposLicencia(items.map(i => i.nombre))
+    }).catch(() => {})
   }, [])
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -154,25 +162,39 @@ export default function Licencias() {
   const openDetalle = async (l) => {
     setSelected(l)
     setSearchEmp('')
+    setSearchSuc('')
     setSelectedEmpId('')
+    setSelectedSucId('')
     setSaving(false)
-    const [asg, emps] = await Promise.all([
-      licenciaAPI.getAsignaciones(l.id),
-      empleadoAPI.getAll({ limit: 300 })
-    ])
+    // Determinar el modo de asignación inicial según tipo_asignacion de la licencia
+    const tipoAsg = l.tipo_asignacion || 'empleados'
+    setAssignMode(tipoAsg === 'sucursales' ? 'sucursal' : 'empleado')
+
+    const fetches = [licenciaAPI.getAsignaciones(l.id)]
+    // Cargar empleados si aplica
+    if (tipoAsg === 'empleados' || tipoAsg === 'ambos') fetches.push(empleadoAPI.getAll({ limit: 500 }))
+    else fetches.push(Promise.resolve({ data: [] }))
+    // Cargar sucursales si aplica
+    if (tipoAsg === 'sucursales' || tipoAsg === 'ambos') fetches.push(sucursalAPI.getAll({ limit: 200 }))
+    else fetches.push(Promise.resolve({ data: [] }))
+
+    const [asg, emps, sucs] = await Promise.all(fetches)
     setAsignaciones(asg)
     setEmpleados(emps.data)
+    setSucursales(sucs.data || [])
     setModal('detalle')
   }
 
   const handleAsignar = async () => {
-    if (!selectedEmpId) return
+    if (!selectedEmpId && !selectedSucId) return
     setSaving(true)
     try {
-      await licenciaAPI.asignar(selected.id, { empleado_id: selectedEmpId })
+      const payload = assignMode === 'sucursal' ? { sucursal_id: selectedSucId } : { empleado_id: selectedEmpId }
+      await licenciaAPI.asignar(selected.id, payload)
       const asg = await licenciaAPI.getAsignaciones(selected.id)
       setAsignaciones(asg)
       setSelectedEmpId('')
+      setSelectedSucId('')
       load(1)
     } catch (err) { showError(err?.message || 'Error al asignar') }
     finally { setSaving(false) }
@@ -192,6 +214,12 @@ export default function Licencias() {
     const q = searchEmp.toLowerCase()
     return e.nombre_completo?.toLowerCase().includes(q) || e.num_empleado?.toLowerCase().includes(q)
   }).filter(e => !asignaciones.filter(a => a.activo).some(a => a.empleado_id === e.id))
+
+  const sucursalesDisponibles = sucursales.filter(s => {
+    if (!searchSuc) return true
+    const q = searchSuc.toLowerCase()
+    return s.nombre?.toLowerCase().includes(q) || s.estado?.toLowerCase().includes(q)
+  }).filter(s => !asignaciones.filter(a => a.activo).some(a => a.sucursal_id === s.id))
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
@@ -244,7 +272,7 @@ export default function Licencias() {
               <label className="label">Tipo</label>
               <select className="input" value={filters.tipo} onChange={e => setFilters(f => ({ ...f, tipo: e.target.value }))}>
                 <option value="">Todos</option>
-                {LICENSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {tiposLicencia.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -392,7 +420,7 @@ export default function Licencias() {
               <label className="label">Tipo *</label>
               <select className="input" required value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}>
                 <option value="">Seleccionar...</option>
-                {LICENSE_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                {tiposLicencia.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
@@ -553,43 +581,106 @@ export default function Licencias() {
               </div>
             </div>
 
-            {/* Asignar nuevo empleado */}
-            {canEdit() && asignaciones.filter(a => a.activo).length < selected.total_asientos && (
-              <div className="border border-dashed border-primary-300 rounded-xl p-4 bg-primary-50/40 space-y-3">
-                <div className="text-sm font-medium text-primary-700">Asignar a un empleado</div>
-                <div className="flex gap-3">
-                  <div className="flex-1 relative">
-                    <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <input className="input pl-9" placeholder="Buscar empleado..." value={searchEmp} onChange={e => setSearchEmp(e.target.value)} />
+            {/* Panel de asignación — dinámico según tipo_asignacion */}
+            {canEdit() && asignaciones.filter(a => a.activo).length < selected.total_asientos && (() => {
+              const tipoAsg = selected.tipo_asignacion || 'empleados'
+              const showEmpleados = tipoAsg === 'empleados' || tipoAsg === 'ambos'
+              const showSucursales = tipoAsg === 'sucursales' || tipoAsg === 'ambos'
+              return (
+                <div className="border border-dashed border-primary-300 rounded-xl p-4 bg-primary-50/40 space-y-3">
+                  {/* Título y tabs si es "ambos" */}
+                  {tipoAsg === 'ambos' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-primary-700">Asignar a:</span>
+                      <div className="flex rounded-lg overflow-hidden border border-primary-200 text-xs">
+                        <button
+                          className={`px-3 py-1.5 transition-colors ${assignMode === 'empleado' ? 'bg-primary-600 text-white font-semibold' : 'bg-white text-gray-600 hover:bg-primary-50'}`}
+                          onClick={() => { setAssignMode('empleado'); setSelectedSucId('') }}
+                        >👤 Empleado</button>
+                        <button
+                          className={`px-3 py-1.5 transition-colors ${assignMode === 'sucursal' ? 'bg-violet-600 text-white font-semibold' : 'bg-white text-gray-600 hover:bg-violet-50'}`}
+                          onClick={() => { setAssignMode('sucursal'); setSelectedEmpId('') }}
+                        >🏢 Sucursal</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm font-medium text-primary-700">
+                      {showSucursales ? '🏢 Asignar a una sucursal' : '👤 Asignar a un empleado'}
+                    </div>
+                  )}
+
+                  {/* Lista de empleados */}
+                  {showEmpleados && (!showSucursales || assignMode === 'empleado') && (
+                    <>
+                      <div className="relative">
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input className="input pl-9" placeholder="Buscar empleado..." value={searchEmp} onChange={e => setSearchEmp(e.target.value)} />
+                      </div>
+                      <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-44 bg-white">
+                        {empleadosDisponibles.length === 0 ? (
+                          <div className="text-center text-gray-400 text-sm py-4">Sin empleados disponibles</div>
+                        ) : empleadosDisponibles.map(e => (
+                          <label key={e.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                            <input type="radio" name="emp_asignar" value={e.id}
+                              checked={selectedEmpId === e.id}
+                              onChange={() => setSelectedEmpId(e.id)} />
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-xs flex-shrink-0">
+                                {e.nombre_completo?.charAt(0)}
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium">{e.nombre_completo}</div>
+                                <div className="text-xs text-gray-400">{e.num_empleado} · {e.puesto}</div>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Lista de sucursales */}
+                  {showSucursales && (!showEmpleados || assignMode === 'sucursal') && (
+                    <>
+                      <div className="relative">
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <input className="input pl-9" placeholder="Buscar sucursal..." value={searchSuc} onChange={e => setSearchSuc(e.target.value)} />
+                      </div>
+                      <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-44 bg-white">
+                        {sucursalesDisponibles.length === 0 ? (
+                          <div className="text-center text-gray-400 text-sm py-4">Sin sucursales disponibles</div>
+                        ) : sucursalesDisponibles.map(s => (
+                          <label key={s.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
+                            <input type="radio" name="suc_asignar" value={s.id}
+                              checked={selectedSucId === s.id}
+                              onChange={() => setSelectedSucId(s.id)} />
+                            <div className="flex items-center gap-2">
+                              <div className="h-6 w-6 bg-violet-100 rounded-full flex items-center justify-center text-violet-700 font-semibold text-xs flex-shrink-0">
+                                🏢
+                              </div>
+                              <div>
+                                <div className="text-sm font-medium">{s.nombre}</div>
+                                <div className="text-xs text-gray-400">{s.estado || s.tipo}</div>
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex justify-end">
+                    <button
+                      className="btn-primary"
+                      onClick={handleAsignar}
+                      disabled={(!selectedEmpId && !selectedSucId) || saving}
+                    >
+                      {saving ? 'Asignando...' : 'Asignar licencia'}
+                    </button>
                   </div>
                 </div>
-                <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-44 bg-white">
-                  {empleadosDisponibles.length === 0 ? (
-                    <div className="text-center text-gray-400 text-sm py-4">Sin empleados disponibles</div>
-                  ) : empleadosDisponibles.map(e => (
-                    <label key={e.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0">
-                      <input type="radio" name="emp_asignar" value={e.id}
-                        checked={selectedEmpId === e.id}
-                        onChange={() => setSelectedEmpId(e.id)} />
-                      <div className="flex items-center gap-2">
-                        <div className="h-6 w-6 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-xs flex-shrink-0">
-                          {e.nombre_completo?.charAt(0)}
-                        </div>
-                        <div>
-                          <div className="text-sm font-medium">{e.nombre_completo}</div>
-                          <div className="text-xs text-gray-400">{e.num_empleado} · {e.puesto}</div>
-                        </div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-                <div className="flex justify-end">
-                  <button className="btn-primary" onClick={handleAsignar} disabled={!selectedEmpId || saving}>
-                    {saving ? 'Asignando...' : 'Asignar licencia'}
-                  </button>
-                </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Lista de asignaciones activas */}
             <div>
@@ -601,26 +692,31 @@ export default function Licencias() {
                   <div className="text-center text-gray-400 text-sm py-6 border border-dashed border-gray-200 rounded-lg">
                     Sin asignaciones activas
                   </div>
-                ) : asignaciones.filter(a => a.activo).map(a => (
-                  <div key={a.id} className="flex items-center justify-between px-4 py-3 bg-emerald-50 border border-emerald-100 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 bg-emerald-200 rounded-full flex items-center justify-center text-emerald-700 font-semibold text-sm">
-                        {a.empleado_nombre?.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium">{a.empleado_nombre}</div>
-                        <div className="text-xs text-gray-500">
-                          Asignado por {a.asignado_por_nombre} · {a.fecha_asignacion ? format(new Date(a.fecha_asignacion), 'dd/MM/yyyy', { locale: es }) : ''}
+                ) : asignaciones.filter(a => a.activo).map(a => {
+                  const esSucursal = a.tipo_asignado === 'sucursal' || (!a.empleado_nombre && a.sucursal_nombre)
+                  const displayNombre = esSucursal ? a.sucursal_nombre : a.empleado_nombre
+                  return (
+                    <div key={a.id} className={`flex items-center justify-between px-4 py-3 border rounded-lg ${esSucursal ? 'bg-violet-50 border-violet-100' : 'bg-emerald-50 border-emerald-100'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`h-8 w-8 rounded-full flex items-center justify-center font-semibold text-sm ${esSucursal ? 'bg-violet-200 text-violet-700' : 'bg-emerald-200 text-emerald-700'}`}>
+                          {esSucursal ? '🏢' : displayNombre?.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium">{displayNombre}</div>
+                          <div className="text-xs text-gray-500">
+                            {esSucursal ? 'Sucursal · ' : ''}
+                            Asignado por {a.asignado_por_nombre} · {a.fecha_asignacion ? format(new Date(a.fecha_asignacion), 'dd/MM/yyyy', { locale: es }) : ''}
+                          </div>
                         </div>
                       </div>
+                      {canEdit() && (
+                        <button onClick={() => setLiberarId(a.id)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Liberar asignación">
+                          <XCircleIcon className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
-                    {canEdit() && (
-                      <button onClick={() => setLiberarId(a.id)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors" title="Liberar asignación">
-                        <XCircleIcon className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Historial */}
@@ -630,15 +726,18 @@ export default function Licencias() {
                     Ver historial ({asignaciones.filter(a => !a.activo).length} anteriores)
                   </summary>
                   <div className="mt-2 space-y-1">
-                    {asignaciones.filter(a => !a.activo).map(a => (
-                      <div key={a.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-500">
-                        <span>{a.empleado_nombre}</span>
-                        <span>
-                          {a.fecha_asignacion ? format(new Date(a.fecha_asignacion), 'dd/MM/yy') : ''} →
-                          {a.fecha_liberacion ? format(new Date(a.fecha_liberacion), 'dd/MM/yy') : ''}
-                        </span>
-                      </div>
-                    ))}
+                    {asignaciones.filter(a => !a.activo).map(a => {
+                      const esSuc = a.tipo_asignado === 'sucursal' || (!a.empleado_nombre && a.sucursal_nombre)
+                      return (
+                        <div key={a.id} className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-lg text-xs text-gray-500">
+                          <span>{esSuc ? `🏢 ${a.sucursal_nombre}` : a.empleado_nombre}</span>
+                          <span>
+                            {a.fecha_asignacion ? format(new Date(a.fecha_asignacion), 'dd/MM/yy') : ''} →
+                            {a.fecha_liberacion ? format(new Date(a.fecha_liberacion), 'dd/MM/yy') : ''}
+                          </span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </details>
               )}

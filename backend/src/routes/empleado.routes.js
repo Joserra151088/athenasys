@@ -80,12 +80,13 @@ router.get('/', (req, res) => {
   if (sucursal_id) items = items.filter(e => e.sucursal_id === sucursal_id)
   if (area) items = items.filter(e => e.area === area)
   if (search) {
-    const q = search.toLowerCase()
+    const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    const q = normalizeStr(search)
     items = items.filter(e =>
-      e.nombre_completo?.toLowerCase().includes(q) ||
-      e.num_empleado?.toLowerCase().includes(q) ||
-      e.puesto?.toLowerCase().includes(q) ||
-      e.email?.toLowerCase().includes(q)
+      normalizeStr(e.nombre_completo).includes(q) ||
+      normalizeStr(e.num_empleado).includes(q) ||
+      normalizeStr(e.puesto).includes(q) ||
+      normalizeStr(e.email).includes(q)
     )
   }
 

@@ -10,7 +10,13 @@ function syncGastoReal(partida_id, mes, anio) {
   if (!partida_id) return
   mes = parseInt(mes); anio = parseInt(anio)
   const lines = db.get('finanzas_detalle').filter(d => d.partida_id === partida_id && d.mes === mes && d.anio === anio).value()
-  const gasto_real = lines.reduce((s, d) => s + (parseFloat(d.total) || 0), 0)
+  // Siempre sumar en MXN: si la línea es USD, usar total_mxn (si existe) o convertir con tipo_cambio
+  const gasto_real = lines.reduce((s, d) => {
+    const totalMXN = d.total_mxn != null
+      ? parseFloat(d.total_mxn) || 0
+      : (d.moneda === 'USD' ? (parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1) : (parseFloat(d.total) || 0))
+    return s + totalMXN
+  }, 0)
   const existing = db.get('presupuesto_gastos_mes').find({ partida_id, mes, anio }).value()
   const now = new Date().toISOString()
   if (existing) {
@@ -197,6 +203,9 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
   const aplica_iva = body.aplica_iva !== false && body.aplica_iva !== 0
   const iva_monto = aplica_iva ? subtotal * 0.16 : 0
   const total = subtotal + iva_monto
+  const tc = parseFloat(body.tipo_cambio) || 1
+  const moneda = body.moneda || 'MXN'
+  const total_mxn = moneda === 'USD' ? parseFloat((total * tc).toFixed(2)) : total
   const item = {
     id: uuidv4(),
     mes: parseInt(body.mes) || new Date().getMonth() + 1,
@@ -213,7 +222,7 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
     tipo_cambio: parseFloat(body.tipo_cambio) || 1,
     dias_facturados: parseInt(body.dias_facturados) || 30,
     costo_dia: parseFloat(body.costo_dia) || 0,
-    subtotal, aplica_iva: aplica_iva ? 1 : 0, iva_monto, total,
+    subtotal, aplica_iva: aplica_iva ? 1 : 0, iva_monto, total, total_mxn,
     modo_calculo,
     tiene_vigencia,
     identificador: body.identificador || 'Administrativo',
@@ -222,6 +231,8 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
     dispositivo_id: body.dispositivo_id || null,
     partida_id: body.partida_id || null,
     empleado_id: body.empleado_id || null,
+    empleado_nombre: body.empleado_nombre || null,
+    es_gasto_usuario: body.es_gasto_usuario ? 1 : 0,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString()
   }
   db.get('finanzas_detalle').push(item).write()
@@ -243,6 +254,10 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'admini
   }
   const aplica = body.aplica_iva !== undefined ? (body.aplica_iva !== false && body.aplica_iva !== 0) : !!item.aplica_iva
   const iva_monto = aplica ? subtotal * 0.16 : 0
+  const totalCalc = subtotal + iva_monto
+  const tcUpd = parseFloat(body.tipo_cambio ?? item.tipo_cambio) || 1
+  const monedaUpd = body.moneda ?? item.moneda ?? 'MXN'
+  const total_mxn = monedaUpd === 'USD' ? parseFloat((totalCalc * tcUpd).toFixed(2)) : totalCalc
   const updates = {
     ...body,
     dias_facturados: dias,
@@ -250,7 +265,8 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'admini
     subtotal,
     aplica_iva: aplica ? 1 : 0,
     iva_monto,
-    total: subtotal + iva_monto,
+    total: totalCalc,
+    total_mxn,
     modo_calculo: modo,
     tiene_vigencia: body.tiene_vigencia !== undefined ? (body.tiene_vigencia ? 1 : 0) : item.tiene_vigencia,
     updated_at: new Date().toISOString()
@@ -258,6 +274,8 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'admini
   delete updates.subtotal_directo  // campo de cálculo, no existe en MySQL
   delete updates.ahorro_soporte    // pertenece a presupuesto_gastos_mes, no a finanzas_detalle
   delete updates.ahorro_descripcion
+  if (body.es_gasto_usuario !== undefined) updates.es_gasto_usuario = body.es_gasto_usuario ? 1 : 0
+  if (body.empleado_nombre !== undefined) updates.empleado_nombre = body.empleado_nombre || null
   db.get('finanzas_detalle').find({ id: req.params.id }).assign(updates).write()
   const updated = db.get('finanzas_detalle').find({ id: req.params.id }).value()
   syncGastoReal(updated.partida_id, updated.mes, updated.anio)

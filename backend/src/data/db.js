@@ -205,6 +205,7 @@ class QueryBuilder {
   }
 
   push(...newItems) {
+    if (!_data[this._table]) _data[this._table] = []   // defensive init
     for (const item of newItems) {
       _data[this._table].push(item)
     }
@@ -397,9 +398,11 @@ const DDL = [
     \`estado\` VARCHAR(100),
     \`lat\` DECIMAL(10,7),
     \`lng\` DECIMAL(10,7),
+    \`email\` VARCHAR(200),
     \`centro_costos\` VARCHAR(100),
     \`centro_costo_codigo\` VARCHAR(100),
     \`centro_costo_nombre\` VARCHAR(300),
+    \`determinante\` INT DEFAULT NULL,
     \`activo\` TINYINT(1) DEFAULT 1,
     \`created_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -592,8 +595,11 @@ const DDL = [
   `CREATE TABLE IF NOT EXISTS \`asignaciones_licencias\` (
     \`id\` VARCHAR(36) PRIMARY KEY,
     \`licencia_id\` VARCHAR(36),
+    \`tipo_asignado\` VARCHAR(20) DEFAULT 'empleado',
     \`empleado_id\` VARCHAR(36),
     \`empleado_nombre\` VARCHAR(200),
+    \`sucursal_id\` VARCHAR(36),
+    \`sucursal_nombre\` VARCHAR(200),
     \`asignado_por\` VARCHAR(36),
     \`asignado_por_nombre\` VARCHAR(200),
     \`fecha_asignacion\` DATETIME,
@@ -716,6 +722,7 @@ const DDL = [
     \`dispositivo_id\` VARCHAR(36),
     \`partida_id\` VARCHAR(36),
     \`empleado_id\` VARCHAR(36),
+    \`total_mxn\` DECIMAL(15,2) DEFAULT NULL,
     \`created_at\` DATETIME,
     \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -986,8 +993,11 @@ async function initDB() {
   await alterIfNotExists('asignaciones', 'dispositivo_marca',  'VARCHAR(200)')
   await alterIfNotExists('asignaciones', 'lat',                'DECIMAL(10,8)')
   await alterIfNotExists('asignaciones', 'lng',                'DECIMAL(11,8)')
-  await alterIfNotExists('finanzas_detalle', 'modo_calculo',    "VARCHAR(10) DEFAULT 'dias'")
-  await alterIfNotExists('finanzas_detalle', 'tiene_vigencia',  'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('finanzas_detalle', 'modo_calculo',     "VARCHAR(10) DEFAULT 'dias'")
+  await alterIfNotExists('finanzas_detalle', 'tiene_vigencia',   'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('finanzas_detalle', 'total_mxn',        'DECIMAL(15,2) DEFAULT NULL')
+  await alterIfNotExists('finanzas_detalle', 'es_gasto_usuario', 'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('finanzas_detalle', 'empleado_nombre',  'VARCHAR(200) DEFAULT NULL')
   await alterIfNotExists('presupuesto_partidas', 'montos_por_mes', 'LONGTEXT')
   // SharePoint
   await alterIfNotExists('documentos', 'sharepoint_item_id',     'VARCHAR(500)')
@@ -1005,9 +1015,14 @@ async function initDB() {
   await alterIfNotExists('cotizaciones', 'fecha_vencimiento', 'DATE')
   // ── Columnas updated_at faltantes (causan que UPDATE no llegue a MySQL) ──
   await alterIfNotExists('empleados',  'updated_at', 'DATETIME')
-  await alterIfNotExists('sucursales', 'updated_at', 'DATETIME')
+  await alterIfNotExists('sucursales', 'updated_at',    'DATETIME')
+  await alterIfNotExists('sucursales', 'determinante',  'INT DEFAULT NULL')
+  await alterIfNotExists('sucursales', 'email',         'VARCHAR(200) DEFAULT NULL')
   await alterIfNotExists('licencias',  'updated_at',       'DATETIME')
   await alterIfNotExists('licencias',  'tipo_asignacion',  "VARCHAR(20) DEFAULT 'empleados'")
+  await alterIfNotExists('asignaciones_licencias', 'sucursal_id',     'VARCHAR(36) DEFAULT NULL')
+  await alterIfNotExists('asignaciones_licencias', 'sucursal_nombre', 'VARCHAR(200) DEFAULT NULL')
+  await alterIfNotExists('asignaciones_licencias', 'tipo_asignado',   "VARCHAR(20) DEFAULT 'empleado'")
   // ── Columnas faltantes en documentos ──────────────────────────────────────
   // El DDL original no tenía estas columnas; sin ellas el firma-route
   // no puede persistir local_pdf_path, firmas, datos del empleado, etc.
@@ -1039,6 +1054,47 @@ async function initDB() {
   // Seed si está vacío
   await runSeed()
   await seedCatalogos()
+
+  // Sincronizar catálogos de puestos y supervisores desde datos existentes de empleados
+  try {
+    const now = new Date().toISOString().slice(0, 19).replace('T', ' ')
+
+    const [puestosRows] = await _pool.query(
+      "SELECT DISTINCT puesto FROM empleados WHERE puesto IS NOT NULL AND puesto != '' AND activo = 1"
+    )
+    for (const row of puestosRows) {
+      const nombre = (row.puesto || '').trim()
+      if (!nombre) continue
+      const [ex] = await _pool.query('SELECT id FROM catalogo_puestos WHERE nombre = ? AND activo = 1', [nombre])
+      if (!ex.length) {
+        await _pool.query(
+          'INSERT INTO catalogo_puestos (id, nombre, orden, activo, created_at, updated_at) VALUES (UUID(), ?, 0, 1, ?, ?)',
+          [nombre, now, now]
+        )
+      }
+    }
+
+    const [supRows] = await _pool.query(
+      "SELECT DISTINCT jefe_nombre FROM empleados WHERE jefe_nombre IS NOT NULL AND jefe_nombre != '' AND activo = 1"
+    )
+    for (const row of supRows) {
+      const nombre = (row.jefe_nombre || '').trim()
+      if (!nombre) continue
+      const [ex] = await _pool.query('SELECT id FROM catalogo_supervisores WHERE nombre = ? AND activo = 1', [nombre])
+      if (!ex.length) {
+        await _pool.query(
+          'INSERT INTO catalogo_supervisores (id, nombre, orden, activo, created_at, updated_at) VALUES (UUID(), ?, 0, 1, ?, ?)',
+          [nombre, now, now]
+        )
+      }
+    }
+
+    await loadTable('catalogo_puestos')
+    await loadTable('catalogo_supervisores')
+    console.log(`✓ Catálogos de puestos (${puestosRows.length}) y supervisores (${supRows.length}) sincronizados desde empleados`)
+  } catch (e) {
+    console.warn('[DB] No se pudo sincronizar catálogos desde empleados:', e.message)
+  }
 
   // Recargar tablas que pudo haber llenado el seed
   for (const t of ['usuarios_sistema','proveedores','sucursales','empleados',

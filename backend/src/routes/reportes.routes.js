@@ -10,6 +10,8 @@ const { format, startOfMonth, endOfMonth, parseISO } = require('date-fns')
 
 router.use(authMiddleware)
 
+const normalize = (str) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
 const hoyStr = () => format(new Date(), 'yyyy-MM-dd')
 
 // ── Reporte: Inventario de Dispositivos ──────────────────────────────────────
@@ -152,106 +154,247 @@ router.get('/centros-costo', (req, res) => {
   res.json({ titulo: 'Centros de Costo', generado: hoyStr(), periodo: { fecha_inicio: fechaInicio, fecha_fin: fechaFin }, total: data.length, data })
 })
 
-// ── Reporte: Gastos Financieros ───────────────────────────────────────────────
+// ── Reporte: Gastos Financieros (solo finanzas_detalle) ───────────────────────
 router.get('/gastos', (req, res) => {
-  // Re-usa la lógica de finanzas — devuelve datos planos para exportar
-  const hoy = new Date()
-  const fechaInicio = req.query.fecha_inicio || format(startOfMonth(hoy), 'yyyy-MM-dd')
-  const fechaFin = req.query.fecha_fin || format(endOfMonth(hoy), 'yyyy-MM-dd')
+  try {
+    const hoy = new Date()
+    const fechaInicio = req.query.fecha_inicio || format(startOfMonth(hoy), 'yyyy-MM-dd')
+    const fechaFin    = req.query.fecha_fin    || format(endOfMonth(hoy),   'yyyy-MM-dd')
 
-  const tarifas = db.get('tarifas_equipo').filter({ activo: true }).value()
-  const tarifaMap = {}
-  const paqueteCPU = tarifas.find(t => t.es_paquete && t.tipo === 'CPU')
-  const paqueteIncluye = paqueteCPU?.incluye || ['CPU','Monitor','Teclado','Mouse']
-  for (const t of tarifas) tarifaMap[t.tipo] = t
+    // ID-based filter params
+    const filtroEmpleadoId = (req.query.empleado_id          || '').trim()
+    const filtroSucursalId = (req.query.sucursal_id          || '').trim()
+    const filtroCCCodigo   = normalize(req.query.centro_costo_codigo || '')
+    const filtroArea       = normalize(req.query.area               || '')
+    const hayFiltroActivo  = !!(filtroEmpleadoId || filtroSucursalId || filtroCCCodigo || filtroArea)
+    console.log('[reportes/gastos] filtros:', { filtroEmpleadoId, filtroSucursalId, filtroCCCodigo, filtroArea, hayFiltroActivo })
 
-  const asignaciones = db.get('asignaciones').filter({ activo: true }).value()
-  const dispositivos = db.get('dispositivos').value()
-  const empleados = db.get('empleados').value()
-  const sucursales = db.get('sucursales').value()
-  const licencias = db.get('licencias').filter({ activo: true }).value()
-  const asignLic = db.get('asignaciones_licencias').filter({ activo: true }).value()
+    const empleados  = db.get('empleados').value()
+    const sucursales = db.get('sucursales').value()
 
-  const empleadosConCPU = new Set()
-  for (const a of asignaciones) {
-    const dev = dispositivos.find(d => d.id === a.dispositivo_id)
-    if (dev?.tipo === 'CPU' && a.tipo_asignacion === 'empleado') empleadosConCPU.add(a.asignado_a_id)
-  }
-
-  const { differenceInDays, parseISO } = require('date-fns')
-  const fi = parseISO(fechaInicio)
-  const ff = parseISO(fechaFin)
-  const diasPeriodo = differenceInDays(ff, fi) + 1
-
-  const data = []
-
-  // Equipos
-  for (const a of asignaciones) {
-    const dev = dispositivos.find(d => d.id === a.dispositivo_id)
-    if (!dev) continue
-    const tarifa = tarifaMap[dev.tipo]
-    if (!tarifa) continue
-
-    if (a.tipo_asignacion === 'empleado' && paqueteIncluye.includes(dev.tipo) && dev.tipo !== 'CPU' && empleadosConCPU.has(a.asignado_a_id)) continue
-
-    const inicioAsig = a.fecha_asignacion ? parseISO(a.fecha_asignacion) : fi
-    const dias = Math.min(differenceInDays(ff, inicioAsig < fi ? fi : inicioAsig) + 1, diasPeriodo)
-    if (dias <= 0) continue
-
-    let cc_nombre = 'Sin asignar', cc_id = null
-    if (a.tipo_asignacion === 'empleado') {
-      const emp = empleados.find(e => e.id === a.asignado_a_id)
-      cc_id = emp?.centro_costo_id || null; cc_nombre = emp?.centro_costo_nombre || emp?.centro_costos || 'Sin asignar'
-    } else {
-      const suc = sucursales.find(s => s.id === a.asignado_a_id)
-      cc_id = suc?.centro_costo_id || null; cc_nombre = suc?.centro_costo_nombre || 'Sin asignar'
+    // ── Helper: construye un Set con todos los tokens CC normalizados de un objeto ─
+    const collectCC = (obj) => {
+      if (!obj) return []
+      return [obj.centro_costo_codigo, obj.centro_costos, obj.centro_costo_nombre]
+        .filter(v => v && String(v).trim())
+        .map(v => normalize(String(v)))
     }
 
-    data.push({
-      categoria: 'Equipo',
-      descripcion: tarifa.es_paquete ? `${dev.tipo} (Paquete)` : dev.tipo,
-      serie_licencia: dev.serie,
-      asignado_a: a.asignado_a_nombre,
-      tipo_asignacion: a.tipo_asignacion,
-      centro_costo: cc_nombre,
-      costo_unitario: tarifa.costo_dia,
-      unidad: 'día',
-      cantidad: dias,
-      total_mxn: parseFloat((tarifa.costo_dia * dias).toFixed(2))
+    // ── Pre-compute filter sets ──────────────────────────────────────────────
+    let empIds = null   // null = sin filtro activo
+    let ccSet  = null   // Set de tokens a comparar contra _cc_full de cada fila
+
+    if (filtroEmpleadoId) {
+      empIds = new Set([filtroEmpleadoId])
+      ccSet  = new Set()
+
+    } else if (filtroSucursalId) {
+      const suc = sucursales.find(s => s.id === filtroSucursalId)
+      const empsDeSuc = empleados.filter(e => e.sucursal_id === filtroSucursalId)
+      empIds = new Set(empsDeSuc.map(e => e.id))
+
+      const tokens = new Set()
+
+      // 1) Campos CC directos del record de sucursal (fuente ideal)
+      collectCC(suc).forEach(t => { if (t) tokens.add(t) })
+
+      // 2) CC de empleados asignados a esa sucursal
+      empsDeSuc.forEach(e => collectCC(e).forEach(t => { if (t) tokens.add(t) }))
+
+      // 3) Fallback cuando no hay CC configurado ni empleados:
+      //    extraer palabras significativas (≥4 chars) del nombre de la sucursal
+      //    ignorando palabras genéricas de formato
+      if (tokens.size === 0 && suc?.nombre) {
+        const STOP_WORDS = new Set(['super','center','centre','bodega','aurrera',
+          'walmart','express','tienda','sucursal','corporativo','plaza','centro',
+          'norte','sur','este','oeste','city','club','store'])
+        normalize(suc.nombre)
+          .split(/[\s,\.\-\"\']+/)
+          .filter(w => w.length >= 4 && !STOP_WORDS.has(w))
+          .forEach(w => tokens.add(w))
+      }
+
+      ccSet = tokens
+      console.log('[reportes/gastos] sucursal:', suc?.nombre,
+        '| empIds:', empIds.size, '| ccTokens:', [...ccSet])
+
+    } else if (filtroCCCodigo) {
+      empIds = new Set(empleados.filter(e =>
+        normalize(e.centro_costos      || '').includes(filtroCCCodigo) ||
+        normalize(e.centro_costo_codigo|| '').includes(filtroCCCodigo) ||
+        normalize(e.centro_costo_nombre|| '').includes(filtroCCCodigo)
+      ).map(e => e.id))
+      ccSet = new Set([filtroCCCodigo])
+
+    } else if (filtroArea) {
+      empIds = new Set(empleados.filter(e => normalize(e.area || '').includes(filtroArea)).map(e => e.id))
+      ccSet  = new Set()
+    }
+
+    const { parseISO } = require('date-fns')
+    const fi         = parseISO(fechaInicio)
+    const mesFiltro  = fi.getMonth() + 1
+    const anioFiltro = fi.getFullYear()
+
+    // Única fuente de datos: registros del módulo de Finanzas
+    const detalleItems = db.get('finanzas_detalle')
+      .filter(d => d.mes === mesFiltro && d.anio === anioFiltro)
+      .value()
+
+    const data = detalleItems.map(d => {
+      const totalMXN = d.total_mxn != null
+        ? parseFloat(d.total_mxn) || 0
+        : (d.moneda === 'USD'
+          ? (parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1)
+          : parseFloat(d.total) || 0)
+      const empDet = d.empleado_id ? empleados.find(e => e.id === d.empleado_id) : null
+      // _cc_full: concatena código + nombre para poder hacer substring en cualquier dirección
+      const ccFull = normalize(
+        [d.centro_costo_codigo, d.centro_costo_nombre].filter(Boolean).join(' ')
+      )
+      return {
+        descripcion:  d.nombre          || '',
+        servicio:     d.tipo_servicio   || '',
+        proveedor:    d.proveedor       || '',
+        folio:        d.telefono_serie  || d.factura_folio || '',
+        asignado_a:   d.empleado_nombre || '',
+        area:         empDet?.area      || d.departamento || '',
+        centro_costo: d.centro_costo_nombre || d.centro_costo_codigo || '',
+        tipo:         d.es_gasto_usuario ? 'Usuario' : 'Servicio',
+        total_mxn:    parseFloat(totalMXN.toFixed(2)),
+        _emp_id:      d.empleado_id || null,
+        _cc_codigo:   normalize(d.centro_costo_codigo || d.centro_costo_nombre || ''),
+        _cc_full:     ccFull,
+      }
     })
+
+    // ── Aplicar filtros ──────────────────────────────────────────────────────
+    // Reglas de inclusión:
+    //   (a) Tiene empleado_id en empIds  →  gasto personal vinculado a esa entidad
+    //   (b) Sin empleado_id + _cc_full coincide con algún token del ccSet
+    //       (substring en cualquier dirección: token⊆cc ó cc⊆token)
+    let filtered = data
+    if (hayFiltroActivo) {
+      filtered = data.filter(row => {
+        if (empIds === null) return false
+
+        // (a) Gasto con empleado asignado
+        if (row._emp_id) return empIds.has(row._emp_id)
+
+        // (b) Gasto de servicio sin empleado → coincidir si algún token aparece
+        //     dentro del cc_full (código + nombre normalizados juntos)
+        if (ccSet && ccSet.size > 0 && row._cc_full) {
+          for (const token of ccSet) {
+            if (token && row._cc_full.includes(token)) return true
+          }
+        }
+        return false
+      })
+    }
+
+    const total = filtered.reduce((s, g) => s + g.total_mxn, 0)
+    res.json({
+      titulo:     'Reporte de Gastos TI',
+      generado:   hoyStr(),
+      periodo:    { fecha_inicio: fechaInicio, fecha_fin: fechaFin },
+      total_mxn:  parseFloat(total.toFixed(2)),
+      total:      filtered.length,
+      data:       filtered
+    })
+  } catch (err) {
+    console.error('[reportes/gastos] error:', err)
+    res.status(500).json({ message: err.message || 'Error al generar reporte de gastos' })
+  }
+})
+
+router.get('/gastos-historico', (req, res) => {
+  const numMeses = Math.min(parseInt(req.query.meses || 12), 24)
+  const filtroEmpleadoId = req.query.empleado_id || ''
+  const filtroSucursalId = req.query.sucursal_id || ''
+  const filtroCCCodigo   = normalize(req.query.centro_costo_codigo || '')
+  const filtroArea       = normalize(req.query.area || '')
+
+  const MESES_ABREV = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+  const now = new Date()
+  const empleados = db.get('empleados').value()
+  const sucursales = db.get('sucursales').value()
+
+  // Pre-compute filter sets — mismo modelo que /gastos
+  let empIds = null
+  let ccSet  = null
+
+  if (filtroEmpleadoId) {
+    empIds = new Set([filtroEmpleadoId])
+    ccSet  = new Set()
+  } else if (filtroSucursalId) {
+    const suc = sucursales.find(s => s.id === filtroSucursalId)
+    const empsDeSuc = empleados.filter(e => e.sucursal_id === filtroSucursalId)
+    empIds = new Set(empsDeSuc.map(e => e.id))
+    const tokens = new Set()
+    // CC directo de la sucursal
+    ;[suc?.centro_costo_codigo, suc?.centro_costos, suc?.centro_costo_nombre]
+      .filter(v => v?.trim()).forEach(v => tokens.add(normalize(v)))
+    // CC de empleados de la sucursal
+    empsDeSuc.forEach(e =>
+      [e.centro_costo_codigo, e.centro_costos, e.centro_costo_nombre]
+        .filter(v => v?.trim()).forEach(v => tokens.add(normalize(v)))
+    )
+    // Fallback: palabras significativas del nombre de la sucursal
+    if (tokens.size === 0 && suc?.nombre) {
+      const STOP = new Set(['super','center','centre','bodega','aurrera',
+        'walmart','express','tienda','sucursal','corporativo','plaza','centro',
+        'norte','sur','este','oeste','city','club','store'])
+      normalize(suc.nombre).split(/[\s,\.\-\"\']+/)
+        .filter(w => w.length >= 4 && !STOP.has(w))
+        .forEach(w => tokens.add(w))
+    }
+    ccSet = tokens
+  } else if (filtroCCCodigo) {
+    empIds = new Set(empleados.filter(e =>
+      normalize(e.centro_costos      || '').includes(filtroCCCodigo) ||
+      normalize(e.centro_costo_codigo|| '').includes(filtroCCCodigo) ||
+      normalize(e.centro_costo_nombre|| '').includes(filtroCCCodigo)
+    ).map(e => e.id))
+    ccSet = new Set([filtroCCCodigo])
+  } else if (filtroArea) {
+    empIds = new Set(empleados.filter(e => normalize(e.area || '').includes(filtroArea)).map(e => e.id))
+    ccSet  = new Set()
   }
 
-  // Licencias
-  for (const lic of licencias) {
-    const tc = lic.tipo_cambio || 17.15
-    const costoMXN = lic.moneda === 'USD' ? lic.costo * tc : lic.costo
-    let mensualMXN = lic.tipo_costo === 'mensual' ? costoMXN : lic.tipo_costo === 'anual' ? costoMXN / 12 : 0
-    const costoPeriodo = (mensualMXN / 30) * diasPeriodo
-    const asigs = asignLic.filter(a => a.licencia_id === lic.id)
-
-    data.push({
-      categoria: 'Licencia',
-      descripcion: lic.nombre,
-      serie_licencia: lic.clave_licencia || '',
-      asignado_a: asigs.length > 0 ? `${asigs.length} usuario(s)` : 'Sin asignar',
-      tipo_asignacion: 'licencia',
-      centro_costo: '',
-      costo_unitario: parseFloat(mensualMXN.toFixed(2)),
-      unidad: 'mes',
-      cantidad: parseFloat((diasPeriodo / 30).toFixed(2)),
-      total_mxn: parseFloat(costoPeriodo.toFixed(2))
-    })
+  const meses = []
+  for (let i = numMeses - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+    meses.push({ mes: d.getMonth() + 1, anio: d.getFullYear() })
   }
 
-  const total = data.reduce((s, g) => s + g.total_mxn, 0)
-  res.json({
-    titulo: 'Reporte de Gastos TI',
-    generado: hoyStr(),
-    periodo: { fecha_inicio: fechaInicio, fecha_fin: fechaFin },
-    total_mxn: parseFloat(total.toFixed(2)),
-    total: data.length,
-    data
+  const result = meses.map(({ mes, anio }) => {
+    let items = db.get('finanzas_detalle').filter(d => d.mes === mes && d.anio === anio).value()
+
+    if (empIds !== null) {
+      items = items.filter(d => {
+        if (d.empleado_id) return empIds.has(d.empleado_id)
+        // Sin empleado_id → coincidir si algún token aparece en el CC del registro
+        if (ccSet && ccSet.size > 0) {
+          const dCC = normalize([d.centro_costo_codigo, d.centro_costo_nombre].filter(Boolean).join(' '))
+          for (const token of ccSet) {
+            if (token && dCC.includes(token)) return true
+          }
+        }
+        return false
+      })
+    }
+
+    const servicios = items.reduce((s, d) => s + (d.total_mxn != null ? parseFloat(d.total_mxn)||0 : parseFloat(d.total)||0), 0)
+
+    return {
+      mes, anio,
+      label: `${MESES_ABREV[mes-1]} ${String(anio).slice(2)}`,
+      servicios: parseFloat(servicios.toFixed(2)),
+      total: parseFloat(servicios.toFixed(2))
+    }
   })
+
+  res.json(result)
 })
 
 module.exports = router

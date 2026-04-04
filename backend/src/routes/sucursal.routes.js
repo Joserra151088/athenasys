@@ -66,11 +66,12 @@ router.get('/', (req, res) => {
 
   if (tipo) items = items.filter(s => s.tipo === tipo)
   if (search) {
-    const q = search.toLowerCase()
+    const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+    const q = normalizeStr(search)
     items = items.filter(s =>
-      s.nombre?.toLowerCase().includes(q) ||
-      s.estado?.toLowerCase().includes(q) ||
-      s.direccion?.toLowerCase().includes(q)
+      normalizeStr(s.nombre).includes(q) ||
+      normalizeStr(s.estado).includes(q) ||
+      normalizeStr(s.direccion).includes(q)
     )
   }
 
@@ -87,13 +88,15 @@ router.get('/:id', (req, res) => {
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'sucursal'), (req, res) => {
-  const { nombre, tipo, direccion, estado, lat, lng, centro_costos, centro_costo_codigo, centro_costo_nombre } = req.body
+  const { nombre, tipo, direccion, estado, lat, lng, email, determinante, centro_costos, centro_costo_codigo, centro_costo_nombre } = req.body
   if (!nombre || !tipo) return res.status(400).json({ message: 'Nombre y tipo son requeridos' })
 
   const now = new Date().toISOString()
   const item = {
     id: uuidv4(), nombre, tipo, direccion: direccion || '',
     estado: estado || '', lat: parseFloat(lat) || null, lng: parseFloat(lng) || null,
+    email: email || null,
+    determinante: determinante !== undefined && determinante !== '' ? parseInt(determinante) : null,
     centro_costos: centro_costos || centro_costo_codigo || null,
     centro_costo_codigo: centro_costo_codigo || null,
     centro_costo_nombre: centro_costo_nombre || null,

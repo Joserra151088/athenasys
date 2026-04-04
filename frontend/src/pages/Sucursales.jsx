@@ -10,7 +10,7 @@ import Badge from '../components/Badge'
 import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
-const EMPTY = { nombre: '', tipo: 'sucursal', direccion: '', estado: '', lat: '', lng: '', centro_costos: '', centro_costo_codigo: '', centro_costo_nombre: '' }
+const EMPTY = { nombre: '', tipo: 'sucursal', direccion: '', estado: '', lat: '', lng: '', email: '', centro_costos: '', centro_costo_codigo: '', centro_costo_nombre: '', determinante: '' }
 
 const ESTADOS_MX = ['Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua', 'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Guanajuato', 'Guerrero', 'Hidalgo', 'Jalisco', 'Estado de México', 'Michoacán', 'Morelos', 'Nayarit', 'Nuevo León', 'Oaxaca', 'Puebla', 'Querétaro', 'Quintana Roo', 'San Luis Potosí', 'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas']
 
@@ -126,7 +126,9 @@ export default function Sucursales() {
       estado: s.estado || '', lat: s.lat || '', lng: s.lng || '',
       centro_costos: s.centro_costos || '',
       centro_costo_codigo: s.centro_costo_codigo || '',
-      centro_costo_nombre: s.centro_costo_nombre || ''
+      centro_costo_nombre: s.centro_costo_nombre || '',
+      determinante: s.determinante ?? '',
+      email: s.email || ''
     })
     setModal(true)
   }
@@ -197,6 +199,8 @@ export default function Sucursales() {
                 <th className="table-header">Nombre</th>
                 <th className="table-header">Tipo</th>
                 <th className="table-header">Estado</th>
+                <th className="table-header text-right">Determinante</th>
+                <th className="table-header">Correo</th>
                 <th className="table-header">Centro de Costos</th>
                 <th className="table-header">Dirección</th>
                 <th className="table-header">Acciones</th>
@@ -204,9 +208,9 @@ export default function Sucursales() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={6} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
+                <tr><td colSpan={8} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
               ) : sucursales.length === 0 ? (
-                <tr><td colSpan={6} className="py-12 text-center text-gray-400">No se encontraron sucursales</td></tr>
+                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No se encontraron sucursales</td></tr>
               ) : sucursales.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="table-cell">
@@ -221,6 +225,10 @@ export default function Sucursales() {
                     <Badge {...(RECORD_TYPES[s.tipo] || { label: s.tipo, color: 'bg-gray-100 text-gray-600' })} />
                   </td>
                   <td className="table-cell text-sm">{s.estado || '—'}</td>
+                  <td className="table-cell text-right font-mono text-sm">
+                    {s.determinante != null && s.determinante !== '' ? s.determinante : <span className="text-gray-300">—</span>}
+                  </td>
+                  <td className="table-cell text-xs text-gray-500">{s.email || <span className="text-gray-300">—</span>}</td>
                   <td className="table-cell">
                     {s.centro_costo_codigo ? (
                       <div>
@@ -273,6 +281,27 @@ export default function Sucursales() {
             <div>
               <label className="label">Dirección</label>
               <input className="input" value={form.direccion} onChange={e => setForm(f => ({ ...f, direccion: e.target.value }))} />
+            </div>
+            <div>
+              <label className="label">Determinante</label>
+              <input
+                type="number"
+                className="input"
+                placeholder="Ej. 1234"
+                value={form.determinante}
+                onChange={e => setForm(f => ({ ...f, determinante: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Correo electrónico</label>
+              <input
+                type="email"
+                className="input"
+                placeholder="sucursal@empresa.com"
+                value={form.email}
+                onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              />
+              <p className="text-xs text-gray-400 mt-0.5">Se asignará automáticamente a los empleados de esta sucursal</p>
             </div>
             <div className="col-span-2">
               <label className="label">Centro de Costos</label>
