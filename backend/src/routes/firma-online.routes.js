@@ -16,6 +16,11 @@ const { v4: uuidv4 } = require('uuid')
 const db       = require('../data/db')
 const { authMiddleware } = require('../middleware/auth.middleware')
 
+let s3 = null
+let emailSvc = null
+try { s3 = require('../services/s3.service') } catch (_) {}
+try { emailSvc = require('../services/email.service') } catch (_) {}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const EXPIRY_HOURS = 72
 
@@ -41,7 +46,7 @@ function getLocalIP() {
 }
 
 // ── POST /api/firma-online/solicitar  (requiere auth) ────────────────────────
-router.post('/solicitar', authMiddleware, (req, res) => {
+router.post('/solicitar', authMiddleware, async (req, res) => {
   try {
     const { documento_id } = req.body
     if (!documento_id) return res.status(400).json({ message: 'documento_id requerido' })
@@ -85,7 +90,31 @@ router.post('/solicitar', authMiddleware, (req, res) => {
     const baseURL   = process.env.PUBLIC_URL || `http://${localIP}:${frontPort}`
     const signingURL = `${baseURL}/firmar/${token}`
 
-    res.json({ token, url: signingURL, expires_at, local_ip: localIP })
+    // ── Enviar correo al receptor si tiene email ──────────────────────────
+    let emailEnviado = false
+    const { receptor_email } = req.body
+    const emailDestino = receptor_email ||
+      (doc.receptor_id ? db.get('empleados').find({ id: doc.receptor_id }).value()?.email : null) ||
+      doc.entidad_email || null
+
+    if (emailSvc && emailDestino) {
+      try {
+        await emailSvc.enviarLinkFirma({
+          receptor_email:  emailDestino,
+          receptor_nombre: doc.receptor_nombre || doc.entidad_nombre,
+          agente_nombre:   req.user.nombre,
+          folio:           doc.folio,
+          tipo:            doc.tipo,
+          url:             signingURL,
+          expires_at,
+        })
+        emailEnviado = true
+      } catch (emailErr) {
+        console.error('[FirmaOnline] Error enviando correo:', emailErr.message)
+      }
+    }
+
+    res.json({ token, url: signingURL, expires_at, local_ip: localIP, email_enviado: emailEnviado, email_destino: emailDestino })
   } catch (e) {
     console.error('[FirmaOnline] Error en /solicitar:', e.message)
     res.status(500).json({ message: 'Error generando token de firma: ' + e.message })
@@ -166,7 +195,7 @@ router.get('/:token', (req, res) => {
 })
 
 // ── POST /api/firma-online/:token/firmar  (PÚBLICO) ──────────────────────────
-router.post('/:token/firmar', (req, res) => {
+router.post('/:token/firmar', async (req, res) => {
   try {
     const { token } = req.params
     const { firma_receptor, pdf_base64 } = req.body
@@ -202,26 +231,39 @@ router.post('/:token/firmar', (req, res) => {
       updated_at:          now,
     }
 
-    let pdfSaveInfo = { success: false, path: null }
+    let pdfSaveInfo = { success: false, path: null, s3_url: null }
     if (pdf_base64) {
+      const rawBase64 = pdf_base64.replace(/^data:[^,]+,/, '')
+      const pdfBuffer = Buffer.from(rawBase64, 'base64')
+      const safeName  = `${doc.folio}_${(doc.entidad_nombre || 'doc').replace(/[\\/:*?"<>|]/g, '_')}.pdf`
+
+      // ── Subir a S3 ───────────────────────────────────────────────────────
+      if (s3) {
+        try {
+          const s3Key = `${doc.tipo}/${safeName}`
+          const s3Url = await s3.uploadPDF(pdfBuffer, s3Key)
+          docUpdates.s3_pdf_url = s3Url
+          docUpdates.s3_pdf_key = s3Key
+          pdfSaveInfo = { success: true, s3_url: s3Url }
+          console.log(`[S3] PDF subido: ${s3Url}`)
+        } catch (s3Err) {
+          console.error('[S3] Error subiendo PDF:', s3Err.message)
+        }
+      }
+
+      // ── Guardar localmente como respaldo ──────────────────────────────────
       try {
         const localCfg      = db.get('configuracion').find({ clave: 'docs_local_path' }).value()
         const localDocsPath = (localCfg?.valor || process.env.LOCAL_DOCS_PATH || '').trim()
         if (localDocsPath) {
-          const rawBase64 = pdf_base64.replace(/^data:[^,]+,/, '')
-          const pdfBuffer = Buffer.from(rawBase64, 'base64')
           const subfolder = path.join(path.normalize(localDocsPath), doc.tipo)
           if (!fs.existsSync(subfolder)) fs.mkdirSync(subfolder, { recursive: true })
-          const safeName  = `${doc.folio}_${(doc.entidad_nombre || 'doc').replace(/[\\/:*?"<>|]/g, '_')}.pdf`
           const fullPath  = path.normalize(path.join(subfolder, safeName))
           fs.writeFileSync(fullPath, pdfBuffer)
-          if (fs.existsSync(fullPath)) {
-            docUpdates.local_pdf_path = fullPath
-            pdfSaveInfo = { success: true, path: fullPath }
-          }
+          if (fs.existsSync(fullPath)) docUpdates.local_pdf_path = fullPath
         }
       } catch (pdfErr) {
-        console.error('[FirmaOnline] Error guardando PDF:', pdfErr.message)
+        console.error('[FirmaOnline] Error guardando PDF local:', pdfErr.message)
       }
     }
 

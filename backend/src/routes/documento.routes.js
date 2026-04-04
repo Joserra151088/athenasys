@@ -6,8 +6,7 @@ const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
 
-// SharePoint — carga condicional: si no hay credenciales configuradas el módulo
-// simplemente se deshabilita y los documentos se guardan solo localmente.
+// SharePoint — carga condicional
 let sp = null
 try {
   sp = require('../services/sharepoint.service')
@@ -15,6 +14,12 @@ try {
 } catch (_) { sp = null }
 
 const SP_ENABLED = !!sp
+
+// S3 — carga condicional
+let s3 = null
+try {
+  if (process.env.AWS_ACCESS_KEY_ID) s3 = require('../services/s3.service')
+} catch (_) { s3 = null }
 
 router.use(authMiddleware)
 
@@ -146,27 +151,34 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     sharepoint_uploaded_at:  null,
   }
 
-  // ── Subir PDF a SharePoint (si viene en el body y SP está configurado) ──────
-  if (SP_ENABLED && req.body.pdf_base64) {
-    try {
-      // Usar regex robusto: jsPDF añade "filename=..." al data URI → /^data:[^,]+,/ captura todo antes de la coma
-      const pdfBuffer = Buffer.from(
-        req.body.pdf_base64.replace(/^data:[^,]+,/, ''),
-        'base64'
-      )
-      const safeName = `${doc.folio}_${doc.entidad_nombre.replace(/\s+/g, '_')}.pdf`
-      const subfolder = doc.tipo  // 'entrada' | 'salida' | 'responsiva'
+  if (req.body.pdf_base64) {
+    const pdfBuffer = Buffer.from(req.body.pdf_base64.replace(/^data:[^,]+,/, ''), 'base64')
+    const safeName  = `${doc.folio}_${doc.entidad_nombre.replace(/[\\/:*?"<>|]/g, '_')}.pdf`
 
-      const spFile = await sp.uploadFile(pdfBuffer, safeName, subfolder)
+    // ── Subir a S3 ─────────────────────────────────────────────────────────
+    if (s3) {
+      try {
+        const s3Key = `${doc.tipo}/${safeName}`
+        const s3Url = await s3.uploadPDF(pdfBuffer, s3Key)
+        updated.s3_pdf_url = s3Url
+        updated.s3_pdf_key = s3Key
+        console.log(`[S3] ✓ Documento subido: ${s3Url}`)
+      } catch (s3Err) {
+        console.error('[S3] Error al subir documento:', s3Err.message)
+      }
+    }
 
-      updated.sharepoint_item_id     = spFile.id
-      updated.sharepoint_url         = spFile.webUrl
-      updated.sharepoint_uploaded_at = now
-
-      console.log(`[SharePoint] ✓ Documento subido: ${spFile.webUrl}`)
-    } catch (spErr) {
-      // No bloquear la firma si SP falla — solo registrar
-      console.error('[SharePoint] Error al subir documento:', spErr.message)
+    // ── Subir a SharePoint (si está configurado) ────────────────────────────
+    if (SP_ENABLED) {
+      try {
+        const spFile = await sp.uploadFile(pdfBuffer, safeName, doc.tipo)
+        updated.sharepoint_item_id     = spFile.id
+        updated.sharepoint_url         = spFile.webUrl
+        updated.sharepoint_uploaded_at = now
+        console.log(`[SharePoint] ✓ Documento subido: ${spFile.webUrl}`)
+      } catch (spErr) {
+        console.error('[SharePoint] Error al subir documento:', spErr.message)
+      }
     }
   }
 
