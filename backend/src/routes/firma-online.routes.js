@@ -55,6 +55,21 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
     if (doc.firmado) return res.status(400).json({ message: 'El documento ya está completamente firmado' })
 
+    // Verificar que el agente tiene firma registrada
+    const agentUser = db.get('usuarios_sistema').find({ id: req.user.id }).value()
+    if (!agentUser?.firma_base64) {
+      return res.status(400).json({
+        message: 'Debes registrar tu firma digital antes de enviar documentos para firma. Ve a tu perfil de usuario y agrega tu firma.',
+        code: 'SIN_FIRMA_AGENTE'
+      })
+    }
+
+    // Guardar firma del agente en el documento
+    db.get('documentos').find({ id: documento_id }).assign({
+      firma_agente: agentUser.firma_base64,
+      updated_at: new Date().toISOString()
+    }).write()
+
     // Cancelar token anterior pendiente si existe
     const tokenAnterior = db.get('firma_tokens').find({ documento_id, estado: 'pendiente' }).value()
     if (tokenAnterior) {
@@ -240,7 +255,7 @@ router.post('/:token/firmar', async (req, res) => {
       // ── Subir a S3 ───────────────────────────────────────────────────────
       if (s3) {
         try {
-          const s3Key = `${doc.tipo}/${safeName}`
+          const s3Key = `${s3.getFolder(doc.tipo)}/${safeName}`
           const s3Url = await s3.uploadPDF(pdfBuffer, s3Key)
           docUpdates.s3_pdf_url = s3Url
           docUpdates.s3_pdf_key = s3Key

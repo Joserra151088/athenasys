@@ -227,47 +227,37 @@ export default function UsuariosSistema() {
         )}
       </div>
 
-      {/* ── Carpeta local para PDFs ───────────────────────────────────────── */}
+      {/* ── Almacenamiento de Documentos en S3 ───────────────────────────── */}
       <div className="card space-y-4">
         <div>
-          <h2 className="font-semibold text-gray-900 flex items-center gap-2"><FolderIcon className="h-5 w-5 text-primary-600" /> Carpeta de Documentos Firmados</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Ruta local donde se guardan automáticamente los PDFs al firmar. Se crean subcarpetas <span className="font-mono">entrada/</span>, <span className="font-mono">salida/</span> y <span className="font-mono">responsiva/</span>.</p>
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <FolderIcon className="h-5 w-5 text-primary-600" /> Almacenamiento de Documentos Firmados
+          </h2>
+          <p className="text-xs text-gray-500 mt-0.5">Los PDFs firmados se guardan automáticamente en Amazon S3. Se organizan en carpetas por tipo de documento.</p>
         </div>
-        <div className="flex gap-2 items-center">
-          <input
-            className="input flex-1 font-mono text-sm"
-            placeholder="Ej: C:\jestrada\Documentos\AthenaSys"
-            value={docsPathInput}
-            onChange={e => setDocsPathInput(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-secondary text-sm flex items-center gap-1.5 flex-shrink-0"
-            onClick={handleBrowseFolder}
-            disabled={folderBrowsing}
-            title="Abrir explorador de carpetas"
-          >
-            <FolderOpenIcon className="h-4 w-4" />
-            {folderBrowsing ? 'Abriendo...' : 'Explorar'}
-          </button>
-          <button
-            className="btn-primary text-sm flex items-center gap-1.5 flex-shrink-0"
-            onClick={handleSaveDocsPath}
-            disabled={docsPathSaving}
-          >
-            {docsPathSaved ? <><CheckIcon className="h-4 w-4" /> Guardado</> : docsPathSaving ? 'Guardando...' : <><CheckIcon className="h-4 w-4" /> Guardar</>}
-          </button>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-semibold px-2.5 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span> Activo
+            </span>
+            <span className="text-sm font-medium text-blue-900">Amazon S3 — athenasys-documentos</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 mt-2">
+            {[
+              { label: 'Entradas', folder: 'Entradas/' },
+              { label: 'Salidas', folder: 'Salidas/' },
+              { label: 'Responsivas', folder: 'Responsivas/' },
+            ].map(({ label, folder }) => (
+              <div key={folder} className="bg-white border border-blue-100 rounded-lg px-3 py-2 text-center">
+                <p className="text-xs text-gray-500">📁 {label}</p>
+                <p className="text-xs font-mono text-blue-700 mt-0.5">{folder}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-blue-700 mt-1">
+            Bucket: <span className="font-mono font-semibold">athenasys-documentos</span> · Región: <span className="font-mono">us-east-2</span>
+          </p>
         </div>
-        {docsPath && (
-          <div className="text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2">
-            📁 PDFs actualmente se guardan en: <span className="font-mono text-gray-700">{docsPath}</span>
-          </div>
-        )}
-        {!docsPath && (
-          <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-            ⚠️ No hay carpeta configurada. Los PDFs no se guardarán localmente al firmar.
-          </div>
-        )}
       </div>
 
       {/* ── Sincronización de base de datos ── */}

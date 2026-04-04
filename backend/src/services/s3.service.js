@@ -10,6 +10,18 @@ const s3 = new S3Client({
 
 const BUCKET = process.env.S3_BUCKET || 'athenasys-documentos'
 
+// Mapeo de tipo de documento a carpeta en S3
+const S3_FOLDERS = {
+  entrada:   'Entradas',
+  salida:    'Salidas',
+  responsiva: 'Responsivas',
+}
+
+/** Devuelve la carpeta S3 según el tipo de documento */
+function getFolder(tipo) {
+  return S3_FOLDERS[tipo] || tipo
+}
+
 /**
  * Sube un PDF a S3
  * @param {Buffer} buffer  - Contenido del archivo
@@ -36,4 +48,4 @@ async function deleteFile(key) {
   await s3.send(command)
 }
 
-module.exports = { uploadPDF, deleteFile }
+module.exports = { uploadPDF, deleteFile, getFolder }

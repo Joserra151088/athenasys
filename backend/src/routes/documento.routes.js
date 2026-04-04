@@ -158,7 +158,7 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     // ── Subir a S3 ─────────────────────────────────────────────────────────
     if (s3) {
       try {
-        const s3Key = `${doc.tipo}/${safeName}`
+        const s3Key = `${s3.getFolder(doc.tipo)}/${safeName}`
         const s3Url = await s3.uploadPDF(pdfBuffer, s3Key)
         updated.s3_pdf_url = s3Url
         updated.s3_pdf_key = s3Key

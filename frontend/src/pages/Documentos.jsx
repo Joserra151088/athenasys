@@ -84,10 +84,14 @@ export default function Documentos() {
     setEnviandoLink(true)
     try {
       const result = await firmaOnlineAPI.solicitar(doc.id)
-      setFirmaLink({ url: result.url, expires_at: result.expires_at, token: result.token, doc })
+      setFirmaLink({ url: result.url, expires_at: result.expires_at, token: result.token, doc, email_enviado: result.email_enviado, email_destino: result.email_destino })
       setModal('firmaLink')
     } catch (err) {
-      showError(err?.message || 'Error generando link de firma')
+      if (err?.response?.data?.code === 'SIN_FIRMA_AGENTE' || err?.message?.includes('firma digital')) {
+        showError('Debes registrar tu firma digital antes de enviar documentos. Ve a Usuarios del Sistema → tu perfil → agrega tu firma.', 'Firma requerida')
+      } else {
+        showError(err?.message || 'Error generando link de firma')
+      }
     } finally {
       setEnviandoLink(false)
     }
@@ -109,6 +113,8 @@ export default function Documentos() {
   const [dispositivos, setDispositivos] = useState([])
   const [entidadSearch, setEntidadSearch] = useState('')
   const [showEntidadDrop, setShowEntidadDrop] = useState(false)
+  const [receptorSearch, setReceptorSearch] = useState('')
+  const [showReceptorDrop, setShowReceptorDrop] = useState(false)
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -713,17 +719,56 @@ export default function Documentos() {
                 )
               })()}
             </div>
-            {form.tipo === 'responsiva' && (
-              <div className="col-span-2">
-                <label className="label">Persona que recibe *</label>
-                <select className="input" value={form.receptor_id} onChange={e => setForm(f => ({ ...f, receptor_id: e.target.value }))}>
-                  <option value="">Seleccionar empleado receptor...</option>
-                  {[...empleados].sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es')).map(e => (
-                    <option key={e.id} value={e.id}>{e.nombre_completo} — {e.num_empleado}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            {form.tipo === 'responsiva' && (() => {
+              const receptorSeleccionado = empleados.find(e => e.id === form.receptor_id)
+              const filteredReceptores = empleados.filter(e =>
+                !receptorSearch ||
+                (e.nombre_completo || '').toLowerCase().includes(receptorSearch.toLowerCase()) ||
+                (e.num_empleado || '').toLowerCase().includes(receptorSearch.toLowerCase())
+              )
+              return (
+                <div className="col-span-2">
+                  <label className="label">Persona que recibe *</label>
+                  <div className="relative">
+                    <input
+                      className="input w-full"
+                      placeholder="Buscar empleado receptor..."
+                      value={receptorSeleccionado ? `${receptorSeleccionado.nombre_completo} — ${receptorSeleccionado.num_empleado || ''}` : receptorSearch}
+                      onChange={e => {
+                        setReceptorSearch(e.target.value)
+                        setForm(f => ({ ...f, receptor_id: '' }))
+                        setShowReceptorDrop(true)
+                      }}
+                      onFocus={() => setShowReceptorDrop(true)}
+                      onBlur={() => setTimeout(() => setShowReceptorDrop(false), 150)}
+                    />
+                    {showReceptorDrop && filteredReceptores.length > 0 && (
+                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 max-h-48 overflow-y-auto">
+                        {filteredReceptores.map(e => (
+                          <div
+                            key={e.id}
+                            className="flex items-center justify-between px-3 py-2 hover:bg-primary-50 cursor-pointer text-sm"
+                            onMouseDown={() => {
+                              setForm(f => ({ ...f, receptor_id: e.id }))
+                              setReceptorSearch('')
+                              setShowReceptorDrop(false)
+                            }}
+                          >
+                            <span className="text-gray-800">{e.nombre_completo}</span>
+                            {e.num_empleado && <span className="ml-2 text-xs text-gray-400 font-mono">{e.num_empleado}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {showReceptorDrop && filteredReceptores.length === 0 && (
+                      <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-lg shadow-xl mt-1 px-3 py-3 text-sm text-gray-400">
+                        No se encontraron resultados
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           <div>
