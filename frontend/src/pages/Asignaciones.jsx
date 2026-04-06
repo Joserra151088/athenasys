@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { asignacionAPI, deviceAPI, empleadoAPI, sucursalAPI } from '../utils/api'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
@@ -33,6 +33,8 @@ export default function Asignaciones() {
   const [loadingDev, setLoadingDev] = useState(false)
   const [searchDev, setSearchDev] = useState('')
   const [searchDest, setSearchDest] = useState('')
+  const [loadingDest, setLoadingDest] = useState(false)
+  const searchDestTimer = useRef(null)
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -46,6 +48,20 @@ export default function Asignaciones() {
 
   useEffect(() => { load(1) }, [load])
 
+  const fetchDestinatarios = useCallback(async (tipo, search = '') => {
+    setLoadingDest(true)
+    try {
+      const params = { limit: 9999 }
+      if (search) params.search = search
+      const res = tipo === 'empleado'
+        ? await empleadoAPI.getAll(params)
+        : await sucursalAPI.getAll(params)
+      setDestinatarios(res.data)
+    } finally {
+      setLoadingDest(false)
+    }
+  }, [])
+
   const openModal = async () => {
     setStep(1)
     setTipoAsignacion('empleado')
@@ -55,12 +71,11 @@ export default function Asignaciones() {
     setSearchDev('')
     setSearchDest('')
     setLoadingDev(true)
-    const [devs, emps] = await Promise.all([
+    const [devs] = await Promise.all([
       deviceAPI.getAll({ ubicacion_tipo: 'almacen', estado: 'stock', limit: 100 }),
-      empleadoAPI.getAll({ limit: 200 })
+      fetchDestinatarios('empleado')
     ])
     setDispositivosDisponibles(devs.data)
-    setDestinatarios(emps.data)
     setLoadingDev(false)
     setModal(true)
   }
@@ -68,12 +83,16 @@ export default function Asignaciones() {
   const changeTipo = async (tipo) => {
     setTipoAsignacion(tipo)
     setSelectedDest('')
-    setLoadingDev(true)
-    const res = tipo === 'empleado'
-      ? await empleadoAPI.getAll({ limit: 200 })
-      : await sucursalAPI.getAll({ limit: 300 })
-    setDestinatarios(tipo === 'empleado' ? res.data : res.data)
-    setLoadingDev(false)
+    setSearchDest('')
+    fetchDestinatarios(tipo)
+  }
+
+  const handleSearchDest = (value) => {
+    setSearchDest(value)
+    if (searchDestTimer.current) clearTimeout(searchDestTimer.current)
+    searchDestTimer.current = setTimeout(() => {
+      fetchDestinatarios(tipoAsignacion, value)
+    }, 300)
   }
 
   const handleSave = async () => {
@@ -100,11 +119,7 @@ export default function Asignaciones() {
     d.marca?.toLowerCase().includes(searchDev.toLowerCase())
   )
 
-  const filteredDest = destinatarios.filter(d => {
-    if (!searchDest) return true
-    const q = searchDest.toLowerCase()
-    return (d.nombre_completo || d.nombre)?.toLowerCase().includes(q)
-  })
+  const filteredDest = destinatarios
 
   return (
     <div className="space-y-5">
@@ -223,9 +238,11 @@ export default function Asignaciones() {
             {/* Destinatario */}
             <div>
               <label className="label">{tipoAsignacion === 'empleado' ? 'Empleado' : 'Sucursal'}</label>
-              <input className="input mb-2" placeholder="Buscar..." value={searchDest} onChange={e => setSearchDest(e.target.value)} />
+              <input className="input mb-2" placeholder="Buscar..." value={searchDest} onChange={e => handleSearchDest(e.target.value)} />
               <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-64">
-                {filteredDest.map(d => (
+                {loadingDest ? <div className="p-4 text-center text-gray-400 text-sm">Cargando...</div> :
+                filteredDest.length === 0 ? <div className="p-4 text-center text-gray-400 text-sm">Sin resultados</div> :
+                filteredDest.map(d => (
                   <label key={d.id} className={`flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 ${selectedDest === d.id ? 'bg-primary-50' : ''}`}>
                     <input type="radio" name="dest" value={d.id}
                       checked={selectedDest === d.id}
@@ -236,7 +253,8 @@ export default function Asignaciones() {
                       <div className="text-xs text-gray-400">{d.num_empleado || d.estado || ''}</div>
                     </div>
                   </label>
-                ))}
+                ))
+                }
               </div>
             </div>
           </div>
