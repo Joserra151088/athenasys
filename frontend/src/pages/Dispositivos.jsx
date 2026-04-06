@@ -13,7 +13,50 @@ import {
 } from '@heroicons/react/24/outline'
 
 const TIPOS_SIN_SERIE = ['Mouse', 'Teclado']
-const EMPTY_FORM = { tipo: '', marca: '', serie: '', modelo: '', cantidad: 1, proveedor_id: '', caracteristicas: '', costo_dia: '' }
+
+// Tipos sin costo mensual (pertenecen a la empresa)
+const TIPOS_SIN_COSTO = ['Mouse', 'Teclado', 'TP-Link', 'Biométrico']
+// Tipos con costo único (no mensual)
+const TIPOS_COSTO_UNICO = ['Cámara Web', 'Diadema']
+
+// Configuración de campos extra por tipo de dispositivo
+const CAMPOS_POR_TIPO = {
+  'Laptop': [
+    { key: 'procesador',    label: 'Procesador',              type: 'text',   placeholder: 'Intel Core i7-1165G7, AMD Ryzen 5...' },
+    { key: 'ram',           label: 'Memoria RAM',             type: 'text',   placeholder: '8 GB, 16 GB, 32 GB...' },
+    { key: 'sistema_op',    label: 'Sistema operativo',       type: 'text',   placeholder: 'Windows 11 Pro, macOS Ventura...' },
+    { key: 'pantalla',      label: 'Tamaño de pantalla',      type: 'text',   placeholder: '14", 15.6", 13.3"...' },
+    { key: 'tipo_disco',    label: 'Tipo de almacenamiento',  type: 'select', options: ['SSD', 'HDD', 'NVMe'] },
+    { key: 'almacenamiento',label: 'Capacidad de almacenamiento', type: 'text', placeholder: '256 GB, 512 GB, 1 TB...' },
+  ],
+  'CPU': [
+    { key: 'procesador',    label: 'Procesador',        type: 'text', placeholder: 'Intel Core i5-10400, AMD Ryzen 7...' },
+    { key: 'ram',           label: 'Memoria RAM',       type: 'text', placeholder: '8 GB, 16 GB...' },
+    { key: 'sistema_op',    label: 'Sistema operativo', type: 'text', placeholder: 'Windows 10 Pro, Windows 11...' },
+  ],
+  'Monitor': [
+    { key: 'pantalla',      label: 'Tamaño de pantalla', type: 'text', placeholder: '24", 27", 32"...' },
+  ],
+  'Tablet': [
+    { key: 'procesador',     label: 'Procesador',                  type: 'text', placeholder: 'Apple M1, Snapdragon 865...' },
+    { key: 'ram',            label: 'Memoria RAM',                 type: 'text', placeholder: '4 GB, 8 GB...' },
+    { key: 'almacenamiento', label: 'Capacidad de almacenamiento', type: 'text', placeholder: '64 GB, 128 GB...' },
+    { key: 'sistema_op',     label: 'Sistema operativo',           type: 'text', placeholder: 'iPadOS 16, Android 13...' },
+  ],
+  'Módem de Internet_Telmex': [
+    { key: 'paquete',        label: 'Nombre del paquete contratado', type: 'text', placeholder: 'Infinitum 300 MB...' },
+    { key: 'telefono',       label: 'Número de teléfono',            type: 'text', placeholder: '55 1234 5678' },
+    { key: 'ancho_banda',    label: 'Ancho de banda contratado',     type: 'text', placeholder: '300 Mbps, 500 Mbps...' },
+  ],
+  'Módem de Internet_Telcel': [
+    { key: 'plan',           label: 'Nombre del plan contratado', type: 'text', placeholder: 'Plan Plus 50 GB...' },
+    { key: 'imei',           label: 'IMEI',                       type: 'text', placeholder: '123456789012345' },
+    { key: 'sim',            label: 'SIM',                        type: 'text', placeholder: '8952140...' },
+    { key: 'telefono',       label: 'Número de teléfono',         type: 'text', placeholder: '55 1234 5678' },
+  ],
+}
+
+const EMPTY_FORM = { tipo: '', marca: '', serie: '', modelo: '', cantidad: 1, proveedor_id: '', caracteristicas: '', costo_dia: '', campos_extra: {}, costo_tipo: 'mensual' }
 
 // Muestra costo con estilo según tipo de tarifa
 function CostoBadge({ tipo, costo }) {
@@ -110,10 +153,43 @@ export default function Dispositivos() {
     catalogosAPI.tiposDispositivo.getAll().then(r => setTiposDispositivo(r.map(t => t.nombre || t.valor || t)))
   }, [])
 
+  // Detecta qué campos extra mostrar según tipo y proveedor (para módem)
+  const getCamposExtra = () => {
+    if (!form.tipo) return []
+    if (form.tipo === 'Módem de Internet') {
+      const prov = proveedores.find(p => p.id === form.proveedor_id)
+      const nombre = (prov?.nombre || '').toLowerCase()
+      if (nombre.includes('telmex')) return CAMPOS_POR_TIPO['Módem de Internet_Telmex'] || []
+      if (nombre.includes('telcel')) return CAMPOS_POR_TIPO['Módem de Internet_Telcel'] || []
+      return []
+    }
+    return CAMPOS_POR_TIPO[form.tipo] || []
+  }
+
+  // Determina costo_tipo según el tipo de dispositivo seleccionado
+  const getCostoTipo = (tipo) => {
+    if (TIPOS_SIN_COSTO.includes(tipo)) return 'sin_costo'
+    if (TIPOS_COSTO_UNICO.includes(tipo)) return 'unico'
+    return 'mensual'
+  }
+
+  const handleTipoChange = (tipo) => {
+    const costo_tipo = getCostoTipo(tipo)
+    const costo_dia = costo_tipo === 'sin_costo' ? 0 : ''
+    setForm(f => ({ ...f, tipo, campos_extra: {}, costo_tipo, costo_dia }))
+  }
+
   const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setModal(true) }
   const openEdit = (d) => {
     setEditing(d)
-    setForm({ tipo: d.tipo, marca: d.marca, serie: d.serie || '', modelo: d.modelo || '', cantidad: d.cantidad || 1, proveedor_id: d.proveedor_id || '', caracteristicas: d.caracteristicas || '', costo_dia: d.costo_dia !== undefined ? d.costo_dia : '' })
+    setForm({
+      tipo: d.tipo, marca: d.marca, serie: d.serie || '', modelo: d.modelo || '',
+      cantidad: d.cantidad || 1, proveedor_id: d.proveedor_id || '',
+      caracteristicas: d.caracteristicas || '',
+      costo_dia: d.costo_dia !== undefined ? d.costo_dia : '',
+      campos_extra: d.campos_extra || {},
+      costo_tipo: d.costo_tipo || 'mensual'
+    })
     setModal(true)
   }
 
@@ -292,11 +368,7 @@ export default function Dispositivos() {
             <div>
               <label className="label">Tipo de dispositivo *</label>
               <select className="input" required value={form.tipo}
-                onChange={e => {
-                  const t = e.target.value
-                  const rate = DEVICE_DAILY_RATES[t]
-                  setForm(f => ({ ...f, tipo: t, costo_dia: rate ? rate.costo : f.costo_dia }))
-                }}>
+                onChange={e => handleTipoChange(e.target.value)}>
                 <option value="">Seleccionar...</option>
                 {(tiposDispositivo.length > 0 ? tiposDispositivo : DEVICE_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -338,40 +410,94 @@ export default function Dispositivos() {
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
             </div>
+
+            {/* ── Campos específicos por tipo de dispositivo ── */}
+            {getCamposExtra().length > 0 && (
+              <div className="col-span-2 space-y-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide">
+                  Especificaciones — {form.tipo}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {getCamposExtra().map(campo => (
+                    <div key={campo.key} className={campo.type === 'select' ? '' : ''}>
+                      <label className="label">{campo.label}</label>
+                      {campo.type === 'select' ? (
+                        <select className="input" value={form.campos_extra[campo.key] || ''}
+                          onChange={e => setForm(f => ({ ...f, campos_extra: { ...f.campos_extra, [campo.key]: e.target.value } }))}>
+                          <option value="">Seleccionar...</option>
+                          {campo.options.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : (
+                        <input className="input" type="text" placeholder={campo.placeholder}
+                          value={form.campos_extra[campo.key] || ''}
+                          onChange={e => setForm(f => ({ ...f, campos_extra: { ...f.campos_extra, [campo.key]: e.target.value } }))} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Aviso para módem sin proveedor Telmex/Telcel seleccionado */}
+            {form.tipo === 'Módem de Internet' && getCamposExtra().length === 0 && form.proveedor_id && (
+              <div className="col-span-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                El proveedor seleccionado no es Telmex ni Telcel. Solo se guardarán los campos generales.
+              </div>
+            )}
+            {form.tipo === 'Módem de Internet' && !form.proveedor_id && (
+              <div className="col-span-2 text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                Selecciona el proveedor (Telmex o Telcel) para ver los campos específicos del módem.
+              </div>
+            )}
+
             <div className="col-span-2">
-              <label className="label">Características generales</label>
-              <textarea className="input" rows={2} placeholder="Procesador, RAM, almacenamiento, etc."
+              <label className="label">Observaciones generales</label>
+              <textarea className="input" rows={2} placeholder="Notas adicionales..."
                 value={form.caracteristicas}
                 onChange={e => setForm(f => ({ ...f, caracteristicas: e.target.value }))} />
             </div>
 
-            {/* Costo diario editable */}
-            <div>
-              <label className="label">Costo de renta / día (MXN)</label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                <input type="number" min="0" step="0.01" className="input pl-7"
-                  placeholder="0.00"
-                  value={form.costo_dia === 0 || form.costo_dia === '0' ? '0' : (form.costo_dia || '')}
-                  onChange={e => {
-                    const val = e.target.value
-                    setForm(f => ({ ...f, costo_dia: val === '' ? '' : parseFloat(val) }))
-                  }} />
+            {/* ── Costo según tipo ── */}
+            {form.costo_tipo === 'sin_costo' ? (
+              <div className="col-span-2 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-500">
+                <span className="text-lg">🏢</span>
+                <span>Este dispositivo <strong>no tiene costo mensual</strong> — pertenece a la empresa.</span>
               </div>
-              <button type="button"
-                onClick={() => setForm(f => ({ ...f, costo_dia: 0 }))}
-                className="text-xs text-gray-400 hover:text-emerald-600 mt-1 underline">
-                Sin costo (establecer en $0)
-              </button>
-              {form.tipo && DEVICE_DAILY_RATES[form.tipo] && (
-                <p className="text-xs text-gray-400 mt-1">{DEVICE_DAILY_RATES[form.tipo].nota}</p>
-              )}
-            </div>
-            <div className="flex items-end pb-1">
-              {form.tipo && DEVICE_DAILY_RATES[form.tipo] && (
-                <CostoPreview tipo={form.tipo} />
-              )}
-            </div>
+            ) : (
+              <>
+                <div>
+                  <label className="label">
+                    {form.costo_tipo === 'unico' ? 'Costo único (MXN)' : 'Costo de renta / día (MXN)'}
+                  </label>
+                  {form.costo_tipo === 'unico' && (
+                    <p className="text-xs text-blue-600 mb-1">Este costo es único, no afecta los cálculos mensuales.</p>
+                  )}
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                    <input type="number" min="0" step="0.01" className="input pl-7"
+                      placeholder="0.00"
+                      value={form.costo_dia === 0 || form.costo_dia === '0' ? '0' : (form.costo_dia || '')}
+                      onChange={e => {
+                        const val = e.target.value
+                        setForm(f => ({ ...f, costo_dia: val === '' ? '' : parseFloat(val) }))
+                      }} />
+                  </div>
+                  {form.costo_tipo === 'mensual' && (
+                    <button type="button"
+                      onClick={() => setForm(f => ({ ...f, costo_dia: 0 }))}
+                      className="text-xs text-gray-400 hover:text-emerald-600 mt-1 underline">
+                      Sin costo (establecer en $0)
+                    </button>
+                  )}
+                  {form.tipo && DEVICE_DAILY_RATES[form.tipo] && (
+                    <p className="text-xs text-gray-400 mt-1">{DEVICE_DAILY_RATES[form.tipo].nota}</p>
+                  )}
+                </div>
+                <div className="flex items-end pb-1">
+                  {form.tipo && DEVICE_DAILY_RATES[form.tipo] && <CostoPreview tipo={form.tipo} />}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-3 pt-2">

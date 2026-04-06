@@ -21,6 +21,7 @@ const JSON_FIELDS = {
   cotizaciones: ['items'],
   tarifas_equipo: ['incluye'],
   presupuesto_partidas: ['montos_por_mes'],
+  dispositivos: ['campos_extra'],
 }
 
 // ─── Store en memoria ────────────────────────────────────────────────────────
@@ -1039,6 +1040,11 @@ async function initDB() {
   // ── Firma online (envío de link al receptor) ──────────────────────────────
   await alterIfNotExists('documentos', 'firma_online_estado', "VARCHAR(20) DEFAULT NULL")
   await alterIfNotExists('documentos', 'firma_online_token',  'VARCHAR(64) DEFAULT NULL')
+  // ── Campos adicionales por tipo de dispositivo ────────────────────────────
+  await alterIfNotExists('dispositivos', 'campos_extra', 'LONGTEXT')
+  await alterIfNotExists('dispositivos', 'costo_tipo',   "VARCHAR(20) DEFAULT 'mensual'")
+  await alterIfNotExists('dispositivos', 'doc_pendiente_id',    'VARCHAR(36) DEFAULT NULL')
+  await alterIfNotExists('dispositivos', 'doc_pendiente_folio', 'VARCHAR(100) DEFAULT NULL')
   // ── Asegurar utf8mb4 en tablas principales ────────────────────────────────
   for (const tbl of ['empleados','sucursales','dispositivos','documentos','plantillas','configuracion']) {
     try {
