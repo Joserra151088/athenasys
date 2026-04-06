@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker } from 'react-leaflet'
 import { sucursalAPI, deviceAPI, empleadoAPI } from '../utils/api'
-import { LOCATION_TYPES } from '../utils/constants'
+import { LOCATION_TYPES, DEVICE_STATUS } from '../utils/constants'
 import Badge from '../components/Badge'
-import { BuildingOfficeIcon, UserIcon, ComputerDesktopIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { BuildingOfficeIcon, UserIcon, ComputerDesktopIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import L from 'leaflet'
 
 // Fix Leaflet default icon
@@ -33,6 +33,7 @@ export default function MapaInteractivo() {
   const [selectedType, setSelectedType] = useState(null)
   const [filtro, setFiltro] = useState('all')
   const [loading, setLoading] = useState(true)
+  const [mapSearch, setMapSearch] = useState('')
 
   useEffect(() => {
     Promise.all([
@@ -64,6 +65,19 @@ export default function MapaInteractivo() {
     return suc?.lat && suc?.lng
   })
 
+  // Búsqueda filtrada
+  const sucursalesFiltradas = sucursalesConCoords.filter(s =>
+    !mapSearch || s.nombre.toLowerCase().includes(mapSearch.toLowerCase()) ||
+    s.estado?.toLowerCase().includes(mapSearch.toLowerCase())
+  )
+
+  const empleadosFiltrados = empleadosConCoords.filter(e => {
+    if (!mapSearch) return true
+    const suc = sucursales.find(s => s.id === e.sucursal_id)
+    return e.nombre_completo.toLowerCase().includes(mapSearch.toLowerCase()) ||
+      suc?.nombre.toLowerCase().includes(mapSearch.toLowerCase())
+  })
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -79,17 +93,24 @@ export default function MapaInteractivo() {
       </div>
 
       {/* Filtros */}
-      <div className="flex gap-2">
-        {[
-          { k: 'all', label: 'Todo' },
-          { k: 'sucursal', label: `Sucursales (${sucursalesConCoords.length})` },
-          { k: 'empleado', label: `Empleados` }
-        ].map(f => (
-          <button key={f.k} onClick={() => setFiltro(f.k)}
-            className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition-colors ${filtro === f.k ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          {[
+            { k: 'all', label: 'Todo' },
+            { k: 'sucursal', label: `Sucursales (${sucursalesConCoords.length})` },
+            { k: 'empleado', label: `Empleados` }
+          ].map(f => (
+            <button key={f.k} onClick={() => setFiltro(f.k)}
+              className={`py-1.5 px-3 rounded-lg text-sm font-medium border transition-colors ${filtro === f.k ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative max-w-sm">
+          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input className="input pl-9 text-sm" placeholder="Buscar sucursal, empleado o dispositivo..."
+            value={mapSearch} onChange={e => setMapSearch(e.target.value)} />
+        </div>
       </div>
 
       <div className="flex gap-5 h-[600px]">
@@ -153,7 +174,41 @@ export default function MapaInteractivo() {
 
         {/* Panel lateral */}
         <div className="w-80 flex flex-col space-y-3 overflow-y-auto">
-          {selected ? (
+          {!selected ? (
+            <div className="card flex-shrink-0">
+              {mapSearch ? (
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">Resultados ({sucursalesFiltradas.length})</div>
+                  {sucursalesFiltradas.slice(0, 8).map(s => (
+                    <button key={s.id} onClick={() => selectSucursal(s)}
+                      className="w-full text-left px-2 py-1.5 hover:bg-blue-50 rounded-lg text-xs flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-teal-500 flex-shrink-0" />
+                      <div>
+                        <div className="font-medium text-gray-800">{s.nombre}</div>
+                        <div className="text-gray-400">{s.estado}</div>
+                      </div>
+                    </button>
+                  ))}
+                  {sucursalesFiltradas.length === 0 && empleadosFiltrados.slice(0, 5).map(e => (
+                    <button key={e.id} onClick={() => selectEmpleado(e)}
+                      className="w-full text-left px-2 py-1.5 hover:bg-orange-50 rounded-lg text-xs flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-orange-500 flex-shrink-0" />
+                      <div className="font-medium text-gray-800">{e.nombre_completo}</div>
+                    </button>
+                  ))}
+                  {sucursalesFiltradas.length === 0 && empleadosFiltrados.length === 0 && (
+                    <div className="text-xs text-gray-400 py-4 text-center">Sin resultados</div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center text-gray-400 text-sm py-8">
+                  <BuildingOfficeIcon className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  Selecciona una ubicación en el mapa<br/>
+                  <span className="text-xs">o busca arriba</span>
+                </div>
+              )}
+            </div>
+          ) : (
             <div className="card space-y-3 flex-shrink-0">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
@@ -172,9 +227,13 @@ export default function MapaInteractivo() {
                   <div>
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Dispositivos ({getDispositivosDeSucursal(selected.id).length})</div>
                     {getDispositivosDeSucursal(selected.id).slice(0, 8).map(d => (
-                      <div key={d.id} className="flex justify-between py-1.5 border-b border-gray-100 last:border-0 text-xs">
-                        <span>{d.tipo} — {d.marca}</span>
-                        <span className="font-mono text-gray-400">{d.serie?.substring(0, 12)}...</span>
+                      <div key={d.id} className="py-1.5 border-b border-gray-100 last:border-0">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium text-gray-700">{d.tipo} — {d.marca}</span>
+                          <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
+                        </div>
+                        {d.serie && <div className="text-xs font-mono text-gray-400 mt-0.5">{d.serie}</div>}
+                        {!d.serie && <div className="text-xs text-gray-300 mt-0.5 italic">Sin serie</div>}
                       </div>
                     ))}
                     {getDispositivosDeSucursal(selected.id).length === 0 && <div className="text-gray-400 text-xs">Sin dispositivos asignados</div>}
@@ -206,20 +265,18 @@ export default function MapaInteractivo() {
                   <div>
                     <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Dispositivos activos ({getDispositivosDeEmpleado(selected.id).length})</div>
                     {getDispositivosDeEmpleado(selected.id).map(d => (
-                      <div key={d.id} className="flex justify-between py-1.5 border-b border-gray-100 last:border-0 text-xs">
-                        <span>{d.tipo} — {d.marca}</span>
-                        <span className="font-mono text-gray-400 truncate ml-2">{d.serie}</span>
+                      <div key={d.id} className="py-1.5 border-b border-gray-100 last:border-0">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium text-gray-700">{d.tipo} — {d.marca}</span>
+                          <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
+                        </div>
+                        {d.serie && <div className="text-xs font-mono text-gray-400 mt-0.5">{d.serie}</div>}
                       </div>
                     ))}
                     {getDispositivosDeEmpleado(selected.id).length === 0 && <div className="text-gray-400 text-xs">Sin dispositivos activos</div>}
                   </div>
                 </>
               )}
-            </div>
-          ) : (
-            <div className="card text-center text-gray-400 text-sm py-8 flex-shrink-0">
-              <BuildingOfficeIcon className="h-8 w-8 mx-auto mb-2 text-gray-300" />
-              Selecciona una ubicación en el mapa
             </div>
           )}
 

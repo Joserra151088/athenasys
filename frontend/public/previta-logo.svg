@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 80">
+  <!-- Shield icon -->
+  <path d="M28 8 L44 14 L44 34 C44 46 36 56 28 60 C20 56 12 46 12 34 L12 14 Z" fill="#1a3471"/>
+  <path d="M28 18 L28 50 M18 34 L38 34" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Wordmark -->
+  <text x="56" y="35" font-family="'Segoe UI', Arial, sans-serif" font-size="26" font-weight="700" fill="#1a3471" letter-spacing="-0.5">Previta</text>
+  <text x="56" y="54" font-family="'Segoe UI', Arial, sans-serif" font-size="10" font-weight="400" fill="#64748b" letter-spacing="2">SALUD EMPRESARIAL</text>
+</svg>

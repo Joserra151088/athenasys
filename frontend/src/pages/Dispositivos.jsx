@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { deviceAPI, proveedorAPI, catalogosAPI } from '../utils/api'
 import { DEVICE_TYPES, DEVICE_STATUS, LOCATION_TYPES, DEVICE_DAILY_RATES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
@@ -8,8 +8,8 @@ import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import {
-  PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FunnelIcon,
-  CurrencyDollarIcon, CubeIcon, TagIcon
+  PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon,
+  CurrencyDollarIcon, CubeIcon, TagIcon, AdjustmentsHorizontalIcon, XMarkIcon
 } from '@heroicons/react/24/outline'
 
 const TIPOS_SIN_SERIE = ['Mouse', 'Teclado']
@@ -128,30 +128,106 @@ export default function Dispositivos() {
   const [proveedores, setProveedores] = useState([])
   const [tiposDispositivo, setTiposDispositivo] = useState([])
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
-  const [filters, setFilters] = useState({ search: '', tipo: '', estado: '', ubicacion_tipo: '' })
+  const [search, setSearch] = useState('')
+  const [filterTipo, setFilterTipo] = useState('')
+  const [filterEstado, setFilterEstado] = useState('')
+  const [filterUbicacion, setFilterUbicacion] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
-  const [showFilters, setShowFilters] = useState(false)
+
+  // Sorting
+  const [sortCol, setSortCol] = useState('')
+  const [sortDir, setSortDir] = useState('asc')
+
+  // Column visibility
+  const [visibleCols, setVisibleCols] = useState({
+    tipo: true, marca_modelo: true, serie: true, proveedor: true,
+    caracteristicas: true, costo: true, estado: true, ubicacion: true
+  })
+  const [colsMenuOpen, setColsMenuOpen] = useState(false)
+  const colsMenuRef = useRef(null)
+
+  // Column resize
+  const [colWidths, setColWidths] = useState({})
+  const resizingRef = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) setColsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const startResize = (colKey, e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = e.currentTarget.parentElement.offsetWidth
+    resizingRef.current = { colKey, startX, startWidth }
+
+    const onMove = (ev) => {
+      if (!resizingRef.current) return
+      const diff = ev.clientX - resizingRef.current.startX
+      const newWidth = Math.max(60, resizingRef.current.startWidth + diff)
+      setColWidths(w => ({ ...w, [resizingRef.current.colKey]: newWidth }))
+    }
+    const onUp = () => {
+      resizingRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const clearFilters = () => {
+    setSearch('')
+    setFilterTipo('')
+    setFilterEstado('')
+    setFilterUbicacion('')
+  }
+
+  const hasActiveFilters = search || filterTipo || filterEstado || filterUbicacion
 
   const load = useCallback((page = 1) => {
     setLoading(true)
-    const params = { page, limit: 20, ...filters }
-    Object.keys(params).forEach(k => !params[k] && delete params[k])
+    const params = { page, limit: 20 }
+    if (search) params.search = search
+    if (filterTipo) params.tipo = filterTipo
+    if (filterEstado) params.estado = filterEstado
+    if (filterUbicacion) params.ubicacion_tipo = filterUbicacion
     deviceAPI.getAll(params).then(d => {
       setDispositivos(d.data)
       setPagination({ page: d.page, pages: d.pages, total: d.total, limit: d.limit })
     }).finally(() => setLoading(false))
-  }, [filters])
+  }, [search, filterTipo, filterEstado, filterUbicacion])
 
   useEffect(() => { load(1) }, [load])
   useEffect(() => {
     proveedorAPI.getAll().then(setProveedores)
     catalogosAPI.tiposDispositivo.getAll().then(r => setTiposDispositivo(r.map(t => t.nombre || t.valor || t)))
   }, [])
+
+  // Client-side sorting
+  const sorted = [...dispositivos].sort((a, b) => {
+    if (!sortCol) return 0
+    let va = '', vb = ''
+    if (sortCol === 'tipo') { va = (a.tipo || '').toLowerCase(); vb = (b.tipo || '').toLowerCase() }
+    else if (sortCol === 'marca') { va = (a.marca || '').toLowerCase(); vb = (b.marca || '').toLowerCase() }
+    else if (sortCol === 'serie') { va = (a.serie || '').toLowerCase(); vb = (b.serie || '').toLowerCase() }
+    else if (sortCol === 'estado') { va = (a.estado || '').toLowerCase(); vb = (b.estado || '').toLowerCase() }
+    else if (sortCol === 'ubicacion') { va = (a.ubicacion_tipo || '').toLowerCase(); vb = (b.ubicacion_tipo || '').toLowerCase() }
+    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+  })
 
   // Detecta qué campos extra mostrar según tipo y proveedor (para módem)
   const getCamposExtra = () => {
@@ -217,6 +293,29 @@ export default function Dispositivos() {
     }
   }
 
+  const colLabels = {
+    tipo: 'Tipo',
+    marca_modelo: 'Marca / Modelo',
+    serie: 'Serie',
+    proveedor: 'Proveedor',
+    caracteristicas: 'Características',
+    costo: 'Costo/día',
+    estado: 'Estado',
+    ubicacion: 'Ubicación',
+  }
+
+  const SortIcon = ({ col }) => {
+    if (sortCol !== col) return <span className="text-gray-300 ml-1">⇅</span>
+    return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>
+  }
+
+  const ResizeHandle = ({ colKey }) => (
+    <div
+      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity"
+      onMouseDown={(e) => startResize(colKey, e)}
+    />
+  )
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -246,47 +345,77 @@ export default function Dispositivos() {
         </div>
       </div>
 
-      {/* Búsqueda y filtros */}
-      <div className="card p-4">
-        <div className="flex gap-3">
-          <div className="flex-1 relative">
+      {/* Barra de filtros */}
+      <div className="card p-4 space-y-3">
+        <div className="flex flex-wrap gap-3">
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text" className="input pl-9"
-              placeholder="Buscar por tipo, marca, serie, ubicación..."
-              value={filters.search}
-              onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
+              placeholder="Buscar por serie, marca, tipo..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
             />
           </div>
-          <button className="btn-secondary" onClick={() => setShowFilters(!showFilters)}>
-            <FunnelIcon className="h-4 w-4" /> Filtros
-          </button>
-        </div>
-        {showFilters && (
-          <div className="grid grid-cols-3 gap-3 mt-3">
-            <div>
-              <label className="label">Tipo</label>
-              <select className="input" value={filters.tipo} onChange={e => setFilters(f => ({ ...f, tipo: e.target.value }))}>
-                <option value="">Todos</option>
-                {(tiposDispositivo.length > 0 ? tiposDispositivo : DEVICE_TYPES).map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Estado</label>
-              <select className="input" value={filters.estado} onChange={e => setFilters(f => ({ ...f, estado: e.target.value }))}>
-                <option value="">Todos</option>
-                {Object.entries(DEVICE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Ubicación</label>
-              <select className="input" value={filters.ubicacion_tipo} onChange={e => setFilters(f => ({ ...f, ubicacion_tipo: e.target.value }))}>
-                <option value="">Todas</option>
-                {Object.entries(LOCATION_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-              </select>
-            </div>
+
+          {/* Filtro Tipo */}
+          <select className="input w-44" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
+            <option value="">Todos los tipos</option>
+            {(tiposDispositivo.length > 0 ? tiposDispositivo : DEVICE_TYPES).map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+
+          {/* Filtro Estado */}
+          <select className="input w-44" value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="stock">En Stock</option>
+            <option value="activo">Activo</option>
+            <option value="en_reparacion">En Reparación</option>
+            <option value="pendiente">Pendiente firma</option>
+          </select>
+
+          {/* Filtro Ubicación */}
+          <select className="input w-44" value={filterUbicacion} onChange={e => setFilterUbicacion(e.target.value)}>
+            <option value="">Todas las ubicaciones</option>
+            <option value="almacen">Almacén</option>
+            <option value="sucursal">Sucursal</option>
+            <option value="empleado">Empleado</option>
+          </select>
+
+          {/* Toggle columnas */}
+          <div ref={colsMenuRef} className="relative">
+            <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
+              <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-44">
+                {Object.entries(colLabels).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={visibleCols[k]}
+                      onChange={() => setVisibleCols(v => ({ ...v, [k]: !v[k] }))}
+                      className="rounded"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {/* Limpiar filtros */}
+          {hasActiveFilters && (
+            <button
+              className="btn-secondary text-xs py-1.5 text-red-500 border-red-200 hover:bg-red-50"
+              onClick={clearFilters}
+            >
+              <XMarkIcon className="h-4 w-4" /> Limpiar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabla */}
@@ -295,15 +424,98 @@ export default function Dispositivos() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="table-header">Tipo</th>
-                <th className="table-header">Marca / Modelo</th>
-                <th className="table-header">Serie</th>
-                <th className="table-header">Proveedor</th>
-                <th className="table-header">Características</th>
-                <th className="table-header text-right">Costo/día</th>
-                <th className="table-header">Estado</th>
-                <th className="table-header">Ubicación</th>
-                {canEdit() && <th className="table-header">Acciones</th>}
+                {visibleCols.tipo && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['tipo'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('tipo')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Tipo <SortIcon col="tipo" />
+                    </div>
+                    <ResizeHandle colKey="tipo" />
+                  </th>
+                )}
+                {visibleCols.marca_modelo && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['marca_modelo'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('marca')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Marca / Modelo <SortIcon col="marca" />
+                    </div>
+                    <ResizeHandle colKey="marca_modelo" />
+                  </th>
+                )}
+                {visibleCols.serie && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['serie'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('serie')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Serie <SortIcon col="serie" />
+                    </div>
+                    <ResizeHandle colKey="serie" />
+                  </th>
+                )}
+                {visibleCols.proveedor && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['proveedor'] || 'auto', position: 'relative' }}
+                  >
+                    Proveedor
+                    <ResizeHandle colKey="proveedor" />
+                  </th>
+                )}
+                {visibleCols.caracteristicas && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['caracteristicas'] || 'auto', position: 'relative' }}
+                  >
+                    Características
+                    <ResizeHandle colKey="caracteristicas" />
+                  </th>
+                )}
+                {visibleCols.costo && (
+                  <th
+                    className="table-header text-right"
+                    style={{ width: colWidths['costo'] || 'auto', position: 'relative' }}
+                  >
+                    Costo/día
+                    <ResizeHandle colKey="costo" />
+                  </th>
+                )}
+                {visibleCols.estado && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['estado'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('estado')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Estado <SortIcon col="estado" />
+                    </div>
+                    <ResizeHandle colKey="estado" />
+                  </th>
+                )}
+                {visibleCols.ubicacion && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['ubicacion'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('ubicacion')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Ubicación <SortIcon col="ubicacion" />
+                    </div>
+                    <ResizeHandle colKey="ubicacion" />
+                  </th>
+                )}
+                {canEdit() && (
+                  <th className="table-header" style={{ position: 'relative' }}>
+                    Acciones
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -311,34 +523,46 @@ export default function Dispositivos() {
                 <tr><td colSpan={9} className="py-12 text-center">
                   <div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" />
                 </td></tr>
-              ) : dispositivos.length === 0 ? (
+              ) : sorted.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-gray-400">No se encontraron dispositivos</td></tr>
-              ) : dispositivos.map(d => (
+              ) : sorted.map(d => (
                 <tr key={d.id} className="hover:bg-gray-50">
-                  <td className="table-cell font-medium">{d.tipo}</td>
-                  <td className="table-cell">
-                    <div className="font-medium">{d.marca}</div>
-                    <div className="text-xs text-gray-400">{d.modelo}</div>
-                  </td>
-                  <td className="table-cell font-mono text-xs text-gray-600">
-                    {TIPOS_SIN_SERIE.includes(d.tipo)
-                      ? <span className="text-gray-500 italic">{d.cantidad || 1} uds.</span>
-                      : d.serie}
-                  </td>
-                  <td className="table-cell text-sm">{d.proveedor_nombre || '—'}</td>
-                  <td className="table-cell max-w-48">
-                    <p className="text-xs text-gray-500 truncate">{d.caracteristicas || '—'}</p>
-                  </td>
-                  <td className="table-cell text-right">
-                    <CostoBadge tipo={d.tipo} costo={d.costo_dia} />
-                  </td>
-                  <td className="table-cell">
-                    <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
-                  </td>
-                  <td className="table-cell">
-                    <Badge {...(LOCATION_TYPES[d.ubicacion_tipo] || { label: d.ubicacion_tipo, color: 'bg-gray-100 text-gray-600' })} />
-                    <div className="text-xs text-gray-400 mt-0.5 truncate max-w-36">{d.ubicacion_nombre}</div>
-                  </td>
+                  {visibleCols.tipo && <td className="table-cell font-medium">{d.tipo}</td>}
+                  {visibleCols.marca_modelo && (
+                    <td className="table-cell">
+                      <div className="font-medium">{d.marca}</div>
+                      <div className="text-xs text-gray-400">{d.modelo}</div>
+                    </td>
+                  )}
+                  {visibleCols.serie && (
+                    <td className="table-cell font-mono text-xs text-gray-600">
+                      {TIPOS_SIN_SERIE.includes(d.tipo)
+                        ? <span className="text-gray-500 italic">{d.cantidad || 1} uds.</span>
+                        : d.serie}
+                    </td>
+                  )}
+                  {visibleCols.proveedor && <td className="table-cell text-sm">{d.proveedor_nombre || '—'}</td>}
+                  {visibleCols.caracteristicas && (
+                    <td className="table-cell max-w-48">
+                      <p className="text-xs text-gray-500 truncate">{d.caracteristicas || '—'}</p>
+                    </td>
+                  )}
+                  {visibleCols.costo && (
+                    <td className="table-cell text-right">
+                      <CostoBadge tipo={d.tipo} costo={d.costo_dia} />
+                    </td>
+                  )}
+                  {visibleCols.estado && (
+                    <td className="table-cell">
+                      <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
+                    </td>
+                  )}
+                  {visibleCols.ubicacion && (
+                    <td className="table-cell">
+                      <Badge {...(LOCATION_TYPES[d.ubicacion_tipo] || { label: d.ubicacion_tipo, color: 'bg-gray-100 text-gray-600' })} />
+                      <div className="text-xs text-gray-400 mt-0.5 truncate max-w-36">{d.ubicacion_nombre}</div>
+                    </td>
+                  )}
                   {canEdit() && (
                     <td className="table-cell">
                       <div className="flex gap-1">

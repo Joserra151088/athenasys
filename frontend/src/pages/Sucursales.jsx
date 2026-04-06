@@ -7,12 +7,21 @@ import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
 const EMPTY = { nombre: '', tipo: 'sucursal', direccion: '', estado: '', lat: '', lng: '', email: '', centro_costos: '', centro_costo_codigo: '', centro_costo_nombre: '', determinante: '' }
 
 const ESTADOS_MX = ['Aguascalientes', 'Baja California', 'Baja California Sur', 'Campeche', 'Chiapas', 'Chihuahua', 'Ciudad de México', 'Coahuila', 'Colima', 'Durango', 'Guanajuato', 'Guerrero', 'Hidalgo', 'Jalisco', 'Estado de México', 'Michoacán', 'Morelos', 'Nayarit', 'Nuevo León', 'Oaxaca', 'Puebla', 'Querétaro', 'Quintana Roo', 'San Luis Potosí', 'Sinaloa', 'Sonora', 'Tabasco', 'Tamaulipas', 'Tlaxcala', 'Veracruz', 'Yucatán', 'Zacatecas']
+
+const COL_LABELS = {
+  tipo: 'Tipo',
+  estado: 'Estado',
+  determinante: 'Determinante',
+  correo: 'Correo',
+  centro_costos: 'Centro de Costos',
+  direccion: 'Dirección'
+}
 
 // Componente de búsqueda de Centro de Costos
 function CentroCostoSearch({ value, nombre, onChange }) {
@@ -106,6 +115,49 @@ export default function Sucursales() {
   const [csvImporting, setCsvImporting] = useState(false)
   const csvFileRef = useRef(null)
 
+  // Filtros cliente
+  const [filterTipo, setFilterTipo] = useState('')
+  const [filterEstado, setFilterEstado] = useState('')
+
+  // Sorting
+  const [sortCol, setSortCol] = useState('')
+  const [sortDir, setSortDir] = useState('asc')
+
+  // Columnas visibles
+  const colsMenuRef = useRef(null)
+  const [colsMenuOpen, setColsMenuOpen] = useState(false)
+  const [visibleCols, setVisibleCols] = useState({ tipo: true, estado: true, determinante: true, correo: true, centro_costos: true, direccion: true })
+
+  // Resize columnas
+  const resizingRef = useRef(null)
+  const [colWidths, setColWidths] = useState({})
+
+  useEffect(() => {
+    const h = (e) => { if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) setColsMenuOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const startResize = (colKey, e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = e.currentTarget.parentElement.offsetWidth
+    resizingRef.current = { colKey, startX, startWidth }
+    const onMove = (ev) => {
+      if (!resizingRef.current) return
+      const diff = ev.clientX - resizingRef.current.startX
+      setColWidths(w => ({ ...w, [resizingRef.current.colKey]: Math.max(60, resizingRef.current.startWidth + diff) }))
+    }
+    const onUp = () => { resizingRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   const load = useCallback((page = 1) => {
     setLoading(true)
     const params = { page, limit: 20 }
@@ -117,6 +169,19 @@ export default function Sucursales() {
   }, [search])
 
   useEffect(() => { load(1) }, [load])
+
+  // Filtrado y sorting en cliente
+  const displayData = [...sucursales]
+    .filter(s => !filterTipo || s.tipo === filterTipo)
+    .filter(s => !filterEstado || s.estado === filterEstado)
+    .sort((a, b) => {
+      if (!sortCol) return 0
+      const va = (a[sortCol] || '').toString().toLowerCase()
+      const vb = (b[sortCol] || '').toString().toLowerCase()
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+    })
+
+  const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : <span className="text-gray-300">⇅</span>
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setModal(true) }
   const openEdit = (s) => {
@@ -171,6 +236,8 @@ export default function Sucursales() {
     finally { setCsvImporting(false) }
   }
 
+  const colSpan = 2 + Object.values(visibleCols).filter(Boolean).length
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -185,9 +252,41 @@ export default function Sucursales() {
       </div>
 
       <div className="card p-4">
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input type="text" className="input pl-9" placeholder="Buscar por nombre, estado, dirección..." value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-48">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input type="text" className="input pl-9" placeholder="Buscar por nombre, estado, dirección..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input w-40" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
+            <option value="">Todos los tipos</option>
+            <option value="sucursal">Sucursal</option>
+            <option value="corporativo">Corporativo</option>
+          </select>
+          <select className="input w-44" value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            {ESTADOS_MX.map(e => <option key={e} value={e}>{e}</option>)}
+          </select>
+          <div ref={colsMenuRef} className="relative">
+            <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
+              <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-40">
+                {Object.entries(COL_LABELS).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-sm">
+                    <input type="checkbox" checked={visibleCols[k]}
+                      onChange={() => setVisibleCols(v => ({ ...v, [k]: !v[k] }))} className="rounded" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          {(filterTipo || filterEstado) && (
+            <button className="btn-secondary text-xs py-1.5 text-red-500 border-red-200" onClick={() => { setFilterTipo(''); setFilterEstado('') }}>
+              <XMarkIcon className="h-4 w-4" /> Limpiar
+            </button>
+          )}
         </div>
       </div>
 
@@ -196,22 +295,86 @@ export default function Sucursales() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="table-header">Nombre</th>
-                <th className="table-header">Tipo</th>
-                <th className="table-header">Estado</th>
-                <th className="table-header text-right">Determinante</th>
-                <th className="table-header">Correo</th>
-                <th className="table-header">Centro de Costos</th>
-                <th className="table-header">Dirección</th>
+                <th
+                  className="table-header cursor-pointer select-none hover:bg-gray-100"
+                  style={{ width: colWidths['nombre'] || 'auto', position: 'relative', minWidth: 120 }}
+                  onClick={() => handleSort('nombre')}
+                >
+                  <div className="flex items-center gap-1">Nombre {sortIcon('nombre')}</div>
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                    onMouseDown={e => startResize('nombre', e)} />
+                </th>
+                {visibleCols.tipo && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['tipo'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('tipo')}
+                  >
+                    <div className="flex items-center gap-1">Tipo {sortIcon('tipo')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('tipo', e)} />
+                  </th>
+                )}
+                {visibleCols.estado && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['estado'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('estado')}
+                  >
+                    <div className="flex items-center gap-1">Estado {sortIcon('estado')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('estado', e)} />
+                  </th>
+                )}
+                {visibleCols.determinante && (
+                  <th
+                    className="table-header text-right"
+                    style={{ width: colWidths['determinante'] || 'auto', position: 'relative', minWidth: 80 }}
+                  >
+                    Determinante
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('determinante', e)} />
+                  </th>
+                )}
+                {visibleCols.correo && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['correo'] || 'auto', position: 'relative', minWidth: 80 }}
+                  >
+                    Correo
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('correo', e)} />
+                  </th>
+                )}
+                {visibleCols.centro_costos && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['centro_costos'] || 'auto', position: 'relative', minWidth: 100 }}
+                  >
+                    Centro de Costos
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('centro_costos', e)} />
+                  </th>
+                )}
+                {visibleCols.direccion && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['direccion'] || 'auto', position: 'relative', minWidth: 100 }}
+                  >
+                    Dirección
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors"
+                      onMouseDown={e => startResize('direccion', e)} />
+                  </th>
+                )}
                 <th className="table-header">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={8} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
-              ) : sucursales.length === 0 ? (
-                <tr><td colSpan={8} className="py-12 text-center text-gray-400">No se encontraron sucursales</td></tr>
-              ) : sucursales.map(s => (
+                <tr><td colSpan={colSpan} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
+              ) : displayData.length === 0 ? (
+                <tr><td colSpan={colSpan} className="py-12 text-center text-gray-400">No se encontraron sucursales</td></tr>
+              ) : displayData.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="table-cell">
                     <div className="flex items-center gap-2">
@@ -221,25 +384,37 @@ export default function Sucursales() {
                       <span className="font-medium">{s.nombre}</span>
                     </div>
                   </td>
-                  <td className="table-cell">
-                    <Badge {...(RECORD_TYPES[s.tipo] || { label: s.tipo, color: 'bg-gray-100 text-gray-600' })} />
-                  </td>
-                  <td className="table-cell text-sm">{s.estado || '—'}</td>
-                  <td className="table-cell text-right font-mono text-sm">
-                    {s.determinante != null && s.determinante !== '' ? s.determinante : <span className="text-gray-300">—</span>}
-                  </td>
-                  <td className="table-cell text-xs text-gray-500">{s.email || <span className="text-gray-300">—</span>}</td>
-                  <td className="table-cell">
-                    {s.centro_costo_codigo ? (
-                      <div>
-                        <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">{s.centro_costo_codigo}</span>
-                        <div className="text-xs text-gray-500 mt-0.5 max-w-36 truncate">{s.centro_costo_nombre}</div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">{s.centro_costos || '—'}</span>
-                    )}
-                  </td>
-                  <td className="table-cell text-xs text-gray-500 max-w-48 truncate">{s.direccion || '—'}</td>
+                  {visibleCols.tipo && (
+                    <td className="table-cell">
+                      <Badge {...(RECORD_TYPES[s.tipo] || { label: s.tipo, color: 'bg-gray-100 text-gray-600' })} />
+                    </td>
+                  )}
+                  {visibleCols.estado && (
+                    <td className="table-cell text-sm">{s.estado || '—'}</td>
+                  )}
+                  {visibleCols.determinante && (
+                    <td className="table-cell text-right font-mono text-sm">
+                      {s.determinante != null && s.determinante !== '' ? s.determinante : <span className="text-gray-300">—</span>}
+                    </td>
+                  )}
+                  {visibleCols.correo && (
+                    <td className="table-cell text-xs text-gray-500">{s.email || <span className="text-gray-300">—</span>}</td>
+                  )}
+                  {visibleCols.centro_costos && (
+                    <td className="table-cell">
+                      {s.centro_costo_codigo ? (
+                        <div>
+                          <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">{s.centro_costo_codigo}</span>
+                          <div className="text-xs text-gray-500 mt-0.5 max-w-36 truncate">{s.centro_costo_nombre}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">{s.centro_costos || '—'}</span>
+                      )}
+                    </td>
+                  )}
+                  {visibleCols.direccion && (
+                    <td className="table-cell text-xs text-gray-500 max-w-48 truncate">{s.direccion || '—'}</td>
+                  )}
                   <td className="table-cell">
                     <div className="flex gap-1">
                       <Link to={`/expedientes?tipo=sucursal&id=${s.id}`} className="p-1.5 rounded text-gray-400 hover:text-emerald-600 hover:bg-emerald-50" title="Ver expediente">

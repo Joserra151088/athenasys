@@ -6,7 +6,7 @@ import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
 import FirmaCanvas from '../components/FirmaCanvas'
-import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import jsPDF from 'jspdf'
@@ -14,6 +14,15 @@ import { useNotification } from '../context/NotificationContext'
 import { QRCodeSVG } from 'qrcode.react'
 
 const DOC_CODES = { responsiva: 'F-TI-39-V2', entrada: 'F-TI-84-V1', salida: 'F-TI-85-V1' }
+
+const COL_LABELS = {
+  folio: 'Folio',
+  tipo: 'Tipo',
+  dispositivos: 'Dispositivos',
+  receptor: 'Receptor',
+  estado: 'Estado',
+  fecha: 'Fecha'
+}
 const DOC_TITLES = { responsiva: 'CARTA RESPONSIVA', entrada: 'FORMATO DE ENTRADA DE EQUIPO', salida: 'FORMATO DE SALIDA DE EQUIPO' }
 
 function DocumentHeader({ tipo, logo = null }) {
@@ -50,7 +59,21 @@ export default function Documentos() {
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
   const [filterTipo, setFilterTipo] = useState('')
+  const [filterEstado, setFilterEstado] = useState('')
   const [loading, setLoading] = useState(true)
+
+  // Sorting
+  const [sortCol, setSortCol] = useState('')
+  const [sortDir, setSortDir] = useState('asc')
+
+  // Columnas visibles
+  const colsMenuRef = useRef(null)
+  const [colsMenuOpen, setColsMenuOpen] = useState(false)
+  const [visibleCols, setVisibleCols] = useState({ folio: true, tipo: true, dispositivos: true, receptor: true, estado: true, fecha: true })
+
+  // Resize columnas
+  const resizingRef = useRef(null)
+  const [colWidths, setColWidths] = useState({})
   const [modal, setModal] = useState(null) // 'create' | 'sign' | 'preview'
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -60,6 +83,34 @@ export default function Documentos() {
 
   // Agent firma pre-loaded
   const [agenteFirma, setAgenteFirma] = useState(null)
+
+  useEffect(() => {
+    const h = (e) => { if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) setColsMenuOpen(false) }
+    document.addEventListener('mousedown', h)
+    return () => document.removeEventListener('mousedown', h)
+  }, [])
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const startResize = (colKey, e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = e.currentTarget.parentElement.offsetWidth
+    resizingRef.current = { colKey, startX, startWidth }
+    const onMove = (ev) => {
+      if (!resizingRef.current) return
+      const diff = ev.clientX - resizingRef.current.startX
+      setColWidths(w => ({ ...w, [resizingRef.current.colKey]: Math.max(60, resizingRef.current.startWidth + diff) }))
+    }
+    const onUp = () => { resizingRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : <span className="text-gray-300">⇅</span>
 
   // Logo global (mismo que Plantillas — cargado desde configAPI)
   const [globalLogo, setGlobalLogo] = useState(null)
@@ -121,11 +172,12 @@ export default function Documentos() {
     const params = { page, limit: 20 }
     if (search) params.search = search
     if (filterTipo) params.tipo = filterTipo
+    if (filterEstado) params.estado = filterEstado
     documentoAPI.getAll(params).then(d => {
       setDocumentos(d.data)
       setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
     }).finally(() => setLoading(false))
-  }, [search, filterTipo])
+  }, [search, filterTipo, filterEstado])
 
   useEffect(() => { load(1) }, [load])
 
@@ -535,15 +587,43 @@ export default function Documentos() {
         {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nuevo Documento</button>}
       </div>
 
-      <div className="card p-4 flex gap-3">
-        <div className="flex-1 relative">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input type="text" className="input pl-9" placeholder="Buscar por folio, entidad..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div className="card p-4">
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative flex-1 min-w-48">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input type="text" className="input pl-9" placeholder="Buscar por folio, receptor..." value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input w-40" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
+            <option value="">Todos los tipos</option>
+            {Object.entries(DOCUMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <select className="input w-40" value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
+            <option value="">Todos los estados</option>
+            <option value="pendiente">Pendiente firma</option>
+            <option value="firmado">Firmado</option>
+          </select>
+          <div ref={colsMenuRef} className="relative">
+            <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
+              <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-40">
+                {Object.entries(COL_LABELS).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-sm">
+                    <input type="checkbox" checked={visibleCols[k]}
+                      onChange={() => setVisibleCols(v => ({ ...v, [k]: !v[k] }))} className="rounded" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          {(filterTipo || filterEstado || search) && (
+            <button className="btn-secondary text-xs py-1.5 text-red-500 border-red-200" onClick={() => { setFilterTipo(''); setFilterEstado(''); setSearch('') }}>
+              <XMarkIcon className="h-4 w-4" /> Limpiar
+            </button>
+          )}
         </div>
-        <select className="input w-44" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
-          <option value="">Todos los tipos</option>
-          {Object.entries(DOCUMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </select>
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -551,13 +631,63 @@ export default function Documentos() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="table-header">Folio</th>
-                <th className="table-header">Tipo</th>
-                <th className="table-header">Entidad</th>
-                <th className="table-header">Agente</th>
-                <th className="table-header">Dispositivos</th>
-                <th className="table-header">Firmado</th>
-                <th className="table-header">Fecha</th>
+                {visibleCols.folio && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['folio'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('folio')}>
+                    <div className="flex items-center gap-1">Folio {sortIcon('folio')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('folio', e)} />
+                  </th>
+                )}
+                {visibleCols.tipo && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['tipo'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('tipo')}>
+                    <div className="flex items-center gap-1">Tipo {sortIcon('tipo')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('tipo', e)} />
+                  </th>
+                )}
+                <th className="table-header"
+                  style={{ width: colWidths['entidad'] || 'auto', position: 'relative', minWidth: 100 }}>
+                  Entidad
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('entidad', e)} />
+                </th>
+                <th className="table-header"
+                  style={{ width: colWidths['agente'] || 'auto', position: 'relative', minWidth: 80 }}>
+                  Agente
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('agente', e)} />
+                </th>
+                {visibleCols.dispositivos && (
+                  <th className="table-header"
+                    style={{ width: colWidths['dispositivos'] || 'auto', position: 'relative', minWidth: 80 }}>
+                    Dispositivos
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('dispositivos', e)} />
+                  </th>
+                )}
+                {visibleCols.receptor && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['receptor'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('receptor_nombre')}>
+                    <div className="flex items-center gap-1">Receptor {sortIcon('receptor_nombre')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('receptor', e)} />
+                  </th>
+                )}
+                {visibleCols.estado && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['estado'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('estado')}>
+                    <div className="flex items-center gap-1">Firmado {sortIcon('estado')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('estado', e)} />
+                  </th>
+                )}
+                {visibleCols.fecha && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['fecha'] || 'auto', position: 'relative', minWidth: 80 }}
+                    onClick={() => handleSort('fecha_documento')}>
+                    <div className="flex items-center gap-1">Fecha {sortIcon('fecha_documento')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('fecha', e)} />
+                  </th>
+                )}
                 <th className="table-header">Archivo local</th>
                 <th className="table-header">Acciones</th>
               </tr>
@@ -567,24 +697,42 @@ export default function Documentos() {
                 <tr><td colSpan={9} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
               ) : documentos.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-gray-400">No hay documentos</td></tr>
-              ) : documentos.map(d => (
+              ) : [...documentos].sort((a, b) => {
+                if (!sortCol) return 0
+                const va = (a[sortCol] || '').toString().toLowerCase()
+                const vb = (b[sortCol] || '').toString().toLowerCase()
+                return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+              }).map(d => (
                 <tr key={d.id} className="hover:bg-gray-50">
-                  <td className="table-cell font-mono text-xs font-semibold text-gray-700">{d.folio}</td>
-                  <td className="table-cell">
-                    <Badge {...(DOCUMENT_TYPES[d.tipo] || { label: d.tipo, color: 'bg-gray-100 text-gray-600' })} />
-                  </td>
+                  {visibleCols.folio && (
+                    <td className="table-cell font-mono text-xs font-semibold text-gray-700">{d.folio}</td>
+                  )}
+                  {visibleCols.tipo && (
+                    <td className="table-cell">
+                      <Badge {...(DOCUMENT_TYPES[d.tipo] || { label: d.tipo, color: 'bg-gray-100 text-gray-600' })} />
+                    </td>
+                  )}
                   <td className="table-cell">
                     <div className="text-sm font-medium">{d.entidad_nombre}</div>
                     <div className="text-xs text-gray-400 capitalize">{d.entidad_tipo}</div>
                   </td>
                   <td className="table-cell text-sm">{d.agente_nombre}</td>
-                  <td className="table-cell text-sm">{d.dispositivos?.length || 0} dispositivo(s)</td>
-                  <td className="table-cell">
-                    {d.firmado ? <Badge label="Firmado" color="bg-emerald-100 text-emerald-700" /> : <Badge label="Pendiente" color="bg-yellow-100 text-yellow-700" />}
-                  </td>
-                  <td className="table-cell text-xs text-gray-500">
-                    {d.created_at ? format(new Date(d.created_at), 'dd/MM/yyyy', { locale: es }) : '—'}
-                  </td>
+                  {visibleCols.dispositivos && (
+                    <td className="table-cell text-sm">{d.dispositivos?.length || 0} dispositivo(s)</td>
+                  )}
+                  {visibleCols.receptor && (
+                    <td className="table-cell text-sm">{d.receptor_nombre || <span className="text-gray-300">—</span>}</td>
+                  )}
+                  {visibleCols.estado && (
+                    <td className="table-cell">
+                      {d.firmado ? <Badge label="Firmado" color="bg-emerald-100 text-emerald-700" /> : <Badge label="Pendiente" color="bg-yellow-100 text-yellow-700" />}
+                    </td>
+                  )}
+                  {visibleCols.fecha && (
+                    <td className="table-cell text-xs text-gray-500">
+                      {d.created_at ? format(new Date(d.created_at), 'dd/MM/yyyy', { locale: es }) : '—'}
+                    </td>
+                  )}
                   <td className="table-cell">
                     {d.local_pdf_path ? (
                       <div className="flex items-center gap-1.5" title={d.local_pdf_path}>

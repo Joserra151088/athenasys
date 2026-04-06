@@ -5,7 +5,7 @@ import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, KeyIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, KeyIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline'
 import { Link } from 'react-router-dom'
 
 const EMPTY = {
@@ -105,11 +105,13 @@ export default function Empleados() {
   const [catPuestos, setCatPuestos]   = useState([])
   const [catAreas, setCatAreas]       = useState([])
   const [catSupervisores, setCatSupervisores] = useState([])
-  // Buscador de sucursal
+  // Buscador de sucursal (modal)
   const [sucursalQuery, setSucursalQuery]   = useState('')
   const [showSucursalDrop, setShowSucursalDrop] = useState(false)
   const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 20 })
   const [search, setSearch] = useState('')
+  const [filterSucursal, setFilterSucursal] = useState('')
+  const [filterArea, setFilterArea] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -122,15 +124,73 @@ export default function Empleados() {
   const [csvImporting, setCsvImporting] = useState(false)
   const csvFileRef = useRef(null)
 
+  // Sorting
+  const [sortCol, setSortCol] = useState('')
+  const [sortDir, setSortDir] = useState('asc')
+
+  // Column visibility
+  const [visibleCols, setVisibleCols] = useState({
+    empleado: true, puesto: true, centro_costos: true, jefe: true, sucursal: true, contacto: true
+  })
+  const [colsMenuOpen, setColsMenuOpen] = useState(false)
+  const colsMenuRef = useRef(null)
+
+  // Column resize
+  const [colWidths, setColWidths] = useState({})
+  const resizingRef = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (colsMenuRef.current && !colsMenuRef.current.contains(e.target)) setColsMenuOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleSort = (col) => {
+    if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortCol(col); setSortDir('asc') }
+  }
+
+  const startResize = (colKey, e) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = e.currentTarget.parentElement.offsetWidth
+    resizingRef.current = { colKey, startX, startWidth }
+
+    const onMove = (ev) => {
+      if (!resizingRef.current) return
+      const diff = ev.clientX - resizingRef.current.startX
+      const newWidth = Math.max(60, resizingRef.current.startWidth + diff)
+      setColWidths(w => ({ ...w, [resizingRef.current.colKey]: newWidth }))
+    }
+    const onUp = () => {
+      resizingRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
+  const clearFilters = () => {
+    setFilterSucursal('')
+    setFilterArea('')
+  }
+
+  const hasActiveFilters = filterSucursal || filterArea
+
   const load = useCallback((page = 1) => {
     setLoading(true)
     const params = { page, limit: 20 }
     if (search) params.search = search
+    if (filterSucursal) params.sucursal_id = filterSucursal
+    if (filterArea) params.area = filterArea
     empleadoAPI.getAll(params).then(d => {
       setEmpleados(d.data)
       setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
     }).finally(() => setLoading(false))
-  }, [search])
+  }, [search, filterSucursal, filterArea])
 
   useEffect(() => { load(1) }, [load])
   useEffect(() => {
@@ -139,6 +199,17 @@ export default function Empleados() {
     catalogosAPI.areas.getAll().then(setCatAreas).catch(() => {})
     catalogosAPI.supervisores.getAll().then(setCatSupervisores).catch(() => {})
   }, [])
+
+  // Client-side sorting
+  const sorted = [...empleados].sort((a, b) => {
+    if (!sortCol) return 0
+    let va = '', vb = ''
+    if (sortCol === 'nombre_completo') { va = (a.nombre_completo || '').toLowerCase(); vb = (b.nombre_completo || '').toLowerCase() }
+    else if (sortCol === 'puesto') { va = (a.puesto || '').toLowerCase(); vb = (b.puesto || '').toLowerCase() }
+    else if (sortCol === 'area') { va = (a.area || '').toLowerCase(); vb = (b.area || '').toLowerCase() }
+    else if (sortCol === 'sucursal') { va = (a.sucursal_nombre || '').toLowerCase(); vb = (b.sucursal_nombre || '').toLowerCase() }
+    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+  })
 
   const openCreate = () => {
     setEditing(null); setForm(EMPTY); setSucursalQuery(''); setEmpLicencias([]); setModal(true)
@@ -209,6 +280,27 @@ export default function Empleados() {
     finally { setCsvImporting(false) }
   }
 
+  const colLabels = {
+    empleado: 'Empleado',
+    puesto: 'Puesto / Área',
+    centro_costos: 'Centro de Costos',
+    jefe: 'Jefe Inmediato',
+    sucursal: 'Sucursal',
+    contacto: 'Contacto',
+  }
+
+  const SortIcon = ({ col }) => {
+    if (sortCol !== col) return <span className="text-gray-300 ml-1">⇅</span>
+    return <span className="text-blue-500 ml-1">{sortDir === 'asc' ? '▲' : '▼'}</span>
+  }
+
+  const ResizeHandle = ({ colKey }) => (
+    <div
+      className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 opacity-0 hover:opacity-100 transition-opacity"
+      onMouseDown={(e) => startResize(colKey, e)}
+    />
+  )
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -222,10 +314,63 @@ export default function Empleados() {
         </div>
       </div>
 
+      {/* Barra de filtros */}
       <div className="card p-4">
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input type="text" className="input pl-9" placeholder="Buscar por nombre, número o puesto..." value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex flex-wrap gap-3">
+          {/* Search */}
+          <div className="relative flex-1 min-w-48">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text" className="input pl-9"
+              placeholder="Buscar por nombre, número o puesto..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Filtro Sucursal */}
+          <select className="input w-44" value={filterSucursal} onChange={e => setFilterSucursal(e.target.value)}>
+            <option value="">Todas las sucursales</option>
+            {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          </select>
+
+          {/* Filtro Área */}
+          <select className="input w-36" value={filterArea} onChange={e => setFilterArea(e.target.value)}>
+            <option value="">Todas las áreas</option>
+            {catAreas.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+          </select>
+
+          {/* Toggle columnas */}
+          <div ref={colsMenuRef} className="relative">
+            <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
+              <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
+            </button>
+            {colsMenuOpen && (
+              <div className="absolute right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-44">
+                {Object.entries(colLabels).map(([k, label]) => (
+                  <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={visibleCols[k]}
+                      onChange={() => setVisibleCols(v => ({ ...v, [k]: !v[k] }))}
+                      className="rounded"
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Limpiar filtros */}
+          {hasActiveFilters && (
+            <button
+              className="btn-secondary text-xs py-1.5 text-red-500 border-red-200 hover:bg-red-50"
+              onClick={clearFilters}
+            >
+              <XMarkIcon className="h-4 w-4" /> Limpiar
+            </button>
+          )}
         </div>
       </div>
 
@@ -234,53 +379,120 @@ export default function Empleados() {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="table-header">Empleado</th>
-                <th className="table-header">Puesto / Área</th>
-                <th className="table-header">Centro de Costos</th>
-                <th className="table-header">Jefe Inmediato</th>
-                <th className="table-header">Sucursal</th>
-                <th className="table-header">Contacto</th>
-                <th className="table-header">Acciones</th>
+                {visibleCols.empleado && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['empleado'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('nombre_completo')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Empleado <SortIcon col="nombre_completo" />
+                    </div>
+                    <ResizeHandle colKey="empleado" />
+                  </th>
+                )}
+                {visibleCols.puesto && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['puesto'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('puesto')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Puesto / Área <SortIcon col="puesto" />
+                    </div>
+                    <ResizeHandle colKey="puesto" />
+                  </th>
+                )}
+                {visibleCols.centro_costos && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['centro_costos'] || 'auto', position: 'relative' }}
+                  >
+                    Centro de Costos
+                    <ResizeHandle colKey="centro_costos" />
+                  </th>
+                )}
+                {visibleCols.jefe && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['jefe'] || 'auto', position: 'relative' }}
+                  >
+                    Jefe Inmediato
+                    <ResizeHandle colKey="jefe" />
+                  </th>
+                )}
+                {visibleCols.sucursal && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['sucursal'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('sucursal')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Sucursal <SortIcon col="sucursal" />
+                    </div>
+                    <ResizeHandle colKey="sucursal" />
+                  </th>
+                )}
+                {visibleCols.contacto && (
+                  <th
+                    className="table-header"
+                    style={{ width: colWidths['contacto'] || 'auto', position: 'relative' }}
+                  >
+                    Contacto
+                    <ResizeHandle colKey="contacto" />
+                  </th>
+                )}
+                <th className="table-header" style={{ position: 'relative' }}>
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr><td colSpan={7} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
-              ) : empleados.length === 0 ? (
+              ) : sorted.length === 0 ? (
                 <tr><td colSpan={7} className="py-12 text-center text-gray-400">No se encontraron empleados</td></tr>
-              ) : empleados.map(e => (
+              ) : sorted.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50">
-                  <td className="table-cell">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-sm flex-shrink-0">
-                        {e.nombre_completo?.charAt(0)}
+                  {visibleCols.empleado && (
+                    <td className="table-cell">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-sm flex-shrink-0">
+                          {e.nombre_completo?.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-900">{e.nombre_completo}</div>
+                          <div className="text-xs text-gray-400">{e.num_empleado}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-medium text-gray-900">{e.nombre_completo}</div>
-                        <div className="text-xs text-gray-400">{e.num_empleado}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="table-cell">
-                    <div className="text-sm">{e.puesto}</div>
-                    <div className="text-xs text-gray-400">{e.area}</div>
-                  </td>
-                  <td className="table-cell">
-                    {e.centro_costo_codigo ? (
-                      <div>
-                        <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">{e.centro_costo_codigo}</span>
-                        <div className="text-xs text-gray-500 mt-0.5 max-w-36 truncate">{e.centro_costo_nombre}</div>
-                      </div>
-                    ) : (
-                      <span className="text-gray-400 text-sm">{e.centro_costos || '—'}</span>
-                    )}
-                  </td>
-                  <td className="table-cell text-sm">{e.jefe_nombre || '—'}</td>
-                  <td className="table-cell text-sm">{e.sucursal_nombre || '—'}</td>
-                  <td className="table-cell">
-                    <div className="text-xs">{e.email}</div>
-                    <div className="text-xs text-gray-400">{e.telefono}</div>
-                  </td>
+                    </td>
+                  )}
+                  {visibleCols.puesto && (
+                    <td className="table-cell">
+                      <div className="text-sm">{e.puesto}</div>
+                      <div className="text-xs text-gray-400">{e.area}</div>
+                    </td>
+                  )}
+                  {visibleCols.centro_costos && (
+                    <td className="table-cell">
+                      {e.centro_costo_codigo ? (
+                        <div>
+                          <span className="font-mono text-xs bg-gray-100 text-gray-700 px-1.5 py-0.5 rounded">{e.centro_costo_codigo}</span>
+                          <div className="text-xs text-gray-500 mt-0.5 max-w-36 truncate">{e.centro_costo_nombre}</div>
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-sm">{e.centro_costos || '—'}</span>
+                      )}
+                    </td>
+                  )}
+                  {visibleCols.jefe && <td className="table-cell text-sm">{e.jefe_nombre || '—'}</td>}
+                  {visibleCols.sucursal && <td className="table-cell text-sm">{e.sucursal_nombre || '—'}</td>}
+                  {visibleCols.contacto && (
+                    <td className="table-cell">
+                      <div className="text-xs">{e.email}</div>
+                      <div className="text-xs text-gray-400">{e.telefono}</div>
+                    </td>
+                  )}
                   <td className="table-cell">
                     <div className="flex gap-1">
                       <Link to={`/expedientes?tipo=empleado&id=${e.id}`} className="p-1.5 rounded text-gray-400 hover:text-emerald-600 hover:bg-emerald-50" title="Ver expediente">
