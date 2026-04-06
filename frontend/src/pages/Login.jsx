@@ -48,7 +48,7 @@ export default function Login() {
           {/* Logo Previta invertido (blanco) */}
           <div className="mb-12">
             <img
-              src="/previta-logo.svg"
+              src="/previta-logo.png"
               alt="Previta"
               className="h-12 w-auto"
               style={{ filter: 'brightness(0) invert(1)' }}
@@ -88,14 +88,14 @@ export default function Login() {
         {/* Logo Previta mobile */}
         <div className="lg:hidden w-full max-w-md mb-8">
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-8 py-5 flex items-center justify-center">
-            <img src="/previta-logo.svg" alt="Previta" className="h-14 w-auto" />
+            <img src="/previta-logo.png" alt="Previta" className="h-14 w-auto" />
           </div>
         </div>
 
         {/* Logo Previta sobre el formulario (desktop) */}
         <div className="hidden lg:block w-full max-w-md mb-6">
           <div className="bg-white rounded-2xl shadow-md border border-gray-100 px-8 py-5 flex items-center justify-center">
-            <img src="/previta-logo.svg" alt="Previta" className="h-14 w-auto" />
+            <img src="/previta-logo.png" alt="Previta" className="h-14 w-auto" />
           </div>
         </div>
 
