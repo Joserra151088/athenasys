@@ -1052,6 +1052,84 @@ async function initDB() {
     } catch (_) { /* ya está en utf8mb4 */ }
   }
 
+  // ── FOREIGN KEY constraints ───────────────────────────────────────────────
+  // Agrega FKs reales para relaciones no-polimórficas.
+  // Las relaciones polimórficas (asignaciones.asignado_a_id, dispositivos.ubicacion_id,
+  // documentos.receptor_id) NO pueden tener FK en MySQL porque un mismo campo
+  // referencia tablas distintas según el campo "tipo".
+  const addFKIfNotExists = async (table, fkName, col, refTable, refCol, onDelete = 'SET NULL') => {
+    try {
+      const [[r]] = await _pool.query(
+        `SELECT COUNT(*) as c FROM information_schema.TABLE_CONSTRAINTS
+         WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND CONSTRAINT_NAME=? AND CONSTRAINT_TYPE='FOREIGN KEY'`,
+        [db_name, table, fkName]
+      )
+      if (r.c > 0) return // Ya existe
+
+      // Limpiar registros huérfanos antes de crear la constraint
+      if (onDelete === 'SET NULL') {
+        await _pool.query(
+          `UPDATE \`${table}\` SET \`${col}\` = NULL
+           WHERE \`${col}\` IS NOT NULL
+             AND \`${col}\` NOT IN (SELECT \`${refCol}\` FROM \`${refTable}\`)`
+        )
+      } else {
+        // CASCADE o RESTRICT → eliminar huérfanos
+        await _pool.query(
+          `DELETE FROM \`${table}\`
+           WHERE \`${col}\` IS NOT NULL
+             AND \`${col}\` NOT IN (SELECT \`${refCol}\` FROM \`${refTable}\`)`
+        )
+      }
+
+      await _pool.query(
+        `ALTER TABLE \`${table}\`
+         ADD CONSTRAINT \`${fkName}\`
+         FOREIGN KEY (\`${col}\`) REFERENCES \`${refTable}\`(\`${refCol}\`)
+         ON DELETE ${onDelete} ON UPDATE CASCADE`
+      )
+      console.log(`  ✓ FK ${fkName}`)
+    } catch (e) {
+      console.warn(`  ⚠ FK ${fkName} omitida: ${e.message}`)
+    }
+  }
+
+  console.log('Aplicando FOREIGN KEYS...')
+  // empleados → sucursales
+  await addFKIfNotExists('empleados',              'fk_emp_sucursal',         'sucursal_id',    'sucursales',             'id', 'SET NULL')
+  // dispositivos → proveedores
+  await addFKIfNotExists('dispositivos',           'fk_disp_proveedor',       'proveedor_id',   'proveedores',            'id', 'SET NULL')
+  // asignaciones → dispositivos  (RESTRICT: asignación sin dispositivo no tiene sentido)
+  await addFKIfNotExists('asignaciones',           'fk_asig_dispositivo',     'dispositivo_id', 'dispositivos',           'id', 'RESTRICT')
+  // asignaciones_licencias → licencias
+  await addFKIfNotExists('asignaciones_licencias', 'fk_aslic_licencia',       'licencia_id',    'licencias',              'id', 'CASCADE')
+  // asignaciones_licencias → empleados
+  await addFKIfNotExists('asignaciones_licencias', 'fk_aslic_empleado',       'empleado_id',    'empleados',              'id', 'SET NULL')
+  // asignaciones_licencias → sucursales
+  await addFKIfNotExists('asignaciones_licencias', 'fk_aslic_sucursal',       'sucursal_id',    'sucursales',             'id', 'SET NULL')
+  // firma_tokens → documentos
+  await addFKIfNotExists('firma_tokens',           'fk_firmatoken_doc',       'documento_id',   'documentos',             'id', 'CASCADE')
+  // proveedor_documentos → proveedores
+  await addFKIfNotExists('proveedor_documentos',   'fk_provdoc_proveedor',    'proveedor_id',   'proveedores',            'id', 'CASCADE')
+  // licencias → proveedores
+  await addFKIfNotExists('licencias',              'fk_lic_proveedor',        'proveedor_id',   'proveedores',            'id', 'SET NULL')
+  // cambios → dispositivos
+  await addFKIfNotExists('cambios',                'fk_cambio_dispositivo',   'dispositivo_id', 'dispositivos',           'id', 'RESTRICT')
+  // cambios → proveedores
+  await addFKIfNotExists('cambios',                'fk_cambio_proveedor',     'proveedor_id',   'proveedores',            'id', 'SET NULL')
+  // documentos → plantillas
+  await addFKIfNotExists('documentos',             'fk_doc_plantilla',        'plantilla_id',   'plantillas',             'id', 'SET NULL')
+  // presupuesto_gastos_mes → presupuesto_partidas
+  await addFKIfNotExists('presupuesto_gastos_mes', 'fk_gastos_partida',       'partida_id',     'presupuesto_partidas',   'id', 'CASCADE')
+  // presupuesto_cambios → presupuesto_partidas
+  await addFKIfNotExists('presupuesto_cambios',    'fk_presucambio_partida',  'partida_id',     'presupuesto_partidas',   'id', 'CASCADE')
+  // finanzas_detalle → dispositivos
+  await addFKIfNotExists('finanzas_detalle',       'fk_finanzas_dispositivo', 'dispositivo_id', 'dispositivos',           'id', 'SET NULL')
+  // finanzas_detalle → empleados
+  await addFKIfNotExists('finanzas_detalle',       'fk_finanzas_empleado',    'empleado_id',    'empleados',              'id', 'SET NULL')
+  // finanzas_detalle → presupuesto_partidas
+  await addFKIfNotExists('finanzas_detalle',       'fk_finanzas_partida',     'partida_id',     'presupuesto_partidas',   'id', 'SET NULL')
+
   console.log('✓ Tablas verificadas/creadas')
 
   // Cargar datos en memoria
