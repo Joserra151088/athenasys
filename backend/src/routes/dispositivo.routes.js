@@ -69,8 +69,8 @@ router.get('/trayectoria', (req, res) => {
 
   const asignaciones = db.get('asignaciones')
     .filter({ dispositivo_id: dispositivo.id })
-    .sortBy('fecha_asignacion')
     .value()
+    .sort((a, b) => new Date(a.fecha_asignacion) - new Date(b.fecha_asignacion))
 
   const nodos = []
 

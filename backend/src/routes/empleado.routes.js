@@ -114,8 +114,8 @@ router.get('/trayectoria', (req, res) => {
   const resultados = empleados.map(emp => {
     const asignaciones = db.get('asignaciones')
       .filter({ asignado_a_id: emp.id, tipo_asignacion: 'empleado' })
-      .sortBy('fecha_asignacion')
       .value()
+      .sort((a, b) => new Date(a.fecha_asignacion) - new Date(b.fecha_asignacion))
 
     const nodos = []
 
