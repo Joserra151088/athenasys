@@ -59,6 +59,69 @@ router.get('/', (req, res) => {
   res.json({ data, total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) })
 })
 
+// Trayectoria de un dispositivo por número de serie
+router.get('/trayectoria', (req, res) => {
+  const { serie } = req.query
+  if (!serie) return res.status(400).json({ message: 'Se requiere el parámetro serie' })
+
+  const dispositivo = db.get('dispositivos').find(d => d.serie && d.serie.toLowerCase() === serie.toLowerCase().trim()).value()
+  if (!dispositivo) return res.status(404).json({ message: 'No se encontró ningún dispositivo con ese número de serie' })
+
+  const asignaciones = db.get('asignaciones')
+    .filter({ dispositivo_id: dispositivo.id })
+    .sortBy('fecha_asignacion')
+    .value()
+
+  const nodos = []
+
+  // Nodo 1: ingreso al sistema
+  nodos.push({
+    tipo: 'ingreso',
+    fecha: dispositivo.created_at,
+    titulo: 'Ingreso al sistema',
+    descripcion: `Registrado por ${dispositivo.creado_por_nombre || 'Sistema'}`,
+    icono: 'ingreso'
+  })
+
+  // Nodos por cada asignación
+  for (const asig of asignaciones) {
+    nodos.push({
+      tipo: 'asignacion',
+      fecha: asig.fecha_asignacion,
+      titulo: `Asignado a ${asig.asignado_a_nombre}`,
+      descripcion: `Por ${asig.asignado_por_nombre}`,
+      asignado_a: asig.asignado_a_nombre,
+      tipo_asignacion: asig.tipo_asignacion,
+      por: asig.asignado_por_nombre,
+      observaciones: asig.observaciones || '',
+      icono: asig.tipo_asignacion === 'empleado' ? 'empleado' : 'sucursal'
+    })
+
+    if (!asig.activo && asig.fecha_devolucion) {
+      nodos.push({
+        tipo: 'retorno',
+        fecha: asig.fecha_devolucion,
+        titulo: 'Regresó a almacén',
+        descripcion: 'Devuelto al almacén central',
+        icono: 'almacen'
+      })
+    }
+  }
+
+  // Si está pendiente de firma
+  if (dispositivo.estado === 'pendiente') {
+    nodos.push({
+      tipo: 'pendiente',
+      fecha: dispositivo.updated_at,
+      titulo: 'Pendiente de firma',
+      descripcion: 'Documento generado, en espera de firma',
+      icono: 'pendiente'
+    })
+  }
+
+  res.json({ dispositivo, nodos })
+})
+
 // Obtener por ID
 router.get('/:id', (req, res) => {
   const item = db.get('dispositivos').find({ id: req.params.id, activo: true }).value()

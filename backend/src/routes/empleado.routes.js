@@ -96,6 +96,60 @@ router.get('/', (req, res) => {
   res.json({ data, total, page: parseInt(page), limit: parseInt(limit) })
 })
 
+// Trayectoria de equipos de un empleado por nombre
+router.get('/trayectoria', (req, res) => {
+  const { nombre } = req.query
+  if (!nombre) return res.status(400).json({ message: 'Se requiere el parámetro nombre' })
+
+  const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const q = normalizeStr(nombre)
+
+  const empleados = db.get('empleados').filter(e =>
+    normalizeStr(e.nombre_completo).includes(q) ||
+    normalizeStr(e.num_empleado).includes(q)
+  ).value()
+
+  if (!empleados.length) return res.status(404).json({ message: 'No se encontró ningún empleado con ese nombre o número' })
+
+  const resultados = empleados.map(emp => {
+    const asignaciones = db.get('asignaciones')
+      .filter({ asignado_a_id: emp.id, tipo_asignacion: 'empleado' })
+      .sortBy('fecha_asignacion')
+      .value()
+
+    const nodos = []
+
+    for (const asig of asignaciones) {
+      const dispositivo = db.get('dispositivos').find({ id: asig.dispositivo_id }).value()
+      nodos.push({
+        tipo: 'asignacion',
+        fecha: asig.fecha_asignacion,
+        titulo: `${dispositivo?.tipo || 'Dispositivo'} — ${dispositivo?.marca || ''}`,
+        descripcion: `Serie: ${dispositivo?.serie || 'N/A'} · Asignado por ${asig.asignado_por_nombre}`,
+        serie: dispositivo?.serie || '',
+        dispositivo_id: asig.dispositivo_id,
+        por: asig.asignado_por_nombre,
+        icono: 'asignacion'
+      })
+
+      if (!asig.activo && asig.fecha_devolucion) {
+        nodos.push({
+          tipo: 'retorno',
+          fecha: asig.fecha_devolucion,
+          titulo: 'Devuelto al almacén',
+          descripcion: `${dispositivo?.tipo || 'Dispositivo'} — ${dispositivo?.serie || ''}`,
+          serie: dispositivo?.serie || '',
+          icono: 'almacen'
+        })
+      }
+    }
+
+    return { empleado: emp, nodos }
+  })
+
+  res.json(resultados)
+})
+
 router.get('/:id', (req, res) => {
   const item = db.get('empleados').find({ id: req.params.id, activo: true }).value()
   if (!item) return res.status(404).json({ message: 'Empleado no encontrado' })

@@ -53,7 +53,7 @@ router.get('/:id', (req, res) => {
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'documento'), (req, res) => {
-  const { tipo, plantilla_id, entidad_tipo, entidad_id, dispositivos, observaciones, receptor_id } = req.body
+  const { tipo, plantilla_id, entidad_tipo, entidad_id, dispositivos, observaciones, receptor_id, desde_asignacion } = req.body
   if (!tipo || !entidad_tipo || !entidad_id || !dispositivos?.length) {
     const missing = { tipo: !tipo, entidad_tipo: !entidad_tipo, entidad_id: !entidad_id, dispositivos: !dispositivos?.length }
     console.log('[documento.routes] Validación fallida. Body recibido:', JSON.stringify(req.body), 'Campos faltantes:', JSON.stringify(missing))
@@ -107,6 +107,19 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   }
 
   db.get('documentos').push(doc).write()
+
+  // Si viene desde una asignación, marcar dispositivos como 'pendiente' hasta que se firme
+  if (desde_asignacion && ['responsiva', 'salida'].includes(tipo)) {
+    for (const dev of dispositivosEnriquecidos) {
+      db.get('dispositivos').find({ id: dev.id }).assign({
+        estado: 'pendiente',
+        doc_pendiente_id: doc.id,
+        doc_pendiente_folio: doc.folio,
+        updated_at: now
+      }).write()
+    }
+  }
+
   res.status(201).json(doc)
 })
 
@@ -279,7 +292,8 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
         estado: 'activo', ubicacion_tipo: doc.entidad_tipo,
         ubicacion_id: doc.entidad_id,
         ubicacion_nombre: doc.entidad_tipo === 'empleado' ? destinatario.nombre_completo : destinatario.nombre,
-        lat, lng, updated_at: now
+        lat, lng, updated_at: now,
+        doc_pendiente_id: null, doc_pendiente_folio: null
       }).write()
     }
   }

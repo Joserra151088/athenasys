@@ -34,7 +34,8 @@ export const deviceAPI = {
   create: (data) => api.post('/dispositivos', data),
   update: (id, data) => api.put(`/dispositivos/${id}`, data),
   delete: (id) => api.delete(`/dispositivos/${id}`),
-  getStats: () => api.get('/dispositivos/stats')
+  getStats: () => api.get('/dispositivos/stats'),
+  getTrayectoria: (serie) => api.get('/dispositivos/trayectoria', { params: { serie } })
 }
 
 // Empleados
@@ -44,7 +45,8 @@ export const empleadoAPI = {
   create: (data) => api.post('/empleados', data),
   update: (id, data) => api.put(`/empleados/${id}`, data),
   delete: (id) => api.delete(`/empleados/${id}`),
-  importarCSV: (formData) => api.post('/empleados/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  importarCSV: (formData) => api.post('/empleados/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  getTrayectoria: (nombre) => api.get('/empleados/trayectoria', { params: { nombre } })
 }
 
 // Sucursales
