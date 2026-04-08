@@ -8,6 +8,20 @@ const { uploadImage, getFotoFolder } = require('../services/s3.service')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
+function parseNullableFloat(value) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  const parsed = parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function parseNullableInt(value) {
+  if (value === undefined) return undefined
+  if (value === null || value === '') return null
+  const parsed = parseInt(value, 10)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
 router.use(authMiddleware)
 
 // ── Importar sucursales desde CSV ────────────────────────────────────────────
@@ -50,8 +64,8 @@ router.post('/importar-csv', requireRoles('super_admin', 'agente_soporte'), uplo
       tipo: row.tipo || 'sucursal',
       direccion: row.direccion || '',
       estado: row.estado || '',
-      lat: row.lat ? parseFloat(row.lat) : null,
-      lng: row.lng ? parseFloat(row.lng) : null,
+      lat: parseNullableFloat(row.lat) ?? null,
+      lng: parseNullableFloat(row.lng) ?? null,
       activo: true, created_at: now
     }
     db.get('sucursales').push(suc).write()
@@ -125,9 +139,9 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   const now = new Date().toISOString()
   const item = {
     id: uuidv4(), nombre, tipo, direccion: direccion || '',
-    estado: estado || '', lat: parseFloat(lat) || null, lng: parseFloat(lng) || null,
+    estado: estado || '', lat: parseNullableFloat(lat) ?? null, lng: parseNullableFloat(lng) ?? null,
     email: email || null,
-    determinante: determinante !== undefined && determinante !== '' ? parseInt(determinante) : null,
+    determinante: parseNullableInt(determinante) ?? null,
     centro_costos: centro_costos || centro_costo_codigo || null,
     centro_costo_codigo: centro_costo_codigo || null,
     centro_costo_nombre: centro_costo_nombre || null,
@@ -143,8 +157,9 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
 
   const updated = {
     ...item, ...req.body,
-    lat: req.body.lat !== undefined ? parseFloat(req.body.lat) : item.lat,
-    lng: req.body.lng !== undefined ? parseFloat(req.body.lng) : item.lng,
+    lat: req.body.lat !== undefined ? parseNullableFloat(req.body.lat) : item.lat,
+    lng: req.body.lng !== undefined ? parseNullableFloat(req.body.lng) : item.lng,
+    determinante: req.body.determinante !== undefined ? parseNullableInt(req.body.determinante) : item.determinante,
     updated_at: new Date().toISOString()
   }
   db.get('sucursales').find({ id: req.params.id }).assign(updated).write()

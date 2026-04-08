@@ -1,21 +1,28 @@
 const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 
+function env(name) {
+  return (process.env[name] || '').trim()
+}
+
 // Si hay credenciales explícitas en el entorno las usa; si no, deja que el SDK
 // use el rol IAM del EC2 (credential provider chain automática de AWS SDK v3)
-function makeS3Client() {
-  const clientConfig = { region: process.env.AWS_REGION || 'us-east-2' }
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+function makeS3Client(useExplicitCredentials = true) {
+  const clientConfig = { region: env('AWS_REGION') || 'us-east-2' }
+  const accessKeyId = env('AWS_ACCESS_KEY_ID')
+  const secretAccessKey = env('AWS_SECRET_ACCESS_KEY')
+  if (useExplicitCredentials && accessKeyId && secretAccessKey) {
     clientConfig.credentials = {
-      accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      accessKeyId,
+      secretAccessKey,
     }
   }
   return new S3Client(clientConfig)
 }
 
-const s3 = makeS3Client()
+const s3 = makeS3Client(true)
+const s3Fallback = makeS3Client(false)
 
-const BUCKET = process.env.S3_BUCKET || 'athenasys-documentos'
+const BUCKET = env('S3_BUCKET') || 'athenasys-documentos'
 
 // Mapeo de tipo de documento a carpeta en S3
 const S3_FOLDERS = {
@@ -54,8 +61,8 @@ async function uploadPDF(buffer, key) {
     Body:        buffer,
     ContentType: 'application/pdf',
   })
-  await s3.send(command)
-  return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'us-east-2'}.amazonaws.com/${key}`
+  await sendWithFallback(command)
+  return `https://${BUCKET}.s3.${env('AWS_REGION') || 'us-east-2'}.amazonaws.com/${key}`
 }
 
 /**
@@ -74,8 +81,8 @@ async function uploadImage(buffer, folder, filename, contentType = 'image/jpeg')
     Body:        buffer,
     ContentType: contentType,
   })
-  await s3.send(command)
-  return `https://${BUCKET}.s3.${process.env.AWS_REGION || 'us-east-2'}.amazonaws.com/${key}`
+  await sendWithFallback(command)
+  return `https://${BUCKET}.s3.${env('AWS_REGION') || 'us-east-2'}.amazonaws.com/${key}`
 }
 
 /**
@@ -84,7 +91,18 @@ async function uploadImage(buffer, folder, filename, contentType = 'image/jpeg')
  */
 async function deleteFile(key) {
   const command = new DeleteObjectCommand({ Bucket: BUCKET, Key: key })
-  await s3.send(command)
+  await sendWithFallback(command)
+}
+
+async function sendWithFallback(command) {
+  try {
+    return await s3.send(command)
+  } catch (err) {
+    const credentialError = /credential/i.test(err?.message || '')
+    if (!credentialError) throw err
+    console.warn('[S3] Credenciales explícitas inválidas; reintentando con credential chain por defecto')
+    return s3Fallback.send(command)
+  }
 }
 
 module.exports = { uploadPDF, uploadImage, deleteFile, getFolder, getFotoFolder }

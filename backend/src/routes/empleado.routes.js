@@ -8,6 +8,13 @@ const { uploadImage, getFotoFolder } = require('../services/s3.service')
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
+function resolveSucursal(sucursalId) {
+  if (!sucursalId) return { sucursal_id: null, sucursal_nombre: null }
+  const sucursal = db.get('sucursales').find({ id: sucursalId, activo: true }).value()
+  if (!sucursal) return { sucursal_id: null, sucursal_nombre: null }
+  return { sucursal_id: sucursal.id, sucursal_nombre: sucursal.nombre }
+}
+
 router.use(authMiddleware)
 
 // ── Importar empleados desde CSV ─────────────────────────────────────────────
@@ -189,7 +196,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   const existe = db.get('empleados').find({ num_empleado, activo: true }).value()
   if (existe) return res.status(409).json({ message: 'Ya existe un empleado con ese número' })
 
-  const sucursal = sucursal_id ? db.get('sucursales').find({ id: sucursal_id }).value() : null
+  const sucursalData = resolveSucursal(sucursal_id)
   const now = new Date().toISOString()
   const item = {
     id: uuidv4(), nombre_completo, num_empleado, puesto: puesto || '',
@@ -198,7 +205,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     centro_costo_codigo: centro_costo_codigo || null,
     centro_costo_nombre: centro_costo_nombre || null,
     jefe_nombre: jefe_nombre || null,
-    sucursal_id: sucursal_id || null, sucursal_nombre: sucursal?.nombre || null,
+    ...sucursalData,
     email: email || '', telefono: telefono || '',
     activo: true, created_at: now
   }
@@ -210,10 +217,12 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
   const item = db.get('empleados').find({ id: req.params.id, activo: true }).value()
   if (!item) return res.status(404).json({ message: 'Empleado no encontrado' })
 
-  const sucursal = req.body.sucursal_id ? db.get('sucursales').find({ id: req.body.sucursal_id }).value() : null
+  const sucursalData = Object.prototype.hasOwnProperty.call(req.body, 'sucursal_id')
+    ? resolveSucursal(req.body.sucursal_id)
+    : { sucursal_id: item.sucursal_id, sucursal_nombre: item.sucursal_nombre }
   const updated = {
     ...item, ...req.body,
-    sucursal_nombre: sucursal?.nombre || item.sucursal_nombre,
+    ...sucursalData,
     updated_at: new Date().toISOString()
   }
   db.get('empleados').find({ id: req.params.id }).assign(updated).write()
