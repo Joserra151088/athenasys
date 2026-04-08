@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { format } from 'date-fns'
+import { differenceInCalendarDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import {
   ArrowPathIcon,
@@ -58,7 +58,32 @@ function formatDate(value) {
   return format(new Date(value), 'dd MMM yyyy', { locale: es })
 }
 
-function EventCard({ nodo, pos, onDragStart, index }) {
+function getDurationMeta(tipo, startDate, endDate) {
+  if (!startDate) return null
+
+  const start = new Date(startDate)
+  const end = endDate ? new Date(endDate) : new Date()
+
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null
+
+  const days = Math.max(0, differenceInCalendarDays(end, start))
+  const durationText = days === 0 ? 'Menos de 1 dia' : `${days} ${days === 1 ? 'dia' : 'dias'}`
+
+  const stateLabel = {
+    ingreso: 'En stock',
+    asignacion: 'Asignado',
+    retorno: 'En almacen',
+    pendiente: 'Pendiente',
+  }[tipo] || 'Tiempo activo'
+
+  return {
+    label: stateLabel,
+    durationText,
+    caption: endDate ? `Hasta ${formatDate(endDate)}` : 'Hasta hoy',
+  }
+}
+
+function EventCard({ nodo, pos, onDragStart, index, duration }) {
   const config = NODE_CONFIG[nodo.tipo] || NODE_CONFIG.asignacion
   const Icon = config.Icon
   const date = formatDate(nodo.fecha)
@@ -90,6 +115,24 @@ function EventCard({ nodo, pos, onDragStart, index }) {
             <p className="text-sm font-semibold leading-5 text-slate-900">{nodo.titulo}</p>
             <p className="min-h-[36px] text-xs leading-5 text-slate-500">{nodo.descripcion || 'Sin detalles adicionales registrados.'}</p>
           </div>
+
+          {duration && (
+            <div className="rounded-[22px] bg-slate-950 px-3.5 py-3 text-white shadow-[0_14px_28px_rgba(15,23,42,0.18)]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.22em] text-slate-300">{duration.label}</span>
+                <span className="rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/85">
+                  {duration.caption}
+                </span>
+              </div>
+              <div className="mt-2 flex items-end justify-between gap-3">
+                <div>
+                  <p className="text-lg font-semibold tracking-tight">{duration.durationText}</p>
+                  <p className="text-[11px] text-slate-300">Tiempo transcurrido en esta etapa</p>
+                </div>
+                <ClockIcon className="h-5 w-5 text-slate-300" />
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between rounded-2xl bg-white/80 px-3 py-2 text-xs text-slate-500 ring-1 ring-slate-200/80">
             <span className="font-medium text-slate-600">Evento {index + 1}</span>
@@ -130,7 +173,7 @@ function Connector({ from, to, color }) {
   )
 }
 
-function TrajectoryCanvas({ nodos, posiciones, onDragStart }) {
+function TrajectoryCanvas({ nodos, posiciones, onDragStart, durations }) {
   const canvasRef = useRef(null)
   const [, setSize] = useState({ w: 1200, h: 560 })
 
@@ -170,6 +213,7 @@ function TrajectoryCanvas({ nodos, posiciones, onDragStart }) {
       {nodos.map((nodo, index) => (
         <EventCard
           key={`${nodo.tipo}-${nodo.fecha || index}-${index}`}
+          duration={durations[index]}
           index={index}
           nodo={nodo}
           onDragStart={onDragStart}
@@ -316,6 +360,15 @@ export default function TrayectoriaEquipo() {
       },
     ]
   }, [nodos])
+
+  const durations = useMemo(
+    () =>
+      nodos.map((nodo, index) => {
+        const nextNode = nodos[index + 1]
+        return getDurationMeta(nodo.tipo, nodo.fecha, nextNode?.fecha)
+      }),
+    [nodos]
+  )
 
   const infoSerie = dispositivo
     ? [
@@ -529,7 +582,7 @@ export default function TrayectoriaEquipo() {
 
           <div className="p-4" style={{ minHeight: 560 }}>
             <div className="h-[560px]">
-              <TrajectoryCanvas nodos={nodos} posiciones={posiciones} onDragStart={onDragStart} />
+              <TrajectoryCanvas nodos={nodos} posiciones={posiciones} onDragStart={onDragStart} durations={durations} />
             </div>
           </div>
         </section>

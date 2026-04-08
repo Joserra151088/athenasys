@@ -10,6 +10,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 import { USER_ROLES } from '../utils/constants'
+import previtaLogo from '../assets/previta.png'
 
 const navItems = [
   { path: '/', label: 'Dashboard', exact: true },
@@ -252,10 +253,16 @@ export default function Layout() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">Menu</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">AthenaSys</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-slate-400">Plataforma interna</p>
+                  <h1 className="mt-2 text-[1.75rem] font-semibold tracking-[-0.04em] text-slate-950">AthenaSys</h1>
+                </div>
+                <img src={previtaLogo} alt="Previta" className="h-11 w-auto object-contain opacity-95" />
+              </div>
               <div>
-                <h1 className="text-lg font-semibold tracking-tight text-slate-950">Inventario con mejor contexto</h1>
+                <p className="text-sm font-medium text-slate-700">Inventario con mejor contexto</p>
                 <p className="mt-1 text-sm leading-6 text-slate-500">Navegacion depurada, mas clara y con una presencia visual mas sobria.</p>
               </div>
             </div>
@@ -372,9 +379,12 @@ export default function Layout() {
             >
               <Bars3Icon className="h-5 w-5" />
             </button>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">AthenaSys</p>
-              <p className="text-sm font-semibold tracking-tight text-slate-950">Inventario de dispositivos</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-slate-400">Plataforma interna</p>
+                <p className="truncate text-base font-semibold tracking-tight text-slate-950">AthenaSys</p>
+              </div>
+              <img src={previtaLogo} alt="Previta" className="h-7 w-auto object-contain" />
             </div>
           </div>
         </header>
