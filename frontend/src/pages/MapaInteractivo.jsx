@@ -101,6 +101,17 @@ export default function MapaInteractivo() {
     }
   }
 
+  const goToTrayectoria = (event, serie) => {
+    event.stopPropagation()
+    if (!serie) return
+    navigate('/asignaciones', {
+      state: {
+        trayectoriaSerie: serie,
+        trayectoriaNonce: Date.now(),
+      },
+    })
+  }
+
   // ─── Búsqueda filtrada (incluye dispositivos) ────────────────────────────────
   const q = mapSearch.toLowerCase().trim()
 
@@ -311,17 +322,6 @@ export default function MapaInteractivo() {
                           else if (emp) selectEmpleado(emp, true)
                         }
 
-                        const goToTrayectoria = (event) => {
-                          event.stopPropagation()
-                          if (!d.serie) return
-                          navigate('/asignaciones', {
-                            state: {
-                              trayectoriaSerie: d.serie,
-                              trayectoriaNonce: Date.now(),
-                            },
-                          })
-                        }
-
                         return (
                           <button key={d.id}
                             onClick={handleClick}
@@ -340,9 +340,9 @@ export default function MapaInteractivo() {
                                 <span
                                   role="button"
                                   tabIndex={0}
-                                  onClick={goToTrayectoria}
+                                  onClick={event => goToTrayectoria(event, d.serie)}
                                   onKeyDown={(event) => {
-                                    if (event.key === 'Enter' || event.key === ' ') goToTrayectoria(event)
+                                    if (event.key === 'Enter' || event.key === ' ') goToTrayectoria(event, d.serie)
                                   }}
                                   className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 transition-colors hover:bg-blue-50"
                                   title="Ver trayectoria"
@@ -403,8 +403,20 @@ export default function MapaInteractivo() {
                     </div>
                     {getDispositivosDeSucursal(selected.id).slice(0, 8).map(d => (
                       <div key={d.id} className="py-1.5 border-b border-gray-100 last:border-0">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-medium text-gray-700">{d.tipo} — {d.marca}</span>
+                        <div className="flex justify-between text-xs gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium text-gray-700">{d.tipo} - {d.marca}</span>
+                            {d.serie && (
+                              <button
+                                type="button"
+                                onClick={event => goToTrayectoria(event, d.serie)}
+                                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 transition-colors hover:bg-blue-50"
+                                title="Ver trayectoria"
+                              >
+                                <ArrowRightIcon className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                           <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
                         </div>
                         {d.serie
@@ -452,8 +464,20 @@ export default function MapaInteractivo() {
                     </div>
                     {getDispositivosDeEmpleado(selected.id).map(d => (
                       <div key={d.id} className="py-1.5 border-b border-gray-100 last:border-0">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-medium text-gray-700">{d.tipo} — {d.marca}</span>
+                        <div className="flex justify-between text-xs gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate font-medium text-gray-700">{d.tipo} - {d.marca}</span>
+                            {d.serie && (
+                              <button
+                                type="button"
+                                onClick={event => goToTrayectoria(event, d.serie)}
+                                className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 transition-colors hover:bg-blue-50"
+                                title="Ver trayectoria"
+                              >
+                                <ArrowRightIcon className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                           <Badge {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })} />
                         </div>
                         {d.serie && <div className="text-xs font-mono text-gray-400 mt-0.5">{d.serie}</div>}
