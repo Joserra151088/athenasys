@@ -10,11 +10,29 @@ router.use(authMiddleware)
 const TIPOS_EN_PAQUETE_CPU = ['Monitor', 'Teclado', 'Mouse']
 // Accesorios sin costo de renta
 const TIPOS_ACCESORIO = ['Cable de Datos', 'Cable de Corriente', 'Cable VGA', 'Cable HDMI']
+// Equipos que ya son propiedad de la empresa
+const PROVEEDORES_SIN_COSTO = ['opentec']
+
+function esProveedorSinCosto(nombre = '') {
+  const normalizado = nombre.toLowerCase()
+  return PROVEEDORES_SIN_COSTO.some(proveedor => normalizado.includes(proveedor))
+}
 
 function getCostoDia(tipo) {
   if (TIPOS_EN_PAQUETE_CPU.includes(tipo) || TIPOS_ACCESORIO.includes(tipo)) return 0
   const tarifa = db.get('tarifas_equipo').find({ tipo, activo: true }).value()
   return tarifa ? parseFloat(tarifa.costo_dia) : 0
+}
+
+function resolveCostoDia(tipo, proveedorNombre, costoDiaBody) {
+  if (esProveedorSinCosto(proveedorNombre)) return 0
+
+  if (costoDiaBody !== undefined && costoDiaBody !== '') {
+    const parsed = parseFloat(costoDiaBody)
+    if (Number.isFinite(parsed)) return parsed
+  }
+
+  return getCostoDia(tipo)
 }
 
 // Estadísticas
@@ -145,7 +163,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   const proveedor = proveedor_id ? db.get('proveedores').find({ id: proveedor_id }).value() : null
   const now = new Date().toISOString()
   // costo_dia: usa el valor del body si se proporcionó, si no calcula automáticamente
-  const costoDia = (costo_dia !== undefined && costo_dia !== '') ? parseFloat(costo_dia) : getCostoDia(tipo)
+  const costoDia = resolveCostoDia(tipo, proveedor?.nombre || '', costo_dia)
   const item = {
     id: uuidv4(), tipo, marca, serie: serie || null, modelo: modelo || '',
     cantidad: TIPOS_SIN_SERIE.includes(tipo) ? (parseInt(cantidad) || 1) : 1,
@@ -170,7 +188,7 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
   const proveedor = req.body.proveedor_id ? db.get('proveedores').find({ id: req.body.proveedor_id }).value() : null
   const nuevoTipo = req.body.tipo || item.tipo
   // costo_dia: si viene en el body lo respeta, si no lo recalcula
-  const costoDia = (req.body.costo_dia !== undefined && req.body.costo_dia !== '') ? parseFloat(req.body.costo_dia) : getCostoDia(nuevoTipo)
+  const costoDia = resolveCostoDia(nuevoTipo, proveedor?.nombre || item.proveedor_nombre || '', req.body.costo_dia)
   const updated = {
     ...item,
     ...req.body,

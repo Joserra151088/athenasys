@@ -253,8 +253,8 @@ export default function Layout() {
               <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">Menu</p>
             </div>
           ) : (
-            <div className="flex flex-col items-start gap-4">
-              <img src={previtaLogo} alt="Previta" className="h-12 w-auto object-contain opacity-95" />
+            <div className="flex w-full flex-col items-center justify-center gap-4 text-center">
+              <img src={previtaLogo} alt="Previta" className="h-14 w-full max-w-[220px] object-contain opacity-95" />
               <h1 className="text-[1.9rem] font-semibold tracking-[-0.05em] text-slate-950">AthenaSys</h1>
             </div>
           )}

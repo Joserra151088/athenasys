@@ -57,18 +57,43 @@ const CAMPOS_POR_TIPO = {
   ],
 }
 
+const PROVEEDORES_SIN_COSTO = ['opentec']
 const EMPTY_FORM = { tipo: '', marca: '', serie: '', modelo: '', cantidad: 1, proveedor_id: '', caracteristicas: '', costo_dia: '', campos_extra: {}, costo_tipo: 'mensual' }
 
+function isProveedorSinCosto(nombre = '') {
+  return PROVEEDORES_SIN_COSTO.some(proveedor => (nombre || '').toLowerCase().includes(proveedor))
+}
+
+function resolveCostoValor(costo, fallback = 0) {
+  if (costo === 0 || costo === '0') return 0
+  if (costo === null || costo === undefined || costo === '') return fallback
+
+  const parsed = parseFloat(costo)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 // Muestra costo con estilo según tipo de tarifa
-function CostoBadge({ tipo, costo }) {
+function CostoBadge({ tipo, costo, proveedorNombre }) {
   const rate = DEVICE_DAILY_RATES[tipo]
+  const proveedorSinCosto = isProveedorSinCosto(proveedorNombre)
+  const costoMostrado = proveedorSinCosto ? 0 : resolveCostoValor(costo, rate?.costo ?? 0)
   if (!rate) return <span className="text-gray-400 text-xs">—</span>
+
+  if (proveedorSinCosto) return (
+    <div className="flex flex-col items-end">
+      <span className="text-slate-700 font-medium text-sm">
+        $0.00
+        <span className="text-xs font-normal text-gray-400">/dia</span>
+      </span>
+      <span className="text-xs text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5">Propio</span>
+    </div>
+  )
 
   if (rate.tipo === 'paquete') return (
     <div className="flex flex-col">
       <span className="text-emerald-700 font-semibold text-sm">
-        ${parseFloat(costo || rate.costo).toFixed(2)}
-        <span className="text-xs font-normal text-gray-400">/día</span>
+        ${costoMostrado.toFixed(2)}
+        <span className="text-xs font-normal text-gray-400">/dia</span>
       </span>
       <span className="text-xs text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded mt-0.5 inline-flex items-center gap-0.5">
         <CubeIcon className="h-3 w-3" /> Paquete
@@ -77,29 +102,39 @@ function CostoBadge({ tipo, costo }) {
   )
   if (rate.tipo === 'incluido') return (
     <div className="flex flex-col">
-      <span className="text-gray-400 text-sm">$0.00<span className="text-xs">/día</span></span>
+      <span className="text-gray-400 text-sm">$0.00<span className="text-xs">/dia</span></span>
       <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5">En CPU</span>
     </div>
   )
   if (rate.tipo === 'accesorio') return (
     <div className="flex flex-col">
-      <span className="text-gray-400 text-sm">$0.00<span className="text-xs">/día</span></span>
+      <span className="text-gray-400 text-sm">$0.00<span className="text-xs">/dia</span></span>
       <span className="text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded mt-0.5">Accesorio</span>
+    </div>
+  )
+  if (costoMostrado === 0) return (
+    <div className="flex flex-col items-end">
+      <span className="text-slate-700 font-medium text-sm">
+        $0.00
+        <span className="text-xs font-normal text-gray-400">/dia</span>
+      </span>
+      <span className="text-xs text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded mt-0.5">Sin renta</span>
     </div>
   )
   return (
     <span className="text-gray-700 font-medium text-sm">
-      ${parseFloat(costo || rate.costo).toFixed(2)}
-      <span className="text-xs font-normal text-gray-400">/día</span>
+      ${costoMostrado.toFixed(2)}
+      <span className="text-xs font-normal text-gray-400">/dia</span>
     </span>
   )
 }
 
 // Previsualización del costo en el formulario
-function CostoPreview({ tipo }) {
-  if (!tipo) return null
+function CostoPreview({ tipo, costo, proveedorNombre }) {
+  if (!tipo && !proveedorNombre) return null
   const rate = DEVICE_DAILY_RATES[tipo]
-  if (!rate) return null
+  const proveedorSinCosto = isProveedorSinCosto(proveedorNombre)
+  if (!rate && !proveedorSinCosto) return null
 
   const colorMap = {
     paquete:   'bg-emerald-50 border-emerald-200 text-emerald-800',
@@ -108,12 +143,27 @@ function CostoPreview({ tipo }) {
     accesorio: 'bg-gray-50   border-gray-200   text-gray-600',
   }
 
+  if (proveedorSinCosto) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs bg-blue-50 border-blue-200 text-blue-800">
+        <CurrencyDollarIcon className="h-4 w-4 flex-shrink-0" />
+        <div>
+          <span className="font-semibold">$0.00 MXN/dia</span>
+          {' - '}
+          <span className="opacity-80">Equipo adquirido por la empresa con proveedor Opentec</span>
+        </div>
+      </div>
+    )
+  }
+
+  const costoMostrado = resolveCostoValor(costo, rate.costo)
+
   return (
     <div className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${colorMap[rate.tipo]}`}>
       <CurrencyDollarIcon className="h-4 w-4 flex-shrink-0" />
       <div>
         <span className="font-semibold">
-          {rate.costo > 0 ? `$${rate.costo.toFixed(2)} MXN/día` : 'Sin costo de renta'}
+          {costoMostrado > 0 ? `$${costoMostrado.toFixed(2)} MXN/dia` : 'Sin costo de renta'}
         </span>
         {' — '}
         <span className="opacity-80">{rate.nota}</span>
@@ -218,6 +268,16 @@ export default function Dispositivos() {
     catalogosAPI.tiposDispositivo.getAll().then(r => setTiposDispositivo(r.map(t => t.nombre || t.valor || t)))
   }, [])
 
+  const proveedorSeleccionado = proveedores.find(p => p.id === form.proveedor_id)
+  const proveedorSeleccionadoNombre = proveedorSeleccionado?.nombre || ''
+  const proveedorSeleccionadoSinCosto = isProveedorSinCosto(proveedorSeleccionadoNombre)
+
+  useEffect(() => {
+    if (!proveedorSeleccionadoSinCosto) return
+    if (form.costo_dia === 0 || form.costo_dia === '0') return
+    setForm(prev => ({ ...prev, costo_dia: 0 }))
+  }, [form.costo_dia, proveedorSeleccionadoSinCosto])
+
   // Client-side sorting
   const sorted = [...dispositivos].sort((a, b) => {
     if (!sortCol) return 0
@@ -252,7 +312,7 @@ export default function Dispositivos() {
 
   const handleTipoChange = (tipo) => {
     const costo_tipo = getCostoTipo(tipo)
-    const costo_dia = costo_tipo === 'sin_costo' ? 0 : ''
+    const costo_dia = (costo_tipo === 'sin_costo' || proveedorSeleccionadoSinCosto) ? 0 : ''
     setForm(f => ({ ...f, tipo, campos_extra: {}, costo_tipo, costo_dia }))
   }
 
@@ -300,7 +360,7 @@ export default function Dispositivos() {
     serie: 'Serie',
     proveedor: 'Proveedor',
     caracteristicas: 'Características',
-    costo: 'Costo/día',
+    costo: 'Costo/dia',
     estado: 'Estado',
     ubicacion: 'Ubicación',
   }
@@ -331,7 +391,7 @@ export default function Dispositivos() {
       <div className="flex flex-wrap gap-2 text-xs">
         <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1.5 rounded-lg">
           <CubeIcon className="h-3.5 w-3.5" />
-          <span><strong>Paquete CPU</strong> — Monitor + Teclado + Mouse incluidos ($85/día)</span>
+          <span><strong>Paquete CPU</strong> — Monitor + Teclado + Mouse incluidos ($85/dia)</span>
         </div>
         <div className="flex items-center gap-1.5 bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1.5 rounded-lg">
           <TagIcon className="h-3.5 w-3.5" />
@@ -480,7 +540,7 @@ export default function Dispositivos() {
                     className="table-header text-right"
                     style={{ width: colWidths['costo'] || 'auto', position: 'relative' }}
                   >
-                    Costo/día
+                    Costo/dia
                     <ResizeHandle colKey="costo" />
                   </th>
                 )}
@@ -546,7 +606,7 @@ export default function Dispositivos() {
                   )}
                   {visibleCols.costo && (
                     <td className="table-cell text-right">
-                      <CostoBadge tipo={d.tipo} costo={d.costo_dia} />
+                      <CostoBadge tipo={d.tipo} costo={d.costo_dia} proveedorNombre={d.proveedor_nombre} />
                     </td>
                   )}
                   {visibleCols.estado && (
@@ -631,7 +691,16 @@ export default function Dispositivos() {
             <div className="col-span-2">
               <label className="label">Proveedor</label>
               <select className="input" value={form.proveedor_id}
-                onChange={e => setForm(f => ({ ...f, proveedor_id: e.target.value }))}>
+                onChange={e => {
+                  const proveedorId = e.target.value
+                  const proveedor = proveedores.find(p => p.id === proveedorId)
+                  const proveedorSinCosto = isProveedorSinCosto(proveedor?.nombre || '')
+                  setForm(f => ({
+                    ...f,
+                    proveedor_id: proveedorId,
+                    costo_dia: proveedorSinCosto ? 0 : f.costo_dia
+                  }))
+                }}>
                 <option value="">Sin proveedor</option>
                 {proveedores.map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
@@ -684,10 +753,10 @@ export default function Dispositivos() {
             </div>
 
             {/* ── Costo según tipo ── */}
-            {form.costo_tipo === 'sin_costo' ? (
+            {(form.costo_tipo === 'sin_costo' || proveedorSeleccionadoSinCosto) ? (
               <div className="col-span-2 flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-500">
                 <span className="text-lg">🏢</span>
-                <span>Este dispositivo <strong>no tiene costo mensual</strong> — pertenece a la empresa.</span>
+                <span>{proveedorSeleccionadoSinCosto ? <>Los equipos del proveedor <strong>Opentec</strong> se registran con <strong>costo $0</strong> porque ya son propiedad de la empresa.</> : <>Este dispositivo <strong>no tiene costo mensual</strong> - pertenece a la empresa.</>}</span>
               </div>
             ) : (
               <>
@@ -720,7 +789,9 @@ export default function Dispositivos() {
                   )}
                 </div>
                 <div className="flex items-end pb-1">
-                  {form.tipo && DEVICE_DAILY_RATES[form.tipo] && <CostoPreview tipo={form.tipo} />}
+                  {((form.tipo && DEVICE_DAILY_RATES[form.tipo]) || proveedorSeleccionadoSinCosto) && (
+                    <CostoPreview tipo={form.tipo} costo={form.costo_dia} proveedorNombre={proveedorSeleccionadoNombre} />
+                  )}
                 </div>
               </>
             )}
@@ -745,3 +816,4 @@ export default function Dispositivos() {
     </div>
   )
 }
+
