@@ -617,7 +617,9 @@ export default function Dispositivos() {
                   {visibleCols.ubicacion && (
                     <td className="table-cell">
                       <Badge {...(LOCATION_TYPES[d.ubicacion_tipo] || { label: d.ubicacion_tipo, color: 'bg-gray-100 text-gray-600' })} />
-                      <div className="text-xs text-gray-400 mt-0.5 truncate max-w-36">{d.ubicacion_nombre}</div>
+                      <div className="mt-0.5 max-w-[220px] whitespace-normal break-words text-xs leading-4 text-gray-400">
+                        {d.ubicacion_nombre}
+                      </div>
                     </td>
                   )}
                   {canEdit() && (

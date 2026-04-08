@@ -99,6 +99,65 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('asigna
   res.status(201).json(asignacion)
 })
 
+router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actualizar', 'asignacion'), (req, res) => {
+  const asignacion = db.get('asignaciones').find({ id: req.params.id, activo: true }).value()
+  if (!asignacion) return res.status(404).json({ message: 'AsignaciÃ³n no encontrada' })
+
+  const { tipo_asignacion, asignado_a_id, observaciones } = req.body
+  if (!tipo_asignacion || !asignado_a_id) {
+    return res.status(400).json({ message: 'Tipo de asignaciÃ³n y destinatario son requeridos' })
+  }
+
+  let destinatario = null
+  let lat = null
+  let lng = null
+
+  if (tipo_asignacion === 'empleado') {
+    destinatario = db.get('empleados').find({ id: asignado_a_id, activo: true }).value()
+    if (!destinatario) return res.status(404).json({ message: 'Empleado no encontrado' })
+    const sucursal = destinatario.sucursal_id ? db.get('sucursales').find({ id: destinatario.sucursal_id }).value() : null
+    lat = sucursal?.lat || null
+    lng = sucursal?.lng || null
+  } else {
+    destinatario = db.get('sucursales').find({ id: asignado_a_id, activo: true }).value()
+    if (!destinatario) return res.status(404).json({ message: 'Sucursal no encontrada' })
+    lat = destinatario.lat || null
+    lng = destinatario.lng || null
+  }
+
+  const now = new Date().toISOString()
+  const asignadoANombre = tipo_asignacion === 'empleado' ? destinatario.nombre_completo : destinatario.nombre
+
+  const updatedAsignacion = {
+    tipo_asignacion,
+    asignado_a_id,
+    asignado_a_nombre: asignadoANombre,
+    observaciones: observaciones || '',
+    ajustado_por_id: req.user.id,
+    ajustado_por_nombre: req.user.nombre,
+    fecha_ajuste: now,
+  }
+
+  db.get('asignaciones').find({ id: req.params.id }).assign(updatedAsignacion).write()
+
+  db.get('dispositivos').find({ id: asignacion.dispositivo_id }).assign({
+    estado: 'activo',
+    ubicacion_tipo: tipo_asignacion,
+    ubicacion_id: asignado_a_id,
+    ubicacion_nombre: asignadoANombre,
+    lat,
+    lng,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
+    updated_at: now,
+  }).write()
+
+  res.json({
+    ...asignacion,
+    ...updatedAsignacion,
+  })
+})
+
 router.delete('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('desasignar', 'asignacion'), (req, res) => {
   const asignacion = db.get('asignaciones').find({ id: req.params.id, activo: true }).value()
   if (!asignacion) return res.status(404).json({ message: 'Asignación no encontrada' })

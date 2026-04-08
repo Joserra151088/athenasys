@@ -103,11 +103,15 @@ router.get('/trayectoria', (req, res) => {
 
   // Nodos por cada asignación
   for (const asig of asignaciones) {
+    const descripcionAsignacion = asig.ajustado_por_nombre
+      ? `Por ${asig.asignado_por_nombre}. Ajustado por ${asig.ajustado_por_nombre}`
+      : `Por ${asig.asignado_por_nombre}`
+
     nodos.push({
       tipo: 'asignacion',
       fecha: asig.fecha_asignacion,
       titulo: `Asignado a ${asig.asignado_a_nombre}`,
-      descripcion: `Por ${asig.asignado_por_nombre}`,
+      descripcion: descripcionAsignacion,
       asignado_a: asig.asignado_a_nombre,
       tipo_asignacion: asig.tipo_asignacion,
       por: asig.asignado_por_nombre,

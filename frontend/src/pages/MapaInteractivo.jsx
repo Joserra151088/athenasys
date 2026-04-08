@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from 'react-leaflet'
+import { useNavigate } from 'react-router-dom'
 import { sucursalAPI, deviceAPI, empleadoAPI } from '../utils/api'
 import { DEVICE_STATUS } from '../utils/constants'
 import Badge from '../components/Badge'
-import { BuildingOfficeIcon, UserIcon, ComputerDesktopIcon, XMarkIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { BuildingOfficeIcon, UserIcon, ComputerDesktopIcon, XMarkIcon, MagnifyingGlassIcon, ArrowRightIcon } from '@heroicons/react/24/outline'
 import PageHeader from '../components/PageHeader'
 import L from 'leaflet'
 
@@ -42,6 +43,7 @@ function MapController({ flyTarget }) {
 }
 
 export default function MapaInteractivo() {
+  const navigate = useNavigate()
   const [sucursales, setSucursales] = useState([])
   const [empleados, setEmpleados] = useState([])
   const [dispositivos, setDispositivos] = useState([])
@@ -309,6 +311,17 @@ export default function MapaInteractivo() {
                           else if (emp) selectEmpleado(emp, true)
                         }
 
+                        const goToTrayectoria = (event) => {
+                          event.stopPropagation()
+                          if (!d.serie) return
+                          navigate('/asignaciones', {
+                            state: {
+                              trayectoriaSerie: d.serie,
+                              trayectoriaNonce: Date.now(),
+                            },
+                          })
+                        }
+
                         return (
                           <button key={d.id}
                             onClick={handleClick}
@@ -322,7 +335,23 @@ export default function MapaInteractivo() {
                                 {suc?.nombre || emp?.nombre_completo || d.ubicacion_nombre || 'Sin ubicación'}
                               </div>
                             </div>
-                            {(suc || parentSuc) && <span className="text-gray-300 text-xs">→</span>}
+                            <div className="flex items-center gap-1">
+                              {d.serie && (
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={goToTrayectoria}
+                                  onKeyDown={(event) => {
+                                    if (event.key === 'Enter' || event.key === ' ') goToTrayectoria(event)
+                                  }}
+                                  className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-white text-blue-600 transition-colors hover:bg-blue-50"
+                                  title="Ver trayectoria"
+                                >
+                                  <ArrowRightIcon className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+                              {(suc || parentSuc) && <span className="text-gray-300 text-xs">→</span>}
+                            </div>
                           </button>
                         )
                       })}
@@ -466,3 +495,4 @@ export default function MapaInteractivo() {
     </div>
   )
 }
+

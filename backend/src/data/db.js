@@ -424,7 +424,10 @@ const DDL = [
     \`asignado_a_nombre\` VARCHAR(200),
     \`asignado_por_id\` VARCHAR(36),
     \`asignado_por_nombre\` VARCHAR(200),
+    \`ajustado_por_id\` VARCHAR(36),
+    \`ajustado_por_nombre\` VARCHAR(200),
     \`fecha_asignacion\` DATETIME,
+    \`fecha_ajuste\` DATETIME,
     \`fecha_devolucion\` DATETIME,
     \`observaciones\` TEXT,
     \`activo\` TINYINT(1) DEFAULT 1,
@@ -1002,6 +1005,9 @@ async function initDB() {
   await alterIfNotExists('usuarios_sistema', 'firma_path',   'VARCHAR(500)')
   await alterIfNotExists('documentos',   'firma_agente_path',  'VARCHAR(500)')
   await alterIfNotExists('asignaciones', 'dispositivo_marca',  'VARCHAR(200)')
+  await alterIfNotExists('asignaciones', 'ajustado_por_id',    'VARCHAR(36)')
+  await alterIfNotExists('asignaciones', 'ajustado_por_nombre','VARCHAR(200)')
+  await alterIfNotExists('asignaciones', 'fecha_ajuste',       'DATETIME')
   await alterIfNotExists('asignaciones', 'lat',                'DECIMAL(10,8)')
   await alterIfNotExists('asignaciones', 'lng',                'DECIMAL(11,8)')
   await alterIfNotExists('finanzas_detalle', 'modo_calculo',     "VARCHAR(10) DEFAULT 'dias'")

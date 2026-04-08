@@ -224,7 +224,7 @@ function TrajectoryCanvas({ nodos, posiciones, onDragStart, durations }) {
   )
 }
 
-export default function TrayectoriaEquipo() {
+export default function TrayectoriaEquipo({ initialSerie = '', initialRequestKey = '' }) {
   const [modo, setModo] = useState('serie')
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
@@ -248,29 +248,30 @@ export default function TrayectoriaEquipo() {
     }))
   }, [])
 
-  const limpiarResultados = () => {
+  const limpiarResultados = useCallback(() => {
     setNodos([])
     setDispositivo(null)
     setResultadosEmpleado([])
     setEmpleadoSeleccionado(null)
     setPosiciones([])
-  }
+  }, [])
 
-  const buscar = async () => {
-    if (!query.trim()) return
+  const executeSearch = useCallback(async (searchMode, rawQuery) => {
+    const normalizedQuery = rawQuery.trim()
+    if (!normalizedQuery) return
 
     setLoading(true)
     setError(null)
     limpiarResultados()
 
     try {
-      if (modo === 'serie') {
-        const result = await deviceAPI.getTrayectoria(query.trim())
+      if (searchMode === 'serie') {
+        const result = await deviceAPI.getTrayectoria(normalizedQuery)
         setDispositivo(result.dispositivo)
         setNodos(result.nodos)
         setPosiciones(calcularPosiciones(result.nodos.length))
       } else {
-        const result = await empleadoAPI.getTrayectoria(query.trim())
+        const result = await empleadoAPI.getTrayectoria(normalizedQuery)
         setResultadosEmpleado(result)
 
         if (result.length === 1) {
@@ -284,7 +285,18 @@ export default function TrayectoriaEquipo() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [calcularPosiciones, limpiarResultados])
+
+  const buscar = useCallback(() => {
+    executeSearch(modo, query)
+  }, [executeSearch, modo, query])
+
+  useEffect(() => {
+    if (!initialSerie.trim()) return
+    setModo('serie')
+    setQuery(initialSerie)
+    executeSearch('serie', initialSerie)
+  }, [executeSearch, initialSerie, initialRequestKey])
 
   const seleccionarEmpleado = resultado => {
     setEmpleadoSeleccionado(resultado)

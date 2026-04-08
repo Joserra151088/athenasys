@@ -66,6 +66,7 @@ export const asignacionAPI = {
   getAll: (params) => api.get('/asignaciones', { params }),
   getByTarget: (tipo, id) => api.get(`/asignaciones/${tipo}/${id}`),
   asignar: (data) => api.post('/asignaciones', data),
+  update: (id, data) => api.put(`/asignaciones/${id}`, data),
   desasignar: (id) => api.delete(`/asignaciones/${id}`)
 }
 
