@@ -367,6 +367,8 @@ const DDL = [
     \`lng\` DECIMAL(10,7),
     \`creado_por\` VARCHAR(36),
     \`creado_por_nombre\` VARCHAR(200),
+    \`actualizado_por\` VARCHAR(36),
+    \`actualizado_por_nombre\` VARCHAR(200),
     \`activo\` TINYINT(1) DEFAULT 1,
     \`created_at\` DATETIME,
     \`updated_at\` DATETIME
@@ -387,8 +389,10 @@ const DDL = [
     \`sucursal_nombre\` VARCHAR(200),
     \`email\` VARCHAR(200),
     \`telefono\` VARCHAR(50),
+    \`foto_url\` VARCHAR(500),
     \`activo\` TINYINT(1) DEFAULT 1,
-    \`created_at\` DATETIME
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS \`sucursales\` (
@@ -404,8 +408,10 @@ const DDL = [
     \`centro_costo_codigo\` VARCHAR(100),
     \`centro_costo_nombre\` VARCHAR(300),
     \`determinante\` INT DEFAULT NULL,
+    \`foto_url\` VARCHAR(500),
     \`activo\` TINYINT(1) DEFAULT 1,
-    \`created_at\` DATETIME
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS \`asignaciones\` (
@@ -983,10 +989,14 @@ async function initDB() {
   await alterIfNotExists('dispositivos',  'cantidad',             'INT DEFAULT 1')
   await alterIfNotExists('dispositivos',  'creado_por',           'VARCHAR(36)')
   await alterIfNotExists('dispositivos',  'creado_por_nombre',    'VARCHAR(200)')
+  await alterIfNotExists('dispositivos',  'actualizado_por',      'VARCHAR(36)')
+  await alterIfNotExists('dispositivos',  'actualizado_por_nombre','VARCHAR(200)')
   await alterIfNotExists('empleados',     'centro_costo_codigo',  'VARCHAR(100)')
   await alterIfNotExists('empleados',     'centro_costo_nombre',  'VARCHAR(300)')
+  await alterIfNotExists('empleados',     'foto_url',             'VARCHAR(500)')
   await alterIfNotExists('sucursales',    'centro_costo_codigo',  'VARCHAR(100)')
   await alterIfNotExists('sucursales',    'centro_costo_nombre',  'VARCHAR(300)')
+  await alterIfNotExists('sucursales',    'foto_url',             'VARCHAR(500)')
   await alterIfNotExists('cotizaciones',  'total_mxn',            'DECIMAL(15,2)')
   await alterIfNotExists('usuarios_sistema', 'firma_base64', 'MEDIUMTEXT')
   await alterIfNotExists('usuarios_sistema', 'firma_path',   'VARCHAR(500)')

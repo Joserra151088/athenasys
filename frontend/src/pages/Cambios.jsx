@@ -6,6 +6,7 @@ import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
 import { PlusIcon, MagnifyingGlassIcon, CheckCircleIcon, EyeIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
@@ -86,13 +87,9 @@ export default function Cambios() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Cambios de Equipo</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Reparaciones, bajas definitivas y actualizaciones</p>
-        </div>
+      <PageHeader title="Cambios de Equipo" subtitle="Reparaciones, bajas definitivas y actualizaciones">
         {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Registrar Cambio</button>}
-      </div>
+      </PageHeader>
 
       <div className="card p-4">
         <div className="relative">

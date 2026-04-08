@@ -7,6 +7,7 @@ import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, PrinterIcon, BookmarkIcon, PlusCircleIcon, XMarkIcon, MinusCircleIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import jsPDF from 'jspdf'
@@ -160,20 +161,14 @@ export default function Cotizaciones() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Cotizaciones</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Genera y exporta cotizaciones con IVA y tipo de cambio</p>
-        </div>
-        <div className="flex gap-2">
-          {canEdit() && (
-            <button className="btn-secondary" onClick={() => setModal('repositorio')}>
-              <BookmarkIcon className="h-4 w-4" /> Repositorio
-            </button>
-          )}
-          {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nueva Cotización</button>}
-        </div>
-      </div>
+      <PageHeader title="Cotizaciones" subtitle="Genera y exporta cotizaciones con IVA y tipo de cambio">
+        {canEdit() && (
+          <button className="btn-secondary" onClick={() => setModal('repositorio')}>
+            <BookmarkIcon className="h-4 w-4" /> Repositorio
+          </button>
+        )}
+        {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nueva Cotización</button>}
+      </PageHeader>
 
       <div className="card p-4">
         <div className="relative">

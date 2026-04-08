@@ -4,8 +4,9 @@ const multer = require('multer')
 const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
+const { uploadImage, getFotoFolder } = require('../services/s3.service')
 
-const upload = multer({ storage: multer.memoryStorage() })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 router.use(authMiddleware)
 
@@ -61,24 +62,54 @@ router.post('/importar-csv', requireRoles('super_admin', 'agente_soporte'), uplo
 })
 
 router.get('/', (req, res) => {
-  const { search, tipo, page = 1, limit = 50 } = req.query
+  const { search, tipo, estado, determinante, email, centro_costos, direccion, page = 1, limit = 50 } = req.query
   let items = db.get('sucursales').filter({ activo: true }).value()
 
+  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+
   if (tipo) items = items.filter(s => s.tipo === tipo)
+  if (estado) items = items.filter(s => s.estado === estado)
+  if (determinante) items = items.filter(s => String(s.determinante ?? '').toLowerCase().includes(determinante.toLowerCase()))
+  if (email) items = items.filter(s => norm(s.email).includes(norm(email)))
+  if (centro_costos) items = items.filter(s =>
+    norm(s.centro_costos).includes(norm(centro_costos)) ||
+    norm(s.centro_costo_codigo).includes(norm(centro_costos)) ||
+    norm(s.centro_costo_nombre).includes(norm(centro_costos))
+  )
+  if (direccion) items = items.filter(s => norm(s.direccion).includes(norm(direccion)))
   if (search) {
-    const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-    const q = normalizeStr(search)
+    const q = norm(search)
     items = items.filter(s =>
-      normalizeStr(s.nombre).includes(q) ||
-      normalizeStr(s.estado).includes(q) ||
-      normalizeStr(s.direccion).includes(q)
+      norm(s.nombre).includes(q) ||
+      norm(s.estado).includes(q) ||
+      norm(s.direccion).includes(q)
     )
   }
 
   const total = items.length
   const offset = (parseInt(page) - 1) * parseInt(limit)
   const data = items.slice(offset, offset + parseInt(limit))
-  res.json({ data, total, page: parseInt(page), limit: parseInt(limit) })
+  res.json({ data, total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) })
+})
+
+// ── Subir foto de sucursal a S3 ───────────────────────────────────────────────
+router.post('/:id/foto', requireRoles('super_admin', 'agente_soporte'), upload.single('foto'), async (req, res) => {
+  const item = db.get('sucursales').find({ id: req.params.id, activo: true }).value()
+  if (!item) return res.status(404).json({ message: 'Sucursal no encontrada' })
+  if (!req.file) return res.status(400).json({ message: 'Archivo de foto requerido' })
+
+  try {
+    const ext = req.file.mimetype.split('/')[1] || 'jpg'
+    const filename = `${(item.nombre || item.id).replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}.${ext}`
+    const folder = getFotoFolder('sucursal')
+    const url = await uploadImage(req.file.buffer, folder, filename, req.file.mimetype)
+
+    db.get('sucursales').find({ id: req.params.id }).assign({ foto_url: url, updated_at: new Date().toISOString() }).write()
+    res.json({ foto_url: url })
+  } catch (err) {
+    console.error('Error subiendo foto:', err)
+    res.status(500).json({ message: 'Error al subir la foto' })
+  }
 })
 
 router.get('/:id', (req, res) => {

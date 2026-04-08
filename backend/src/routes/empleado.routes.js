@@ -4,8 +4,9 @@ const multer = require('multer')
 const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
+const { uploadImage, getFotoFolder } = require('../services/s3.service')
 
-const upload = multer({ storage: multer.memoryStorage() })
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
 
 router.use(authMiddleware)
 
@@ -74,26 +75,51 @@ router.post('/importar-csv', requireRoles('super_admin', 'agente_soporte'), uplo
 })
 
 router.get('/', (req, res) => {
-  const { search, sucursal_id, area, page = 1, limit = 50 } = req.query
+  const { search, sucursal_id, area, puesto, jefe_nombre, num_empleado, email, page = 1, limit = 50 } = req.query
   let items = db.get('empleados').filter({ activo: true }).value()
+
+  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
   if (sucursal_id) items = items.filter(e => e.sucursal_id === sucursal_id)
   if (area) items = items.filter(e => e.area === area)
+  if (puesto) items = items.filter(e => norm(e.puesto).includes(norm(puesto)))
+  if (jefe_nombre) items = items.filter(e => norm(e.jefe_nombre).includes(norm(jefe_nombre)))
+  if (num_empleado) items = items.filter(e => norm(e.num_empleado).includes(norm(num_empleado)))
+  if (email) items = items.filter(e => norm(e.email).includes(norm(email)))
   if (search) {
-    const normalizeStr = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
-    const q = normalizeStr(search)
+    const q = norm(search)
     items = items.filter(e =>
-      normalizeStr(e.nombre_completo).includes(q) ||
-      normalizeStr(e.num_empleado).includes(q) ||
-      normalizeStr(e.puesto).includes(q) ||
-      normalizeStr(e.email).includes(q)
+      norm(e.nombre_completo).includes(q) ||
+      norm(e.num_empleado).includes(q) ||
+      norm(e.puesto).includes(q) ||
+      norm(e.email).includes(q)
     )
   }
 
   const total = items.length
   const offset = (parseInt(page) - 1) * parseInt(limit)
   const data = items.slice(offset, offset + parseInt(limit))
-  res.json({ data, total, page: parseInt(page), limit: parseInt(limit) })
+  res.json({ data, total, page: parseInt(page), limit: parseInt(limit), pages: Math.ceil(total / parseInt(limit)) })
+})
+
+// ── Subir foto de empleado a S3 ───────────────────────────────────────────────
+router.post('/:id/foto', requireRoles('super_admin', 'agente_soporte'), upload.single('foto'), async (req, res) => {
+  const item = db.get('empleados').find({ id: req.params.id, activo: true }).value()
+  if (!item) return res.status(404).json({ message: 'Empleado no encontrado' })
+  if (!req.file) return res.status(400).json({ message: 'Archivo de foto requerido' })
+
+  try {
+    const ext = req.file.mimetype.split('/')[1] || 'jpg'
+    const filename = `${item.num_empleado || item.id}_${Date.now()}.${ext}`
+    const folder = getFotoFolder('empleado')
+    const url = await uploadImage(req.file.buffer, folder, filename, req.file.mimetype)
+
+    db.get('empleados').find({ id: req.params.id }).assign({ foto_url: url, updated_at: new Date().toISOString() }).write()
+    res.json({ foto_url: url })
+  } catch (err) {
+    console.error('Error subiendo foto:', err)
+    res.status(500).json({ message: 'Error al subir la foto' })
+  }
 })
 
 // Trayectoria de equipos de un empleado por nombre

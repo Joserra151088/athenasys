@@ -15,6 +15,7 @@ import Modal from '../components/Modal'
 import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
 import jsPDF from 'jspdf'
+import PageHeader from '../components/PageHeader'
 
 // ── EmpleadoSearch ────────────────────────────────────────────────────────────
 function EmpleadoSearch({ value, display, onSelect, onClear }) {
@@ -1995,10 +1996,7 @@ export default function Finanzas() {
   ]
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Finanzas TI</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Presupuesto, gasto real y análisis financiero</p>
-      </div>
+      <PageHeader title="Finanzas TI" subtitle="Presupuesto, gasto real y análisis financiero" />
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
         {tabs.map(t => (

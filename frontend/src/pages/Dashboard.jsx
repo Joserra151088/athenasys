@@ -1,9 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { deviceAPI, licenciaAPI } from '../utils/api'
 import { DEVICE_STATUS, LOCATION_TYPES, DEVICE_TYPES } from '../utils/constants'
-import Badge from '../components/Badge'
-import Pagination from '../components/Pagination'
 import {
   ComputerDesktopIcon,
   ExclamationTriangleIcon,
@@ -11,34 +9,45 @@ import {
   CheckCircleIcon,
   KeyIcon,
   ClockIcon,
-  ArrowTrendingUpIcon,
   BuildingOfficeIcon,
+  WrenchScrewdriverIcon,
+  UsersIcon,
+  MapPinIcon,
+  DocumentTextIcon,
+  ArrowRightIcon,
+  BellAlertIcon,
+  SparklesIcon,
 } from '@heroicons/react/24/outline'
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
-function KpiCard({ icon: Icon, label, value, iconBg, iconColor, to, trend, trendLabel }) {
+function KpiCard({ icon: Icon, label, value, gradient, iconColor, textColor, to }) {
   const content = (
     <div
-      className="bg-white rounded-2xl border border-gray-100 p-5 flex items-start gap-4 transition-all duration-300 hover:shadow-lg hover:-translate-y-0.5 cursor-default"
-      style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
+      className="rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-default relative overflow-hidden min-h-[120px]"
+      style={{ background: gradient, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
     >
-      <div
-        className="h-12 w-12 rounded-xl flex items-center justify-center flex-shrink-0"
-        style={{ background: iconBg }}
-      >
-        <Icon className="h-6 w-6" style={{ color: iconColor }} />
+      {/* Watermark icon */}
+      <div className="absolute -right-3 -bottom-3 opacity-[0.13] pointer-events-none">
+        <Icon className="h-28 w-28" style={{ color: iconColor }} />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-2xl font-bold text-gray-900 leading-none mb-1">
-          {value ?? <span className="text-gray-300">—</span>}
+      {/* Icon chip */}
+      <div
+        className="h-10 w-10 rounded-xl flex items-center justify-center flex-shrink-0 self-start"
+        style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(4px)' }}
+      >
+        <Icon className="h-5 w-5" style={{ color: iconColor }} />
+      </div>
+      {/* Value + label */}
+      <div className="relative z-10 mt-3">
+        <div
+          className="text-4xl font-black leading-none mb-1 tracking-tight"
+          style={{ color: textColor || iconColor }}
+        >
+          {value ?? <span style={{ color: iconColor, opacity: 0.3 }}>—</span>}
         </div>
-        <div className="text-xs text-gray-500 font-medium leading-tight">{label}</div>
-        {trend !== undefined && (
-          <div className="flex items-center gap-1 mt-1.5">
-            <ArrowTrendingUpIcon className="h-3.5 w-3.5 text-emerald-500" />
-            <span className="text-xs text-emerald-600 font-medium">{trendLabel}</span>
-          </div>
-        )}
+        <div className="text-xs font-semibold uppercase tracking-wide" style={{ color: iconColor, opacity: 0.65 }}>
+          {label}
+        </div>
       </div>
     </div>
   )
@@ -51,13 +60,20 @@ function KpiCard({ icon: Icon, label, value, iconBg, iconColor, to, trend, trend
   )
 }
 
-// ─── Donut Chart (SVG puro) ───────────────────────────────────────────────────
+// ─── Donut Chart (SVG puro, con animación de crecimiento) ────────────────────
 function DonutChart({ segments }) {
   const r = 35
   const cx = 50
   const cy = 50
   const circumference = 2 * Math.PI * r // ≈ 219.9
   const total = segments.reduce((s, seg) => s + seg.value, 0)
+  const [animated, setAnimated] = useState(false)
+
+  useEffect(() => {
+    // Small delay so the browser paints the initial state (dash=0) before transitioning
+    const t = setTimeout(() => setAnimated(true), 120)
+    return () => clearTimeout(t)
+  }, [])
 
   let offset = 0
   const arcs = segments.map(seg => {
@@ -84,25 +100,47 @@ function DonutChart({ segments }) {
               fill="none"
               stroke={arc.color}
               strokeWidth="10"
-              strokeDasharray={`${arc.dash} ${arc.gap}`}
+              strokeDasharray={
+                animated
+                  ? `${arc.dash} ${arc.gap}`
+                  : `0 ${circumference}`
+              }
               strokeDashoffset={0}
               strokeLinecap="butt"
               transform={`rotate(${arc.rotation} ${cx} ${cy})`}
-              style={{ transition: 'stroke-dasharray 0.6s ease' }}
+              style={{
+                transition: `stroke-dasharray 0.85s cubic-bezier(0.4,0,0.2,1)`,
+                transitionDelay: `${i * 110}ms`,
+              }}
             />
           ) : null
         )}
-        {/* Center label */}
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1a3471">
+        {/* Center label — fades in */}
+        <text
+          x={cx} y={cy - 4} textAnchor="middle" fontSize="13" fontWeight="700" fill="#1a3471"
+          style={{ opacity: animated ? 1 : 0, transition: 'opacity 0.5s ease 0.4s' }}
+        >
           {total}
         </text>
-        <text x={cx} y={cy + 9} textAnchor="middle" fontSize="6" fill="#94a3b8">
+        <text
+          x={cx} y={cy + 9} textAnchor="middle" fontSize="6" fill="#94a3b8"
+          style={{ opacity: animated ? 1 : 0, transition: 'opacity 0.5s ease 0.5s' }}
+        >
           total
         </text>
       </svg>
       <div className="space-y-2">
         {arcs.map((arc, i) => (
-          <div key={i} className="flex items-center gap-2">
+          <div
+            key={i}
+            className="flex items-center gap-2"
+            style={{
+              opacity: animated ? 1 : 0,
+              transform: animated ? 'translateX(0)' : 'translateX(-8px)',
+              transition: `opacity 0.4s ease, transform 0.4s ease`,
+              transitionDelay: `${0.3 + i * 0.08}s`,
+            }}
+          >
             <span
               className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
               style={{ background: arc.color }}
@@ -120,8 +158,6 @@ function DonutChart({ segments }) {
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [licStats, setLicStats] = useState(null)
-  const [dispositivos, setDispositivos] = useState([])
-  const [pagination, setPagination] = useState({ page: 1, pages: 1, total: 0, limit: 15 })
   const [loading, setLoading] = useState(true)
 
   const today = new Date().toLocaleDateString('es-MX', {
@@ -134,22 +170,12 @@ export default function Dashboard() {
   useEffect(() => {
     Promise.all([
       deviceAPI.getStats(),
-      deviceAPI.getAll({ page: 1, limit: 15 }),
       licenciaAPI.getStats(),
-    ]).then(([s, d, ls]) => {
+    ]).then(([s, ls]) => {
       setStats(s)
       setLicStats(ls)
-      setDispositivos(d.data)
-      setPagination({ page: d.page, pages: d.pages, total: d.total, limit: d.limit })
     }).finally(() => setLoading(false))
   }, [])
-
-  const loadPage = (page) => {
-    deviceAPI.getAll({ page, limit: 15 }).then(d => {
-      setDispositivos(d.data)
-      setPagination({ page: d.page, pages: d.pages, total: d.total, limit: d.limit })
-    })
-  }
 
   if (loading) {
     return (
@@ -179,57 +205,99 @@ export default function Dashboard() {
     <div className="space-y-6">
       {/* Header banner */}
       <div
-        className="rounded-2xl px-7 py-6 text-white"
+        className="rounded-2xl px-7 py-7 text-white relative overflow-hidden"
         style={{
-          background: 'linear-gradient(120deg, #10204a 0%, #1a3471 55%, #2d5ab0 100%)',
-          boxShadow: '0 4px 24px rgba(26,52,113,0.18)',
+          background: 'linear-gradient(120deg, #0d1b3e 0%, #1a3471 50%, #2d5ab0 100%)',
+          boxShadow: '0 6px 30px rgba(26,52,113,0.22)',
         }}
       >
-        <div className="flex items-start justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">Panel de Control</h1>
-            <p className="text-blue-200 text-sm mt-1 capitalize">{today}</p>
+        {/* Subtle decorative circles */}
+        <div className="absolute -top-10 -right-10 w-56 h-56 rounded-full opacity-10"
+          style={{ background: 'radial-gradient(circle, #7ab4ff, transparent)' }} />
+        <div className="absolute -bottom-14 right-1/3 w-40 h-40 rounded-full opacity-8"
+          style={{ background: 'radial-gradient(circle, #4d77c5, transparent)' }} />
+
+        <div className="relative z-10">
+          <div className="flex items-start justify-between flex-wrap gap-4">
+            <div>
+              <p className="text-blue-300 text-xs font-semibold uppercase tracking-widest mb-1">Resumen del sistema</p>
+              <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+              <p className="text-blue-200 text-sm mt-1 capitalize">{today}</p>
+            </div>
+            {/* System status indicator */}
+            <div className="flex items-center gap-2 bg-emerald-500/20 border border-emerald-400/30 rounded-xl px-4 py-2.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-sm text-emerald-300 font-semibold">Sistema operativo</span>
+            </div>
           </div>
-          <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2">
-            <BuildingOfficeIcon className="h-5 w-5 text-blue-200" />
-            <span className="text-sm text-blue-100 font-medium">Previta · Salud Empresarial</span>
+
+          {/* Inline quick stats */}
+          <div className="flex flex-wrap gap-3 mt-5">
+            <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2">
+              <ComputerDesktopIcon className="h-4 w-4 text-blue-300" />
+              <span className="text-lg font-bold text-white">{stats?.total ?? '—'}</span>
+              <span className="text-xs text-blue-300">dispositivos</span>
+            </div>
+            <div className="flex items-center gap-2 bg-emerald-500/15 rounded-xl px-4 py-2">
+              <CheckCircleIcon className="h-4 w-4 text-emerald-400" />
+              <span className="text-lg font-bold text-white">{stats?.por_estado?.activo ?? '—'}</span>
+              <span className="text-xs text-emerald-300">activos</span>
+            </div>
+            <div className="flex items-center gap-2 bg-amber-500/15 rounded-xl px-4 py-2">
+              <WrenchScrewdriverIcon className="h-4 w-4 text-amber-400" />
+              <span className="text-lg font-bold text-white">{stats?.por_estado?.en_reparacion ?? '—'}</span>
+              <span className="text-xs text-amber-300">en reparación</span>
+            </div>
+            <div className="flex items-center gap-2 bg-purple-500/15 rounded-xl px-4 py-2">
+              <KeyIcon className="h-4 w-4 text-purple-300" />
+              <span className="text-lg font-bold text-white">{licStats?.total ?? '—'}</span>
+              <span className="text-xs text-purple-300">licencias</span>
+            </div>
+            {(licStats?.por_vencer ?? 0) > 0 && (
+              <div className="flex items-center gap-2 bg-orange-500/20 border border-orange-400/30 rounded-xl px-4 py-2">
+                <ClockIcon className="h-4 w-4 text-orange-300" />
+                <span className="text-lg font-bold text-white">{licStats.por_vencer}</span>
+                <span className="text-xs text-orange-300">lic. por vencer</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* KPI Row 1 — Dispositivos */}
       <div>
-        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 px-0.5">
-          Dispositivos
-        </h2>
+        <div className="flex items-center gap-2 mb-3 px-0.5">
+          <div className="w-1 h-4 rounded-full" style={{ background: '#1a3471' }} />
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Dispositivos</h2>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard
             icon={ComputerDesktopIcon}
             label="Total Dispositivos"
             value={stats?.total}
-            iconBg="rgba(26,52,113,0.10)"
-            iconColor="#1a3471"
+            gradient="linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%)"
+            iconColor="#1d4ed8"
             to="/dispositivos"
           />
           <KpiCard
             icon={CheckCircleIcon}
             label="Activos"
             value={stats?.por_estado?.activo || 0}
-            iconBg="rgba(16,185,129,0.12)"
+            gradient="linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%)"
             iconColor="#059669"
           />
           <KpiCard
             icon={ArchiveBoxIcon}
             label="En Stock"
             value={stats?.por_estado?.stock || 0}
-            iconBg="rgba(100,116,139,0.12)"
+            gradient="linear-gradient(135deg, #e2e8f0 0%, #f1f5f9 100%)"
             iconColor="#475569"
           />
           <KpiCard
             icon={ExclamationTriangleIcon}
             label="En Reparación"
             value={stats?.por_estado?.en_reparacion || 0}
-            iconBg="rgba(245,158,11,0.12)"
+            gradient="linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%)"
             iconColor="#d97706"
           />
         </div>
@@ -237,43 +305,50 @@ export default function Dashboard() {
 
       {/* KPI Row 2 — Licencias */}
       <div>
-        <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 px-0.5">
-          Licencias de Software
-        </h2>
+        <div className="flex items-center gap-2 mb-3 px-0.5">
+          <div className="w-1 h-4 rounded-full" style={{ background: '#4f46e5' }} />
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Licencias de Software</h2>
+        </div>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard
             icon={KeyIcon}
             label="Total Licencias"
             value={licStats?.total}
-            iconBg="rgba(99,102,241,0.12)"
-            iconColor="#4f46e5"
+            gradient="linear-gradient(135deg, #ede9fe 0%, #f5f3ff 100%)"
+            iconColor="#6d28d9"
             to="/licencias"
           />
           <KpiCard
             icon={CheckCircleIcon}
             label="Licencias Activas"
             value={licStats?.activas || 0}
-            iconBg="rgba(20,184,166,0.12)"
+            gradient="linear-gradient(135deg, #ccfbf1 0%, #f0fdfa 100%)"
             iconColor="#0d9488"
           />
           <KpiCard
             icon={ClockIcon}
             label="Por Vencer (30d)"
             value={licStats?.por_vencer || 0}
-            iconBg="rgba(249,115,22,0.12)"
-            iconColor="#ea580c"
+            gradient="linear-gradient(135deg, #fed7aa 0%, #fff7ed 100%)"
+            iconColor="#c2410c"
           />
           <KpiCard
             icon={KeyIcon}
             label="Asientos Usados"
             value={licStats ? `${licStats.asientos_usados}/${licStats.total_asientos}` : '—'}
-            iconBg="rgba(168,85,247,0.12)"
-            iconColor="#9333ea"
+            gradient="linear-gradient(135deg, #fce7f3 0%, #fdf2f8 100%)"
+            iconColor="#9d174d"
           />
         </div>
       </div>
 
       {/* Distribución: Ubicación + Tipos + Dona */}
+      <div>
+        <div className="flex items-center gap-2 mb-3 px-0.5">
+          <div className="w-1 h-4 rounded-full" style={{ background: '#0d9488' }} />
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Distribución y Análisis</h2>
+        </div>
+      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Ubicación — barras */}
         <div
@@ -356,95 +431,165 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Tabla de dispositivos */}
-      <div
-        className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
-        style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
-      >
-        {/* Header tabla */}
+      {/* Bottom row: Alertas + Accesos Rápidos */}
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+
+        {/* ── Alertas del Sistema (2/5) ── */}
         <div
-          className="px-6 py-4 flex items-center justify-between border-b border-gray-100"
-          style={{ background: 'linear-gradient(90deg, rgba(26,52,113,0.04) 0%, rgba(255,255,255,0) 100%)' }}
+          className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6"
+          style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}
         >
-          <div className="flex items-center gap-2">
-            <ComputerDesktopIcon className="h-5 w-5 text-gray-400" />
-            <h3 className="font-semibold text-gray-800">Todos los Dispositivos</h3>
-            <span
-              className="ml-1 text-xs font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: 'rgba(26,52,113,0.08)', color: '#1a3471' }}
-            >
-              {pagination.total}
-            </span>
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <BellAlertIcon className="h-4 w-4 text-gray-400" />
+            Alertas del Sistema
+          </h3>
+
+          <div className="space-y-3">
+            {/* Licencias por vencer */}
+            {(licStats?.por_vencer ?? 0) > 0 ? (
+              <Link to="/licencias" className="flex items-center gap-3 p-3 rounded-xl transition-all hover:scale-[1.01]"
+                style={{ background: 'linear-gradient(135deg, #fef3c7, #fffbeb)', border: '1px solid #fde68a' }}>
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-amber-100">
+                  <ClockIcon className="h-4 w-4 text-amber-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-amber-800">Licencias por vencer</div>
+                  <div className="text-xs text-amber-600 mt-0.5">{licStats.por_vencer} licencia{licStats.por_vencer !== 1 ? 's' : ''} vence{licStats.por_vencer !== 1 ? 'n' : ''} en 30 días</div>
+                </div>
+                <ArrowRightIcon className="h-4 w-4 text-amber-500 flex-shrink-0" />
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100">
+                  <ClockIcon className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-sm text-gray-400">Sin licencias por vencer</div>
+              </div>
+            )}
+
+            {/* Dispositivos en reparación */}
+            {(stats?.por_estado?.en_reparacion ?? 0) > 0 ? (
+              <Link to="/dispositivos" className="flex items-center gap-3 p-3 rounded-xl transition-all hover:scale-[1.01]"
+                style={{ background: 'linear-gradient(135deg, #fef9c3, #fefce8)', border: '1px solid #fef08a' }}>
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-yellow-100">
+                  <WrenchScrewdriverIcon className="h-4 w-4 text-yellow-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-yellow-800">Equipos en reparación</div>
+                  <div className="text-xs text-yellow-600 mt-0.5">{stats.por_estado.en_reparacion} dispositivo{stats.por_estado.en_reparacion !== 1 ? 's' : ''} en servicio</div>
+                </div>
+                <ArrowRightIcon className="h-4 w-4 text-yellow-500 flex-shrink-0" />
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100">
+                  <WrenchScrewdriverIcon className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-sm text-gray-400">Sin equipos en reparación</div>
+              </div>
+            )}
+
+            {/* Dispositivos pendientes */}
+            {(stats?.por_estado?.pendiente ?? 0) > 0 ? (
+              <Link to="/dispositivos" className="flex items-center gap-3 p-3 rounded-xl transition-all hover:scale-[1.01]"
+                style={{ background: 'linear-gradient(135deg, #fee2e2, #fef2f2)', border: '1px solid #fecaca' }}>
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-100">
+                  <ExclamationTriangleIcon className="h-4 w-4 text-red-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-red-800">Dispositivos pendientes</div>
+                  <div className="text-xs text-red-600 mt-0.5">{stats.por_estado.pendiente} requieren atención</div>
+                </div>
+                <ArrowRightIcon className="h-4 w-4 text-red-400 flex-shrink-0" />
+              </Link>
+            ) : (
+              <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-50">
+                <div className="h-9 w-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-gray-100">
+                  <ExclamationTriangleIcon className="h-4 w-4 text-gray-400" />
+                </div>
+                <div className="text-sm text-gray-400">Sin dispositivos pendientes</div>
+              </div>
+            )}
+
+            {/* Sin alertas */}
+            {!(licStats?.por_vencer) && !(stats?.por_estado?.en_reparacion) && !(stats?.por_estado?.pendiente) && (
+              <div className="flex flex-col items-center justify-center py-6 text-center">
+                <div className="h-12 w-12 rounded-full bg-emerald-50 flex items-center justify-center mb-3">
+                  <SparklesIcon className="h-6 w-6 text-emerald-500" />
+                </div>
+                <div className="text-sm font-semibold text-emerald-700">Todo en orden</div>
+                <div className="text-xs text-gray-400 mt-1">Sin alertas activas en el sistema</div>
+              </div>
+            )}
           </div>
-          <Link
-            to="/dispositivos"
-            className="text-sm font-medium transition-colors"
-            style={{ color: '#1a3471' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#2d5ab0')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#1a3471')}
-          >
-            Ver todos →
-          </Link>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr style={{ background: 'rgba(26,52,113,0.03)' }}>
-                <th className="table-header">Tipo</th>
-                <th className="table-header">Marca / Modelo</th>
-                <th className="table-header">Serie</th>
-                <th className="table-header">Estado</th>
-                <th className="table-header">Ubicación</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50">
-              {dispositivos.map(d => (
-                <tr
-                  key={d.id}
-                  className="transition-colors duration-150"
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(26,52,113,0.025)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = '')}
+        {/* ── Accesos Rápidos (3/5) ── */}
+        <div
+          className="lg:col-span-3 bg-white rounded-2xl border border-gray-100 p-6"
+          style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}
+        >
+          <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <SparklesIcon className="h-4 w-4 text-gray-400" />
+            Accesos Rápidos
+          </h3>
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              {
+                label: 'Dispositivos', to: '/dispositivos', Icon: ComputerDesktopIcon,
+                count: stats?.total, countLabel: 'registrados',
+                gradient: 'linear-gradient(135deg, #dbeafe, #eff6ff)', color: '#1d4ed8',
+              },
+              {
+                label: 'Empleados', to: '/empleados', Icon: UsersIcon,
+                count: null, countLabel: 'activos',
+                gradient: 'linear-gradient(135deg, #d1fae5, #ecfdf5)', color: '#059669',
+              },
+              {
+                label: 'Sucursales', to: '/sucursales', Icon: BuildingOfficeIcon,
+                count: null, countLabel: 'registradas',
+                gradient: 'linear-gradient(135deg, #ede9fe, #f5f3ff)', color: '#6d28d9',
+              },
+              {
+                label: 'Licencias', to: '/licencias', Icon: KeyIcon,
+                count: licStats?.total, countLabel: 'totales',
+                gradient: 'linear-gradient(135deg, #fce7f3, #fdf2f8)', color: '#9d174d',
+              },
+              {
+                label: 'Documentos', to: '/documentos', Icon: DocumentTextIcon,
+                count: null, countLabel: 'expedientes',
+                gradient: 'linear-gradient(135deg, #ccfbf1, #f0fdfa)', color: '#0d9488',
+              },
+              {
+                label: 'Mapa', to: '/mapa', Icon: MapPinIcon,
+                count: null, countLabel: 'ubicaciones',
+                gradient: 'linear-gradient(135deg, #fee2e2, #fef2f2)', color: '#dc2626',
+              },
+            ].map(({ label, to, Icon, count, countLabel, gradient, color }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex flex-col items-center gap-2.5 p-4 rounded-xl transition-all duration-200 hover:scale-[1.04] hover:shadow-md text-center"
+                style={{ background: gradient }}
+              >
+                <div
+                  className="h-11 w-11 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(255,255,255,0.7)' }}
                 >
-                  <td className="table-cell">
-                    <span className="font-semibold text-gray-800 text-sm">{d.tipo}</span>
-                  </td>
-                  <td className="table-cell">
-                    <div className="font-medium text-gray-800 text-sm">{d.marca}</div>
-                    <div className="text-xs text-gray-400 mt-0.5">{d.modelo}</div>
-                  </td>
-                  <td className="table-cell font-mono text-xs text-gray-500">{d.serie}</td>
-                  <td className="table-cell">
-                    <Badge
-                      {...(DEVICE_STATUS[d.estado] || { label: d.estado, color: 'bg-gray-100 text-gray-600' })}
-                    />
-                  </td>
-                  <td className="table-cell">
-                    <Badge
-                      {...(LOCATION_TYPES[d.ubicacion_tipo] || {
-                        label: d.ubicacion_tipo,
-                        color: 'bg-gray-100 text-gray-600',
-                      })}
-                    />
-                    <div className="text-xs text-gray-400 mt-0.5 truncate max-w-32">
-                      {d.ubicacion_nombre}
+                  <Icon className="h-5 w-5" style={{ color }} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold text-gray-800">{label}</div>
+                  {count != null && (
+                    <div className="text-xs font-semibold mt-0.5" style={{ color }}>
+                      {count} {countLabel}
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {dispositivos.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="text-center py-14 text-gray-400">
-                    <ComputerDesktopIcon className="h-10 w-10 mx-auto mb-3 text-gray-200" />
-                    No hay dispositivos registrados
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
         </div>
-
-        <Pagination {...pagination} onPageChange={loadPage} />
       </div>
     </div>
   )

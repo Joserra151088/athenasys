@@ -7,6 +7,7 @@ import Badge from '../components/Badge'
 import ConfirmDialog from '../components/ConfirmDialog'
 import FirmaCanvas from '../components/FirmaCanvas'
 import { PlusIcon, PencilIcon, UserMinusIcon, KeyIcon, PencilSquareIcon, TrashIcon, CheckIcon, FolderIcon, FolderOpenIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
@@ -156,13 +157,9 @@ export default function UsuariosSistema() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Usuarios del Sistema</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Administra los accesos y roles de la plataforma</p>
-        </div>
+      <PageHeader title="Usuarios del Sistema" subtitle="Administra los accesos y roles de la plataforma">
         <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nuevo Usuario</button>
-      </div>
+      </PageHeader>
 
       {/* ── Mi Firma ──────────────────────────────────────────────────────── */}
       <div className="card space-y-4">

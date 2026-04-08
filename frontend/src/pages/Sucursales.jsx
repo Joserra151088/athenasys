@@ -7,7 +7,8 @@ import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, MapPinIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, AdjustmentsHorizontalIcon, CameraIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { Link } from 'react-router-dom'
 
 const EMPTY = { nombre: '', tipo: 'sucursal', direccion: '', estado: '', lat: '', lng: '', email: '', centro_costos: '', centro_costo_codigo: '', centro_costo_nombre: '', determinante: '' }
@@ -115,9 +116,20 @@ export default function Sucursales() {
   const [csvImporting, setCsvImporting] = useState(false)
   const csvFileRef = useRef(null)
 
-  // Filtros cliente
+  // Filtros (server-side)
   const [filterTipo, setFilterTipo] = useState('')
   const [filterEstado, setFilterEstado] = useState('')
+  const [filterDeterminante, setFilterDeterminante] = useState('')
+  const [filterEmail, setFilterEmail] = useState('')
+  const [filterCentroCostos, setFilterCentroCostos] = useState('')
+  const [filterDireccion, setFilterDireccion] = useState('')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+
+  // Foto
+  const [fotoFile, setFotoFile] = useState(null)
+  const [fotoPreview, setFotoPreview] = useState(null)
+  const [fotoUploading, setFotoUploading] = useState(false)
+  const fotoInputRef = useRef(null)
 
   // Sorting
   const [sortCol, setSortCol] = useState('')
@@ -162,18 +174,22 @@ export default function Sucursales() {
     setLoading(true)
     const params = { page, limit: 20 }
     if (search) params.search = search
+    if (filterTipo) params.tipo = filterTipo
+    if (filterEstado) params.estado = filterEstado
+    if (filterDeterminante) params.determinante = filterDeterminante
+    if (filterEmail) params.email = filterEmail
+    if (filterCentroCostos) params.centro_costos = filterCentroCostos
+    if (filterDireccion) params.direccion = filterDireccion
     sucursalAPI.getAll(params).then(d => {
       setSucursales(d.data)
-      setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
+      setPagination({ page: d.page, pages: d.pages || Math.ceil(d.total / 20), total: d.total, limit: 20 })
     }).finally(() => setLoading(false))
-  }, [search])
+  }, [search, filterTipo, filterEstado, filterDeterminante, filterEmail, filterCentroCostos, filterDireccion])
 
   useEffect(() => { load(1) }, [load])
 
-  // Filtrado y sorting en cliente
+  // Sorting en cliente (filtros son server-side)
   const displayData = [...sucursales]
-    .filter(s => !filterTipo || s.tipo === filterTipo)
-    .filter(s => !filterEstado || s.estado === filterEstado)
     .sort((a, b) => {
       if (!sortCol) return 0
       const va = (a[sortCol] || '').toString().toLowerCase()
@@ -183,9 +199,14 @@ export default function Sucursales() {
 
   const sortIcon = (col) => sortCol === col ? (sortDir === 'asc' ? '▲' : '▼') : <span className="text-gray-300">⇅</span>
 
-  const openCreate = () => { setEditing(null); setForm(EMPTY); setModal(true) }
+  const openCreate = () => {
+    setEditing(null); setForm(EMPTY)
+    setFotoFile(null); setFotoPreview(null)
+    setModal(true)
+  }
   const openEdit = (s) => {
     setEditing(s)
+    setFotoFile(null); setFotoPreview(s.foto_url || null)
     setForm({
       nombre: s.nombre, tipo: s.tipo, direccion: s.direccion || '',
       estado: s.estado || '', lat: s.lat || '', lng: s.lng || '',
@@ -202,10 +223,24 @@ export default function Sucursales() {
     ev.preventDefault()
     setSaving(true)
     try {
-      if (editing) await sucursalAPI.update(editing.id, form)
-      else await sucursalAPI.create(form)
+      let saved
+      if (editing) saved = await sucursalAPI.update(editing.id, form)
+      else saved = await sucursalAPI.create(form)
+
+      // Upload foto if selected
+      if (fotoFile && saved?.id) {
+        setFotoUploading(true)
+        try {
+          const fd = new FormData()
+          fd.append('foto', fotoFile)
+          await sucursalAPI.uploadFoto(saved.id, fd)
+        } catch (fotoErr) {
+          showError('Sucursal guardada, pero error al subir foto: ' + (fotoErr?.message || ''))
+        } finally { setFotoUploading(false) }
+      }
+
       setModal(false)
-      load(1)
+      load(editing ? pagination.page : 1)
     } catch (err) { showError(err?.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
@@ -240,18 +275,12 @@ export default function Sucursales() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sucursales</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Corporativo y sucursales de la empresa</p>
-        </div>
-        <div className="flex gap-2">
-          {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
-          {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Sucursal</button>}
-        </div>
-      </div>
+      <PageHeader title="Sucursales" subtitle="Corporativo y sucursales de la empresa">
+        {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
+        {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Sucursal</button>}
+      </PageHeader>
 
-      <div className="card p-4">
+      <div className="card p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
           <div className="relative flex-1 min-w-48">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -266,6 +295,14 @@ export default function Sucursales() {
             <option value="">Todos los estados</option>
             {ESTADOS_MX.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
+          {/* Toggle filtros avanzados */}
+          <button
+            className={`btn-secondary text-xs ${showAdvancedFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : ''}`}
+            onClick={() => setShowAdvancedFilters(v => !v)}
+          >
+            <AdjustmentsHorizontalIcon className="h-4 w-4" />
+            Más filtros {showAdvancedFilters ? '▲' : '▼'}
+          </button>
           <div ref={colsMenuRef} className="relative">
             <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
               <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
@@ -282,12 +319,54 @@ export default function Sucursales() {
               </div>
             )}
           </div>
-          {(filterTipo || filterEstado) && (
-            <button className="btn-secondary text-xs py-1.5 text-red-500 border-red-200" onClick={() => { setFilterTipo(''); setFilterEstado('') }}>
+          {(filterTipo || filterEstado || filterDeterminante || filterEmail || filterCentroCostos || filterDireccion) && (
+            <button className="btn-secondary text-xs py-1.5 text-red-500 border-red-200" onClick={() => { setFilterTipo(''); setFilterEstado(''); setFilterDeterminante(''); setFilterEmail(''); setFilterCentroCostos(''); setFilterDireccion('') }}>
               <XMarkIcon className="h-4 w-4" /> Limpiar
             </button>
           )}
         </div>
+
+        {/* Filtros avanzados por campo */}
+        {showAdvancedFilters && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-gray-100">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Determinante</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="1234..."
+                value={filterDeterminante}
+                onChange={e => setFilterDeterminante(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Correo</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="correo@empresa.com"
+                value={filterEmail}
+                onChange={e => setFilterEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Centro de Costos</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="Código o nombre..."
+                value={filterCentroCostos}
+                onChange={e => setFilterCentroCostos(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Dirección</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="Calle, colonia..."
+                value={filterDireccion}
+                onChange={e => setFilterDireccion(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -378,9 +457,12 @@ export default function Sucursales() {
                 <tr key={s.id} className="hover:bg-gray-50">
                   <td className="table-cell">
                     <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                        <MapPinIcon className="h-4 w-4 text-teal-600" />
-                      </div>
+                      {s.foto_url
+                        ? <img src={s.foto_url} alt={s.nombre} className="h-8 w-8 rounded-lg object-cover flex-shrink-0 border border-gray-200" />
+                        : <div className="h-8 w-8 bg-teal-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <MapPinIcon className="h-4 w-4 text-teal-600" />
+                          </div>
+                      }
                       <span className="font-medium">{s.nombre}</span>
                     </div>
                   </td>
@@ -434,6 +516,37 @@ export default function Sucursales() {
 
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Sucursal' : 'Agregar Sucursal'} size="lg">
         <form onSubmit={handleSave} className="space-y-4">
+          {/* Foto de sucursal */}
+          <div className="flex items-center gap-4 pb-3 border-b border-gray-100">
+            <div className="relative group">
+              {fotoPreview
+                ? <img src={fotoPreview} alt="Foto" className="h-16 w-16 rounded-xl object-cover border-2 border-primary-200" />
+                : <div className="h-16 w-16 rounded-xl bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xl border-2 border-primary-200">{form.nombre?.charAt(0) || '?'}</div>
+              }
+              <button type="button"
+                onClick={() => fotoInputRef.current?.click()}
+                className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                <CameraIcon className="h-5 w-5 text-white" />
+              </button>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700">Foto de sucursal</p>
+              <p className="text-xs text-gray-400 mt-0.5">Se guardará en S3 / Sucursales</p>
+              <button type="button" onClick={() => fotoInputRef.current?.click()}
+                className="mt-1 text-xs text-primary-600 hover:text-primary-800 font-medium">
+                {fotoPreview ? 'Cambiar foto' : 'Subir foto'}
+              </button>
+            </div>
+            <input ref={fotoInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setFotoFile(file)
+                const reader = new FileReader()
+                reader.onload = ev => setFotoPreview(ev.target.result)
+                reader.readAsDataURL(file)
+              }} />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Nombre *</label>

@@ -176,6 +176,8 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
     ...req.body,
     proveedor_nombre: proveedor?.nombre || item.proveedor_nombre,
     costo_dia: costoDia,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
     updated_at: new Date().toISOString()
   }
   db.get('dispositivos').find({ id: req.params.id }).assign(updated).write()

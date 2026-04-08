@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { auditoriaAPI } from '../utils/api'
 import Pagination from '../components/Pagination'
 import { MagnifyingGlassIcon, ShieldCheckIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -39,15 +40,7 @@ export default function Auditoria() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 bg-purple-100 rounded-xl flex items-center justify-center">
-          <ShieldCheckIcon className="h-5 w-5 text-purple-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Auditoría</h1>
-          <p className="text-sm text-gray-500">Registro completo de acciones en el sistema</p>
-        </div>
-      </div>
+      <PageHeader title="Auditoría" subtitle="Registro completo de acciones en el sistema" />
 
       <div className="card p-4 flex gap-3">
         <div className="flex-1 relative">

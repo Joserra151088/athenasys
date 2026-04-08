@@ -5,6 +5,7 @@ import { DOCUMENT_TYPES, DEVICE_STATUS, LOCATION_TYPES } from '../utils/constant
 import Badge from '../components/Badge'
 import Modal from '../components/Modal'
 import { MagnifyingGlassIcon, FolderOpenIcon, UserIcon, BuildingOfficeIcon, ArrowLeftIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
@@ -210,10 +211,7 @@ export default function Expedientes() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Expedientes</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Historial completo por empleado o sucursal</p>
-      </div>
+      <PageHeader title="Expedientes" subtitle="Historial completo por empleado o sucursal" />
 
       <div className="card space-y-4">
         <div className="flex gap-2">

@@ -3,6 +3,7 @@ dist/
 .env
 backend/.env
 *.log
+*.pem
 uploads/
 data/db.json
 frontend/node_modules/

@@ -10,6 +10,7 @@ import {
   ComputerDesktopIcon, KeyIcon, BuildingOfficeIcon, TagIcon,
   UserGroupIcon, BriefcaseIcon
 } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 
 // ─── Configuración de cada catálogo ──────────────────────────────────────────
 const CATALOGOS = [
@@ -211,18 +212,7 @@ function CatalogoPanel({ config }) {
 export default function Catalogos() {
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 bg-primary-100 rounded-xl flex items-center justify-center">
-          <BookOpenIcon className="h-6 w-6 text-primary-600" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Catálogos</h1>
-          <p className="text-sm text-gray-500">
-            Administra los catálogos base del sistema. Los cambios se reflejan inmediatamente en formularios y filtros.
-          </p>
-        </div>
-      </div>
+      <PageHeader title="Catálogos" subtitle="Administra los catálogos base del sistema" />
 
       {/* Info */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-sm text-blue-700 flex items-start gap-2">

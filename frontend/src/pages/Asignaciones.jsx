@@ -7,6 +7,7 @@ import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
 import { DEVICE_STATUS, LOCATION_TYPES } from '../utils/constants'
 import { PlusIcon, MagnifyingGlassIcon, XCircleIcon, ArrowsRightLeftIcon, MapIcon, DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
@@ -162,18 +163,13 @@ export default function Asignaciones() {
   // ─── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
-      {/* Encabezado + botón */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Asignaciones</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Dispositivos asignados a empleados y sucursales</p>
-        </div>
+      <PageHeader title="Asignaciones" subtitle="Dispositivos asignados a empleados y sucursales">
         {canEdit() && tab === 'lista' && (
           <button className="btn-primary" onClick={openModal}>
             <PlusIcon className="h-4 w-4" /> Nueva Asignación
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200">

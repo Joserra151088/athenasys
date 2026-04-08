@@ -5,7 +5,8 @@ import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
-import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, KeyIcon, AdjustmentsHorizontalIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon, FolderOpenIcon, XMarkIcon, ArrowUpTrayIcon, ArrowDownTrayIcon, KeyIcon, AdjustmentsHorizontalIcon, CameraIcon } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { Link } from 'react-router-dom'
 
 const EMPTY = {
@@ -112,6 +113,11 @@ export default function Empleados() {
   const [search, setSearch] = useState('')
   const [filterSucursal, setFilterSucursal] = useState('')
   const [filterArea, setFilterArea] = useState('')
+  const [filterPuesto, setFilterPuesto] = useState('')
+  const [filterJefe, setFilterJefe] = useState('')
+  const [filterNumEmpleado, setFilterNumEmpleado] = useState('')
+  const [filterEmail, setFilterEmail] = useState('')
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -119,6 +125,11 @@ export default function Empleados() {
   const [saving, setSaving] = useState(false)
   const [deleteId, setDeleteId] = useState(null)
   const [empLicencias, setEmpLicencias] = useState([])
+  // Foto
+  const [fotoFile, setFotoFile] = useState(null)
+  const [fotoPreview, setFotoPreview] = useState(null)
+  const [fotoUploading, setFotoUploading] = useState(false)
+  const fotoInputRef = useRef(null)
   const [csvModal, setCsvModal] = useState(false)
   const [csvResult, setCsvResult] = useState(null)
   const [csvImporting, setCsvImporting] = useState(false)
@@ -176,9 +187,13 @@ export default function Empleados() {
   const clearFilters = () => {
     setFilterSucursal('')
     setFilterArea('')
+    setFilterPuesto('')
+    setFilterJefe('')
+    setFilterNumEmpleado('')
+    setFilterEmail('')
   }
 
-  const hasActiveFilters = filterSucursal || filterArea
+  const hasActiveFilters = filterSucursal || filterArea || filterPuesto || filterJefe || filterNumEmpleado || filterEmail
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -186,11 +201,15 @@ export default function Empleados() {
     if (search) params.search = search
     if (filterSucursal) params.sucursal_id = filterSucursal
     if (filterArea) params.area = filterArea
+    if (filterPuesto) params.puesto = filterPuesto
+    if (filterJefe) params.jefe_nombre = filterJefe
+    if (filterNumEmpleado) params.num_empleado = filterNumEmpleado
+    if (filterEmail) params.email = filterEmail
     empleadoAPI.getAll(params).then(d => {
       setEmpleados(d.data)
-      setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
+      setPagination({ page: d.page, pages: d.pages || Math.ceil(d.total / 20), total: d.total, limit: 20 })
     }).finally(() => setLoading(false))
-  }, [search, filterSucursal, filterArea])
+  }, [search, filterSucursal, filterArea, filterPuesto, filterJefe, filterNumEmpleado, filterEmail])
 
   useEffect(() => { load(1) }, [load])
   useEffect(() => {
@@ -200,22 +219,26 @@ export default function Empleados() {
     catalogosAPI.supervisores.getAll().then(setCatSupervisores).catch(() => {})
   }, [])
 
-  // Client-side sorting
-  const sorted = [...empleados].sort((a, b) => {
-    if (!sortCol) return 0
-    let va = '', vb = ''
-    if (sortCol === 'nombre_completo') { va = (a.nombre_completo || '').toLowerCase(); vb = (b.nombre_completo || '').toLowerCase() }
-    else if (sortCol === 'puesto') { va = (a.puesto || '').toLowerCase(); vb = (b.puesto || '').toLowerCase() }
-    else if (sortCol === 'area') { va = (a.area || '').toLowerCase(); vb = (b.area || '').toLowerCase() }
-    else if (sortCol === 'sucursal') { va = (a.sucursal_nombre || '').toLowerCase(); vb = (b.sucursal_nombre || '').toLowerCase() }
-    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
-  })
+  // Client-side sorting only (filters are server-side)
+  const sorted = [...empleados]
+    .sort((a, b) => {
+      if (!sortCol) return 0
+      let va = '', vb = ''
+      if (sortCol === 'nombre_completo') { va = (a.nombre_completo || '').toLowerCase(); vb = (b.nombre_completo || '').toLowerCase() }
+      else if (sortCol === 'puesto') { va = (a.puesto || '').toLowerCase(); vb = (b.puesto || '').toLowerCase() }
+      else if (sortCol === 'area') { va = (a.area || '').toLowerCase(); vb = (b.area || '').toLowerCase() }
+      else if (sortCol === 'sucursal') { va = (a.sucursal_nombre || '').toLowerCase(); vb = (b.sucursal_nombre || '').toLowerCase() }
+      return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+    })
 
   const openCreate = () => {
-    setEditing(null); setForm(EMPTY); setSucursalQuery(''); setEmpLicencias([]); setModal(true)
+    setEditing(null); setForm(EMPTY); setSucursalQuery(''); setEmpLicencias([])
+    setFotoFile(null); setFotoPreview(null)
+    setModal(true)
   }
   const openEdit = async (e) => {
     setEditing(e)
+    setFotoFile(null); setFotoPreview(e.foto_url || null)
     setForm({
       nombre_completo: e.nombre_completo, num_empleado: e.num_empleado,
       puesto: e.puesto || '', area: e.area || '',
@@ -241,10 +264,24 @@ export default function Empleados() {
     ev.preventDefault()
     setSaving(true)
     try {
-      if (editing) await empleadoAPI.update(editing.id, form)
-      else await empleadoAPI.create(form)
+      let saved
+      if (editing) saved = await empleadoAPI.update(editing.id, form)
+      else saved = await empleadoAPI.create(form)
+
+      // Upload foto if selected
+      if (fotoFile && saved?.id) {
+        setFotoUploading(true)
+        try {
+          const fd = new FormData()
+          fd.append('foto', fotoFile)
+          await empleadoAPI.uploadFoto(saved.id, fd)
+        } catch (fotoErr) {
+          showError('Empleado guardado, pero error al subir foto: ' + (fotoErr?.message || ''))
+        } finally { setFotoUploading(false) }
+      }
+
       setModal(false)
-      load(1)
+      load(editing ? pagination.page : 1)
     } catch (err) { showError(err?.message || 'Error al guardar') }
     finally { setSaving(false) }
   }
@@ -303,19 +340,13 @@ export default function Empleados() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Empleados</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Registro de empleados y sus asignaciones</p>
-        </div>
-        <div className="flex gap-2">
-          {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
-          {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Empleado</button>}
-        </div>
-      </div>
+      <PageHeader title="Empleados" subtitle="Registro de empleados y sus asignaciones">
+        {canEdit() && <button className="btn-secondary" onClick={() => { setCsvResult(null); setCsvModal(true) }}><ArrowUpTrayIcon className="h-4 w-4" /> Importar CSV</button>}
+        {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Agregar Empleado</button>}
+      </PageHeader>
 
       {/* Barra de filtros */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-3">
         <div className="flex flex-wrap gap-3">
           {/* Search */}
           <div className="relative flex-1 min-w-48">
@@ -339,6 +370,15 @@ export default function Empleados() {
             <option value="">Todas las áreas</option>
             {catAreas.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
           </select>
+
+          {/* Toggle filtros avanzados */}
+          <button
+            className={`btn-secondary text-xs ${showAdvancedFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : ''}`}
+            onClick={() => setShowAdvancedFilters(v => !v)}
+          >
+            <AdjustmentsHorizontalIcon className="h-4 w-4" />
+            Más filtros {showAdvancedFilters ? '▲' : '▼'}
+          </button>
 
           {/* Toggle columnas */}
           <div ref={colsMenuRef} className="relative">
@@ -372,6 +412,48 @@ export default function Empleados() {
             </button>
           )}
         </div>
+
+        {/* Filtros avanzados por campo */}
+        {showAdvancedFilters && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 pt-2 border-t border-gray-100">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Num. Empleado</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="EMP-001..."
+                value={filterNumEmpleado}
+                onChange={e => setFilterNumEmpleado(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Puesto</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="Analista, Gerente..."
+                value={filterPuesto}
+                onChange={e => setFilterPuesto(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Jefe Inmediato</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="Nombre del jefe..."
+                value={filterJefe}
+                onChange={e => setFilterJefe(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 font-medium">Correo</label>
+              <input
+                type="text" className="input text-sm py-1.5"
+                placeholder="correo@empresa.com"
+                value={filterEmail}
+                onChange={e => setFilterEmail(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -457,9 +539,10 @@ export default function Empleados() {
                   {visibleCols.empleado && (
                     <td className="table-cell">
                       <div className="flex items-center gap-3">
-                        <div className="h-8 w-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-sm flex-shrink-0">
-                          {e.nombre_completo?.charAt(0)}
-                        </div>
+                        {e.foto_url
+                          ? <img src={e.foto_url} alt={e.nombre_completo} className="h-8 w-8 rounded-full object-cover flex-shrink-0 border border-gray-200" />
+                          : <div className="h-8 w-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-700 font-semibold text-sm flex-shrink-0">{e.nombre_completo?.charAt(0)}</div>
+                        }
                         <div>
                           <div className="font-medium text-gray-900">{e.nombre_completo}</div>
                           <div className="text-xs text-gray-400">{e.num_empleado}</div>
@@ -512,6 +595,37 @@ export default function Empleados() {
 
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Empleado' : 'Agregar Empleado'} size="lg">
         <form onSubmit={handleSave} className="space-y-4">
+          {/* Foto de perfil */}
+          <div className="flex items-center gap-4 pb-3 border-b border-gray-100">
+            <div className="relative group">
+              {fotoPreview
+                ? <img src={fotoPreview} alt="Foto" className="h-16 w-16 rounded-full object-cover border-2 border-primary-200" />
+                : <div className="h-16 w-16 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold text-xl border-2 border-primary-200">{form.nombre_completo?.charAt(0) || '?'}</div>
+              }
+              <button type="button"
+                onClick={() => fotoInputRef.current?.click()}
+                className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer">
+                <CameraIcon className="h-5 w-5 text-white" />
+              </button>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-700">Foto de perfil</p>
+              <p className="text-xs text-gray-400 mt-0.5">Se guardará en S3 / Colaboradores</p>
+              <button type="button" onClick={() => fotoInputRef.current?.click()}
+                className="mt-1 text-xs text-primary-600 hover:text-primary-800 font-medium">
+                {fotoPreview ? 'Cambiar foto' : 'Subir foto'}
+              </button>
+            </div>
+            <input ref={fotoInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                setFotoFile(file)
+                const reader = new FileReader()
+                reader.onload = ev => setFotoPreview(ev.target.result)
+                reader.readAsDataURL(file)
+              }} />
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Nombre completo *</label>

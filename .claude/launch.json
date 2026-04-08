@@ -5,7 +5,7 @@
       "name": "frontend",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "cwd": "C:\\jestrada\\Proyectos\\inventario-ti\\frontend",
+      "cwd": "C:\\jestrada\\Proyectos\\athenasys\\frontend",
       "port": 5174
     }
   ]

@@ -46,7 +46,8 @@ export const empleadoAPI = {
   update: (id, data) => api.put(`/empleados/${id}`, data),
   delete: (id) => api.delete(`/empleados/${id}`),
   importarCSV: (formData) => api.post('/empleados/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
-  getTrayectoria: (nombre) => api.get('/empleados/trayectoria', { params: { nombre } })
+  getTrayectoria: (nombre) => api.get('/empleados/trayectoria', { params: { nombre } }),
+  uploadFoto: (id, formData) => api.post(`/empleados/${id}/foto`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 // Sucursales
@@ -56,7 +57,8 @@ export const sucursalAPI = {
   create: (data) => api.post('/sucursales', data),
   update: (id, data) => api.put(`/sucursales/${id}`, data),
   delete: (id) => api.delete(`/sucursales/${id}`),
-  importarCSV: (formData) => api.post('/sucursales/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  importarCSV: (formData) => api.post('/sucursales/importar-csv', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  uploadFoto: (id, formData) => api.post(`/sucursales/${id}/foto`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 }
 
 // Asignaciones

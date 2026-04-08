@@ -9,6 +9,7 @@ import {
   EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon,
   BuildingOfficeIcon, CheckIcon
 } from '@heroicons/react/24/outline'
+import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
@@ -480,24 +481,18 @@ export default function Plantillas() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Plantillas de Documentos</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Administra los templates con versionamiento</p>
-        </div>
-        <div className="flex gap-2">
-          {canEdit() && (
-            <button className="btn-secondary" onClick={() => { setLogoPreview(globalLogo); setLogoModal(true) }}>
-              <PhotoIcon className="h-4 w-4" /> Configurar Logo
-            </button>
-          )}
-          {canEdit() && (
-            <button className="btn-primary" onClick={openCreate}>
-              <PlusIcon className="h-4 w-4" /> Nueva Plantilla
-            </button>
-          )}
-        </div>
-      </div>
+      <PageHeader title="Plantillas de Documentos" subtitle="Administra los templates con versionamiento">
+        {canEdit() && (
+          <button className="btn-secondary" onClick={() => { setLogoPreview(globalLogo); setLogoModal(true) }}>
+            <PhotoIcon className="h-4 w-4" /> Configurar Logo
+          </button>
+        )}
+        {canEdit() && (
+          <button className="btn-primary" onClick={openCreate}>
+            <PlusIcon className="h-4 w-4" /> Nueva Plantilla
+          </button>
+        )}
+      </PageHeader>
 
       {loading ? (
         <div className="flex items-center justify-center h-32">

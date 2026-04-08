@@ -6,6 +6,7 @@ import Badge from '../components/Badge'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
+import PageHeader from '../components/PageHeader'
 import {
   PlusIcon, MagnifyingGlassIcon, PencilIcon, TrashIcon,
   UserPlusIcon, XCircleIcon, KeyIcon, FunnelIcon,
@@ -224,18 +225,13 @@ export default function Licencias() {
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Licencias</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Gestión de licencias de software y sus asignaciones</p>
-        </div>
+      <PageHeader title="Licencias" subtitle="Gestión de licencias de software y sus asignaciones">
         {canEdit() && (
           <button className="btn-primary" onClick={openCreate}>
             <PlusIcon className="h-4 w-4" /> Nueva Licencia
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {/* Stats */}
       {stats && (

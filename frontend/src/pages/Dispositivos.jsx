@@ -3,6 +3,7 @@ import { deviceAPI, proveedorAPI, catalogosAPI } from '../utils/api'
 import { DEVICE_TYPES, DEVICE_STATUS, LOCATION_TYPES, DEVICE_DAILY_RATES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
+import PageHeader from '../components/PageHeader'
 import Badge from '../components/Badge'
 import Modal from '../components/Modal'
 import Pagination from '../components/Pagination'
@@ -318,17 +319,13 @@ export default function Dispositivos() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dispositivos</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Inventario completo de dispositivos TI</p>
-        </div>
+      <PageHeader title="Dispositivos" subtitle="Inventario completo de equipos y periféricos">
         {canEdit() && (
           <button className="btn-primary" onClick={openCreate}>
             <PlusIcon className="h-4 w-4" /> Agregar Dispositivo
           </button>
         )}
-      </div>
+      </PageHeader>
 
       {/* Leyenda de tarifas */}
       <div className="flex flex-wrap gap-2 text-xs">
@@ -565,16 +562,21 @@ export default function Dispositivos() {
                   )}
                   {canEdit() && (
                     <td className="table-cell">
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(d)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50">
+                      <div className="flex gap-1 items-center">
+                        <button onClick={() => openEdit(d)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50" title="Editar dispositivo">
                           <PencilIcon className="h-4 w-4" />
                         </button>
                         {isAdmin() && (
-                          <button onClick={() => setDeleteId(d.id)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50">
+                          <button onClick={() => setDeleteId(d.id)} className="p-1.5 rounded text-gray-400 hover:text-red-600 hover:bg-red-50" title="Eliminar">
                             <TrashIcon className="h-4 w-4" />
                           </button>
                         )}
                       </div>
+                      {d.actualizado_por_nombre && (
+                        <div className="text-xs text-gray-400 mt-0.5 max-w-28 truncate" title={`Actualizado por ${d.actualizado_por_nombre}`}>
+                          ✏️ {d.actualizado_por_nombre}
+                        </div>
+                      )}
                     </td>
                   )}
                 </tr>

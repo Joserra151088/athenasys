@@ -6,6 +6,7 @@ import Modal from '../components/Modal'
 import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
 import FirmaCanvas from '../components/FirmaCanvas'
+import PageHeader from '../components/PageHeader'
 import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -434,23 +435,43 @@ export default function Documentos() {
     y += infoH + 8
 
     // ── PLANTILLA TEXT ───────────────────────────────────────────────────────
+    // Nota: {{lista_dispositivos}} se reemplaza con una nota simple ya que el PDF
+    // ya tiene su propia tabla de dispositivos abajo. Esto evita generar HTML
+    // anidado que cause páginas incompletas o corrupción en el archivo subido a S3.
     const rawHTML = getPlantillaTexto(doc)
     if (rawHTML && rawHTML.trim()) {
       const plain = rawHTML
-        .replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<\/div>/gi, '\n')
-        .replace(/<li[^>]*>/gi, '• ').replace(/<\/li>/gi, '\n')
-        .replace(/<\/tr>/gi, '\n').replace(/<td[^>]*>/gi, ' ').replace(/<th[^>]*>/gi, ' ')
+        // Eliminar tablas HTML completas (principalmente de {{lista_dispositivos}})
+        // para evitar contenido duplicado y posibles problemas de renderizado en PDF
+        .replace(/<table[\s\S]*?<\/table>/gi, '\n[Ver tabla de dispositivos abajo]\n')
+        // Convertir estructura HTML a texto con saltos de línea
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n').replace(/<p[^>]*>/gi, '')
+        .replace(/<\/div>/gi, '\n').replace(/<div[^>]*>/gi, '')
+        .replace(/<\/h[1-6]>/gi, '\n').replace(/<h[1-6][^>]*>/gi, '')
+        .replace(/<\/li>/gi, '\n').replace(/<li[^>]*>/gi, '• ')
+        .replace(/<\/ul>/gi, '\n').replace(/<ul[^>]*>/gi, '')
+        .replace(/<\/ol>/gi, '\n').replace(/<ol[^>]*>/gi, '')
+        .replace(/<\/tr>/gi, '\n').replace(/<td[^>]*>/gi, ' | ').replace(/<th[^>]*>/gi, ' | ')
+        // Quitar cualquier etiqueta HTML restante
         .replace(/<[^>]+>/g, '')
-        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        // Decodificar entidades HTML comunes
+        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+        // Limpiar espacios y saltos de línea excesivos
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
         .trim()
+
       if (plain) {
         pdf.setFont('times', 'normal'); pdf.setFontSize(9); pdf.setTextColor(31, 41, 55)
         const paragraphs = plain.split('\n').filter(p => p.trim())
         for (const para of paragraphs) {
           const lines = pdf.splitTextToSize(para.trim(), cw)
-          checkPage(lines.length * 5.5 + 3)
+          if (!lines.length) continue
+          checkPage(lines.length * 5.5 + 4)
           pdf.text(lines, ml, y, { lineHeightFactor: 1.5 })
-          y += lines.length * 5.5 + 3
+          y += lines.length * 5.5 + 4
         }
         y += 4
       }
@@ -579,13 +600,9 @@ export default function Documentos() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Documentos</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Entradas, salidas y responsivas con firma digital</p>
-        </div>
+      <PageHeader title="Documentos" subtitle="Entradas, salidas y responsivas con firma digital">
         {canEdit() && <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nuevo Documento</button>}
-      </div>
+      </PageHeader>
 
       <div className="card p-4">
         <div className="flex flex-wrap gap-3 items-center">
