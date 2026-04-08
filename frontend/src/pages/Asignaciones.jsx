@@ -6,7 +6,7 @@ import Pagination from '../components/Pagination'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Badge from '../components/Badge'
 import { DEVICE_STATUS, LOCATION_TYPES } from '../utils/constants'
-import { PlusIcon, MagnifyingGlassIcon, XCircleIcon, ArrowsRightLeftIcon, MapIcon, DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, XCircleIcon, DocumentTextIcon, CheckCircleIcon } from '@heroicons/react/24/outline'
 import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -172,21 +172,29 @@ export default function Asignaciones() {
       </PageHeader>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200">
-        <button
-          onClick={() => setTab('lista')}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${tab === 'lista' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <ArrowsRightLeftIcon className="h-4 w-4" />
-          Lista de asignaciones
-        </button>
-        <button
-          onClick={() => setTab('trayectoria')}
-          className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${tab === 'trayectoria' ? 'border-primary-600 text-primary-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          <MapIcon className="h-4 w-4" />
-          Trayectoria de equipos
-        </button>
+      <div className="rounded-[28px] border border-slate-200/80 bg-white/80 p-2 shadow-[0_18px_40px_rgba(148,163,184,0.14)] backdrop-blur-xl">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            onClick={() => setTab('lista')}
+            className={`flex-1 rounded-[20px] px-5 py-3 text-sm font-semibold transition-all duration-300 ${
+              tab === 'lista'
+                ? 'bg-slate-900 text-white shadow-[0_16px_28px_rgba(15,23,42,0.16)]'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            Lista de asignaciones
+          </button>
+          <button
+            onClick={() => setTab('trayectoria')}
+            className={`flex-1 rounded-[20px] px-5 py-3 text-sm font-semibold transition-all duration-300 ${
+              tab === 'trayectoria'
+                ? 'bg-slate-900 text-white shadow-[0_16px_28px_rgba(15,23,42,0.16)]'
+                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+            }`}
+          >
+            Trayectoria de equipos
+          </button>
+        </div>
       </div>
 
       {/* ── TAB: TRAYECTORIA ────────────────────────────────────────────── */}
