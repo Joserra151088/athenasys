@@ -34,6 +34,20 @@ function getExpiryDate() {
   return d.toISOString()
 }
 
+function getPublicBaseURL(req) {
+  const explicitURL = (process.env.PUBLIC_URL || '').trim()
+  if (explicitURL) return explicitURL.replace(/\/+$/, '')
+
+  const forwardedProto = (req.headers['x-forwarded-proto'] || '').split(',')[0].trim()
+  const forwardedHost = (req.headers['x-forwarded-host'] || '').split(',')[0].trim()
+  const proto = forwardedProto || req.protocol || 'http'
+  const host = forwardedHost || req.get('host') || ''
+
+  if (host) return `${proto}://${host}`
+
+  return `http://${getLocalIP()}`
+}
+
 /** Devuelve la IP local del servidor (primera IPv4 no-loopback) */
 function getLocalIP() {
   const ifaces = os.networkInterfaces()
@@ -100,9 +114,7 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
       firma_online_token:  token,
     }).write()
 
-    const localIP   = getLocalIP()
-    const frontPort = process.env.FRONT_PORT || 5174
-    const baseURL   = process.env.PUBLIC_URL || `http://${localIP}:${frontPort}`
+    const baseURL = getPublicBaseURL(req)
     const signingURL = `${baseURL}/firmar/${token}`
 
     // ── Enviar correo al receptor si tiene email ──────────────────────────
@@ -129,7 +141,7 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
       }
     }
 
-    res.json({ token, url: signingURL, expires_at, local_ip: localIP, email_enviado: emailEnviado, email_destino: emailDestino })
+    res.json({ token, url: signingURL, email_enviado: emailEnviado, email_destino: emailDestino, expires_at })
   } catch (e) {
     console.error('[FirmaOnline] Error en /solicitar:', e.message)
     res.status(500).json({ message: 'Error generando token de firma: ' + e.message })
@@ -185,6 +197,8 @@ router.get('/:token', (req, res) => {
 
     const doc = db.get('documentos').find({ id: ft.documento_id }).value()
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+    const plantilla = doc.plantilla_id ? db.get('plantillas').find({ id: doc.plantilla_id }).value() : null
+    const logo = db.get('configuracion').find({ clave: 'logo_global' }).value()?.valor || null
 
     res.json({
       estado: 'pendiente',
@@ -201,6 +215,12 @@ router.get('/:token', (req, res) => {
         observaciones:   doc.observaciones || '',
         created_at:      doc.created_at,
         firma_agente:    doc.firma_agente || null,
+        plantilla_texto: plantilla?.texto_legal || '',
+        entidad_num_empleado: doc.entidad_num_empleado || '',
+        entidad_area: doc.entidad_area || '',
+        entidad_puesto: doc.entidad_puesto || '',
+        entidad_email: doc.entidad_email || '',
+        logo_global: logo,
       },
     })
   } catch (e) {

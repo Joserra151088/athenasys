@@ -80,6 +80,7 @@ export default function Asignaciones() {
   const [dispositivosDisponibles, setDispositivosDisponibles] = useState([])
   const [destinatarios, setDestinatarios] = useState([])
   const [selectedDevices, setSelectedDevices] = useState([])
+  const [selectedDeviceCosts, setSelectedDeviceCosts] = useState({})
   const [selectedDest, setSelectedDest] = useState('')
   const [observaciones, setObservaciones] = useState('')
   const [loadingDev, setLoadingDev] = useState(false)
@@ -182,6 +183,7 @@ export default function Asignaciones() {
   const resetCreateModal = useCallback(() => {
     setTipoAsignacion('empleado')
     setSelectedDevices([])
+    setSelectedDeviceCosts({})
     setSelectedDest('')
     setObservaciones('')
     setSearchDev('')
@@ -270,7 +272,13 @@ export default function Asignaciones() {
     setSaving(true)
     try {
       if (crearDoc) {
-        const dispositivos = selectedDevices.map(id => ({ id, costo: 0 }))
+        const dispositivos = selectedDevices.map(id => {
+          const rawCost = Number(selectedDeviceCosts[id])
+          return {
+            id,
+            costo: Number.isFinite(rawCost) && rawCost >= 0 ? rawCost : 0,
+          }
+        })
         const result = await documentoAPI.create({
           tipo: 'responsiva',
           plantilla_id: plantillaId,
@@ -339,6 +347,10 @@ export default function Asignaciones() {
     device.serie?.toLowerCase().includes(searchDev.toLowerCase()) ||
     device.marca?.toLowerCase().includes(searchDev.toLowerCase())
   )
+
+  const selectedDeviceItems = selectedDevices
+    .map(id => dispositivosDisponibles.find(device => device.id === id))
+    .filter(Boolean)
 
   return (
     <div className="space-y-5">
@@ -611,13 +623,28 @@ export default function Asignaciones() {
                           type="checkbox"
                           className="rounded border-gray-300"
                           checked={selectedDevices.includes(device.id)}
-                          onChange={event =>
+                          onChange={event => {
+                            const baseCost = Number(device.costo_dia)
+                            const initialCost = Number.isFinite(baseCost) && baseCost >= 0 ? baseCost : 0
+
                             setSelectedDevices(previous =>
                               event.target.checked
                                 ? [...previous, device.id]
                                 : previous.filter(id => id !== device.id)
                             )
-                          }
+
+                            setSelectedDeviceCosts(previous => {
+                              if (event.target.checked) {
+                                return previous[device.id] != null
+                                  ? previous
+                                  : { ...previous, [device.id]: initialCost }
+                              }
+
+                              const next = { ...previous }
+                              delete next[device.id]
+                              return next
+                            })
+                          }}
                         />
                         <div className="min-w-0">
                           <div className="truncate text-sm font-medium text-gray-800">
@@ -700,6 +727,59 @@ export default function Asignaciones() {
                       </option>
                     ))}
                   </select>
+
+                  {selectedDeviceItems.length > 0 && (
+                    <div className="mt-4 rounded-2xl border border-emerald-200 bg-white/90 p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Costo por dispositivo</p>
+                          <p className="text-xs text-slate-500">
+                            Estos importes se guardaran en la responsiva firmada.
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
+                          Responsiva
+                        </span>
+                      </div>
+
+                      <div className="mt-4 space-y-3">
+                        {selectedDeviceItems.map(device => (
+                          <div
+                            key={device.id}
+                            className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-slate-800">
+                                {device.tipo} - {device.marca} {device.modelo}
+                              </p>
+                              <p className="mt-1 truncate text-xs font-mono text-slate-400">
+                                {device.serie || 'Sin serie'}
+                              </p>
+                            </div>
+
+                            <label className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 shadow-sm">
+                              <span className="text-xs font-semibold text-slate-500">MXN</span>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                className="w-28 bg-transparent text-right text-sm font-semibold text-slate-800 outline-none"
+                                value={selectedDeviceCosts[device.id] ?? 0}
+                                onChange={event => {
+                                  const nextValue = event.target.value
+                                  setSelectedDeviceCosts(previous => ({
+                                    ...previous,
+                                    [device.id]: nextValue === '' ? '' : Math.max(0, Number(nextValue)),
+                                  }))
+                                }}
+                              />
+                              <span className="text-xs text-slate-400">/ equipo</span>
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

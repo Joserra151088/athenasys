@@ -18,7 +18,7 @@ const SP_ENABLED = !!sp
 // S3 — carga condicional
 let s3 = null
 try {
-  if (process.env.AWS_ACCESS_KEY_ID) s3 = require('../services/s3.service')
+  s3 = require('../services/s3.service')
 } catch (_) { s3 = null }
 
 router.use(authMiddleware)

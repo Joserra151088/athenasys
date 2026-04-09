@@ -10,9 +10,9 @@ import PageHeader from '../components/PageHeader'
 import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import jsPDF from 'jspdf'
 import { useNotification } from '../context/NotificationContext'
 import { QRCodeSVG } from 'qrcode.react'
+import { generateDocumentPDF as generateSharedDocumentPDF } from '../utils/documentPdf'
 
 const DOC_CODES = { responsiva: 'F-TI-39-V2', entrada: 'F-TI-84-V1', salida: 'F-TI-85-V1' }
 
@@ -350,252 +350,17 @@ export default function Documentos() {
 
   // ─── Generador PDF programático (jsPDF directo — sin html2canvas) ──────────
   const generateDocumentPDF = async (doc, firmaAgenteImg = null, firmaReceptorImg = null) => {
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
-    const W = pdf.internal.pageSize.getWidth()
-    const H = pdf.internal.pageSize.getHeight()
-    const ml = 14, mt = 14, mb = 20
-    const cw = W - ml * 2
-    let y = mt
-
-    const checkPage = (needed) => {
-      if (y + needed > H - mb) { pdf.addPage(); y = mt }
-    }
-
-    const addImg = (src, x, yy, w, h) => {
-      if (!src) return
-      try {
-        const fmt = src.startsWith('data:image/png') ? 'PNG' : 'JPEG'
-        pdf.addImage(src, fmt, x, yy, w, h, '', 'FAST')
-      } catch (_) {}
-    }
-
-    // ── HEADER ──────────────────────────────────────────────────────────────
-    const hH = 24
-    const c1 = cw * 0.27, c2 = cw * 0.46, c3 = cw * 0.27
-    pdf.setDrawColor(180, 188, 198); pdf.setLineWidth(0.5)
-
-    // Logo box
-    pdf.rect(ml, y, c1, hH)
-    if (globalLogo) addImg(globalLogo, ml + 2, y + 2, c1 - 4, hH - 4)
-    else {
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(160, 160, 160)
-      pdf.text('LOGO', ml + c1 / 2, y + hH / 2, { align: 'center', baseline: 'middle' })
-    }
-
-    // Title box
-    pdf.rect(ml + c1, y, c2, hH)
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(11); pdf.setTextColor(17, 24, 39)
-    const titleLines = pdf.splitTextToSize(DOC_TITLES[doc.tipo] || doc.tipo?.toUpperCase() || '', c2 - 6)
-    pdf.text(titleLines, ml + c1 + c2 / 2, y + hH / 2, { align: 'center', baseline: 'middle' })
-
-    // Code box (top) + type box (bottom)
-    pdf.rect(ml + c1 + c2, y, c3, hH / 2)
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(8); pdf.setTextColor(79, 70, 229)
-    pdf.text(DOC_CODES[doc.tipo] || '', ml + c1 + c2 + c3 / 2, y + hH / 4, { align: 'center', baseline: 'middle' })
-    pdf.rect(ml + c1 + c2, y + hH / 2, c3, hH / 2)
-    pdf.setFont('helvetica', 'normal'); pdf.setTextColor(234, 88, 12)
-    pdf.text('Interna', ml + c1 + c2 + c3 / 2, y + hH * 3 / 4, { align: 'center', baseline: 'middle' })
-    y += hH + 5
-
-    // ── FOLIO & FECHA ────────────────────────────────────────────────────────
-    pdf.setFillColor(241, 245, 249); pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3)
-    pdf.roundedRect(ml, y, cw, 8, 1, 1, 'FD')
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(71, 85, 105)
-    pdf.text('FOLIO:', ml + 3, y + 5.4)
-    pdf.setFont('courier', 'bold'); pdf.setFontSize(8); pdf.setTextColor(15, 23, 42)
-    pdf.text(doc.folio || '', ml + 19, y + 5.4)
-    const dateStr = doc.created_at
-      ? new Date(doc.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
-      : '—'
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7.5); pdf.setTextColor(71, 85, 105)
-    pdf.text(`Fecha: ${dateStr}`, ml + cw - 2, y + 5.4, { align: 'right' })
-    y += 13
-
-    // ── INFO GRID ────────────────────────────────────────────────────────────
-    const infoData = [
-      ['Entidad / Receptor', doc.entidad_nombre || '—', 'Tipo', doc.entidad_tipo === 'empleado' ? 'Empleado' : 'Sucursal'],
-      ['Agente TI', doc.agente_nombre || '—', doc.receptor_nombre ? 'Recibe' : '', doc.receptor_nombre || ''],
-    ]
-    const infoH = infoData.length * 8 + 5
-    pdf.setFillColor(241, 245, 249); pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3)
-    pdf.roundedRect(ml, y, cw, infoH, 1, 1, 'FD')
-    infoData.forEach((row, ri) => {
-      const ry = y + 7 + ri * 8
-      const hw = cw / 2
-      const renderCell = (lbl, val, ox) => {
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(100, 116, 139)
-        pdf.text(`${lbl}:`, ml + ox + 3, ry)
-        pdf.setFont('helvetica', 'normal'); pdf.setTextColor(15, 23, 42)
-        const v = pdf.splitTextToSize(val, hw - 28)[0] || ''
-        pdf.text(v, ml + ox + 3 + (pdf.getStringUnitWidth(`${lbl}:`) * 7 / pdf.internal.scaleFactor) + 2, ry)
+    return generateSharedDocumentPDF(
+      {
+        ...doc,
+        plantilla_texto: doc?.plantilla?.texto_legal || doc?.plantilla_texto || '',
+      },
+      {
+        logo: globalLogo,
+        firmaAgenteImg,
+        firmaReceptorImg,
       }
-      renderCell(row[0], row[1], 0)
-      if (row[2]) renderCell(row[2], row[3], hw)
-    })
-    y += infoH + 8
-
-    // ── PLANTILLA TEXT ───────────────────────────────────────────────────────
-    // Nota: {{lista_dispositivos}} se reemplaza con una nota simple ya que el PDF
-    // ya tiene su propia tabla de dispositivos abajo. Esto evita generar HTML
-    // anidado que cause páginas incompletas o corrupción en el archivo subido a S3.
-    const rawHTML = getPlantillaTexto(doc)
-    if (rawHTML && rawHTML.trim()) {
-      const plain = rawHTML
-        // Eliminar tablas HTML completas (principalmente de {{lista_dispositivos}})
-        // para evitar contenido duplicado y posibles problemas de renderizado en PDF
-        .replace(/<table[\s\S]*?<\/table>/gi, '\n[Ver tabla de dispositivos abajo]\n')
-        // Convertir estructura HTML a texto con saltos de línea
-        .replace(/<br\s*\/?>/gi, '\n')
-        .replace(/<\/p>/gi, '\n\n').replace(/<p[^>]*>/gi, '')
-        .replace(/<\/div>/gi, '\n').replace(/<div[^>]*>/gi, '')
-        .replace(/<\/h[1-6]>/gi, '\n').replace(/<h[1-6][^>]*>/gi, '')
-        .replace(/<\/li>/gi, '\n').replace(/<li[^>]*>/gi, '• ')
-        .replace(/<\/ul>/gi, '\n').replace(/<ul[^>]*>/gi, '')
-        .replace(/<\/ol>/gi, '\n').replace(/<ol[^>]*>/gi, '')
-        .replace(/<\/tr>/gi, '\n').replace(/<td[^>]*>/gi, ' | ').replace(/<th[^>]*>/gi, ' | ')
-        // Quitar cualquier etiqueta HTML restante
-        .replace(/<[^>]+>/g, '')
-        // Decodificar entidades HTML comunes
-        .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-        // Limpiar espacios y saltos de línea excesivos
-        .replace(/[ \t]+/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim()
-
-      if (plain) {
-        pdf.setFont('times', 'normal'); pdf.setFontSize(9); pdf.setTextColor(31, 41, 55)
-        const paragraphs = plain.split('\n').filter(p => p.trim())
-        for (const para of paragraphs) {
-          const lines = pdf.splitTextToSize(para.trim(), cw)
-          if (!lines.length) continue
-          checkPage(lines.length * 5.5 + 4)
-          pdf.text(lines, ml, y, { lineHeightFactor: 1.5 })
-          y += lines.length * 5.5 + 4
-        }
-        y += 4
-      }
-    }
-
-    // ── TABLA DISPOSITIVOS ───────────────────────────────────────────────────
-    checkPage(22)
-    pdf.setFillColor(30, 41, 59); pdf.setDrawColor(30, 41, 59)
-    pdf.roundedRect(ml, y, cw, 7, 1, 1, 'F')
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(255, 255, 255)
-    pdf.text('EQUIPOS / DISPOSITIVOS', ml + 4, y + 4.8)
-    y += 7
-
-    const isResp = doc.tipo === 'responsiva'
-    const cols = isResp
-      ? [{ h: 'Tipo', w: cw * 0.16 }, { h: 'Marca / Modelo', w: cw * 0.22 }, { h: 'No. Serie', w: cw * 0.20 }, { h: 'Características', w: cw * 0.28 }, { h: 'Costo', w: cw * 0.14 }]
-      : [{ h: 'Tipo', w: cw * 0.18 }, { h: 'Marca / Modelo', w: cw * 0.25 }, { h: 'No. Serie', w: cw * 0.22 }, { h: 'Características', w: cw * 0.35 }]
-
-    // Header row — reset fill/draw before EACH rect (setTextColor bleeds into fill state)
-    let xc = ml
-    pdf.setLineWidth(0.2)
-    cols.forEach(col => {
-      pdf.setFillColor(226, 232, 240); pdf.setDrawColor(203, 213, 225)
-      pdf.rect(xc, y, col.w, 7, 'FD')
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7); pdf.setTextColor(51, 65, 85)
-      pdf.text(col.h, xc + 2, y + 4.8)
-      xc += col.w
-    })
-    y += 7
-
-    const devices = doc.dispositivos || []
-    devices.forEach((d, idx) => {
-      checkPage(7)
-      const even = idx % 2 === 0
-      xc = ml
-      const cells = isResp
-        ? [d.tipo, `${d.marca || ''} ${d.modelo || ''}`.trim(), d.serie || '—', d.caracteristicas || '', d.costo != null ? `$${Number(d.costo).toFixed(2)}` : '—']
-        : [d.tipo, `${d.marca || ''} ${d.modelo || ''}`.trim(), d.serie || '—', d.caracteristicas || '']
-      cols.forEach((col, ci) => {
-        // Resetear fill/draw ANTES de cada celda para evitar sangrado de setTextColor
-        pdf.setFillColor(even ? 255 : 248, even ? 255 : 250, even ? 255 : 252)
-        pdf.setDrawColor(226, 232, 240); pdf.setLineWidth(0.2)
-        pdf.rect(xc, y, col.w, 7, 'FD')
-        pdf.setFont(ci === 2 ? 'courier' : 'helvetica', 'normal')
-        pdf.setFontSize(7); pdf.setTextColor(17, 24, 39)
-        const ct = pdf.splitTextToSize(String(cells[ci] || ''), col.w - 4)[0] || ''
-        pdf.text(ct, xc + 2, y + 4.8)
-        xc += col.w
-      })
-      y += 7
-    })
-    y += 8
-
-    // ── OBSERVACIONES ────────────────────────────────────────────────────────
-    if (doc.observaciones) {
-      checkPage(18)
-      pdf.setFillColor(255, 251, 235); pdf.setDrawColor(251, 191, 36); pdf.setLineWidth(0.4)
-      pdf.roundedRect(ml, y, cw, 14, 1, 1, 'FD')
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(146, 64, 14)
-      pdf.text('Observaciones:', ml + 3, y + 5.5)
-      pdf.setFont('helvetica', 'normal'); pdf.setTextColor(30, 20, 5)
-      const obsLines = pdf.splitTextToSize(doc.observaciones, cw - 42)
-      pdf.text(obsLines[0] || '', ml + 38, y + 5.5)
-      if (obsLines.length > 1) pdf.text(obsLines.slice(1).join('\n'), ml + 3, y + 10)
-      y += 18
-    }
-
-    // ── FIRMAS ───────────────────────────────────────────────────────────────
-    const sigH = 44
-    checkPage(sigH + 14)
-    pdf.setFillColor(30, 41, 59)
-    pdf.roundedRect(ml, y, cw, 7, 1, 1, 'F')
-    pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(255, 255, 255)
-    pdf.text('FIRMAS', ml + 4, y + 4.8)
-    y += 11
-
-    const firmaA = firmaAgenteImg || doc.firma_agente || null
-    const firmaR = firmaReceptorImg || doc.firma_receptor || null
-    const bw = cw / 2 - 8
-    const bx2 = ml + cw / 2 + 8
-
-    // Boxes
-    pdf.setFillColor(250, 251, 253); pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3)
-    pdf.roundedRect(ml, y, bw, sigH, 1, 1, 'FD')
-    pdf.roundedRect(bx2, y, bw, sigH, 1, 1, 'FD')
-
-    // Signature images
-    addImg(firmaA, ml + bw / 2 - 24, y + 4, 48, 26)
-    addImg(firmaR, bx2 + bw / 2 - 24, y + 4, 48, 26)
-
-    // Name lines
-    pdf.setDrawColor(148, 163, 184); pdf.setLineWidth(0.4)
-    pdf.line(ml + 5, y + sigH - 14, ml + bw - 5, y + sigH - 14)
-    pdf.line(bx2 + 5, y + sigH - 14, bx2 + bw - 5, y + sigH - 14)
-
-    const nameStyle = (name, x, cy) => {
-      pdf.setFont('helvetica', 'bold'); pdf.setFontSize(7.5); pdf.setTextColor(15, 23, 42)
-      pdf.text(pdf.splitTextToSize(name || '—', bw - 10)[0], x, cy, { align: 'center' })
-    }
-    nameStyle(doc.agente_nombre, ml + bw / 2, y + sigH - 8)
-    nameStyle(doc.receptor_nombre || doc.entidad_nombre, bx2 + bw / 2, y + sigH - 8)
-
-    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(7); pdf.setTextColor(100, 116, 139)
-    pdf.text('Agente de Soporte TI', ml + bw / 2, y + sigH - 3, { align: 'center' })
-    pdf.text('Receptor', bx2 + bw / 2, y + sigH - 3, { align: 'center' })
-
-    if (doc.fecha_firma) {
-      y += sigH + 4
-      pdf.setFontSize(6.5); pdf.setTextColor(148, 163, 184)
-      pdf.text(`Firmado electrónicamente: ${new Date(doc.fecha_firma).toLocaleString('es-MX')}`, ml + cw / 2, y, { align: 'center' })
-    }
-
-    // ── FOOTER ───────────────────────────────────────────────────────────────
-    const nPages = pdf.internal.getNumberOfPages()
-    for (let p = 1; p <= nPages; p++) {
-      pdf.setPage(p)
-      pdf.setDrawColor(203, 213, 225); pdf.setLineWidth(0.3)
-      pdf.line(ml, H - mb + 5, ml + cw, H - mb + 5)
-      pdf.setFont('helvetica', 'normal'); pdf.setFontSize(6.5); pdf.setTextColor(148, 163, 184)
-      pdf.text(`Generado por AthenaSys Inventario TI  ·  Confidencial`, ml, H - mb + 9)
-      pdf.text(`${p} / ${nPages}`, ml + cw, H - mb + 9, { align: 'right' })
-    }
-
-    return pdf
+    )
   }
 
   return (
