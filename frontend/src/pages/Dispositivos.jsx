@@ -14,6 +14,19 @@ import {
 } from '@heroicons/react/24/outline'
 
 const TIPOS_SIN_SERIE = ['Mouse', 'Teclado']
+const SERIE_OPTIONS = {
+  normal: 'normal',
+  sin_numero: 'sin_numero',
+  no_visible: 'no_visible',
+}
+const SPECIAL_SERIAL_PREFIX = {
+  [SERIE_OPTIONS.sin_numero]: 'SIN NUMERO DE SERIE :: ',
+  [SERIE_OPTIONS.no_visible]: 'SERIE NO VISIBLE :: ',
+}
+const SPECIAL_SERIAL_LABEL = {
+  [SERIE_OPTIONS.sin_numero]: 'Sin número de serie',
+  [SERIE_OPTIONS.no_visible]: 'Serie no visible',
+}
 
 // Tipos sin costo mensual (pertenecen a la empresa)
 const TIPOS_SIN_COSTO = ['Mouse', 'Teclado', 'TP-Link', 'Biométrico']
@@ -58,7 +71,7 @@ const CAMPOS_POR_TIPO = {
 }
 
 const PROVEEDORES_SIN_COSTO = ['opentec']
-const EMPTY_FORM = { tipo: '', marca: '', serie: '', modelo: '', cantidad: 1, proveedor_id: '', caracteristicas: '', costo_dia: '', campos_extra: {}, costo_tipo: 'mensual' }
+const EMPTY_FORM = { tipo: '', marca: '', serie: '', serie_mode: SERIE_OPTIONS.normal, modelo: '', cantidad: 1, proveedor_id: '', caracteristicas: '', costo_dia: '', campos_extra: {}, costo_tipo: 'mensual' }
 
 function isProveedorSinCosto(nombre = '') {
   return PROVEEDORES_SIN_COSTO.some(proveedor => (nombre || '').toLowerCase().includes(proveedor))
@@ -70,6 +83,29 @@ function resolveCostoValor(costo, fallback = 0) {
 
   const parsed = parseFloat(costo)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function getSpecialSerieMode(serie = '') {
+  if (!serie) return SERIE_OPTIONS.normal
+  if (serie.startsWith(SPECIAL_SERIAL_PREFIX[SERIE_OPTIONS.sin_numero])) return SERIE_OPTIONS.sin_numero
+  if (serie.startsWith(SPECIAL_SERIAL_PREFIX[SERIE_OPTIONS.no_visible])) return SERIE_OPTIONS.no_visible
+  return SERIE_OPTIONS.normal
+}
+
+function getSerieDisplay(serie = '') {
+  const mode = getSpecialSerieMode(serie)
+  if (mode !== SERIE_OPTIONS.normal) return SPECIAL_SERIAL_LABEL[mode]
+  return serie || '—'
+}
+
+function buildSpecialSerie(mode, currentSerie = '') {
+  if (mode === SERIE_OPTIONS.normal) return currentSerie
+
+  const prefix = SPECIAL_SERIAL_PREFIX[mode]
+  if (currentSerie?.startsWith(prefix)) return currentSerie
+
+  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase()
+  return `${prefix}${token}`
 }
 
 // Muestra costo con estilo según tipo de tarifa
@@ -318,9 +354,10 @@ export default function Dispositivos() {
 
   const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setModal(true) }
   const openEdit = (d) => {
+    const serieMode = getSpecialSerieMode(d.serie || '')
     setEditing(d)
     setForm({
-      tipo: d.tipo, marca: d.marca, serie: d.serie || '', modelo: d.modelo || '',
+      tipo: d.tipo, marca: d.marca, serie: serieMode === SERIE_OPTIONS.normal ? (d.serie || '') : '', serie_mode: serieMode, modelo: d.modelo || '',
       cantidad: d.cantidad || 1, proveedor_id: d.proveedor_id || '',
       caracteristicas: d.caracteristicas || '',
       costo_dia: d.costo_dia !== undefined ? d.costo_dia : '',
@@ -334,8 +371,21 @@ export default function Dispositivos() {
     e.preventDefault()
     setSaving(true)
     try {
-      if (editing) await deviceAPI.update(editing.id, form)
-      else await deviceAPI.create(form)
+      const payload = { ...form }
+      if (!TIPOS_SIN_SERIE.includes(payload.tipo)) {
+        if (payload.serie_mode === SERIE_OPTIONS.normal) {
+          payload.serie = payload.serie.trim()
+        } else {
+          payload.serie = buildSpecialSerie(payload.serie_mode, editing?.serie || '')
+        }
+      } else {
+        payload.serie = ''
+        payload.serie_mode = SERIE_OPTIONS.normal
+      }
+      delete payload.serie_mode
+
+      if (editing) await deviceAPI.update(editing.id, payload)
+      else await deviceAPI.create(payload)
       setModal(false)
       load(1)
     } catch (err) {
@@ -595,7 +645,11 @@ export default function Dispositivos() {
                     <td className="table-cell font-mono text-xs text-gray-600">
                       {TIPOS_SIN_SERIE.includes(d.tipo)
                         ? <span className="text-gray-500 italic">{d.cantidad || 1} uds.</span>
-                        : d.serie}
+                        : (
+                          <span className={getSpecialSerieMode(d.serie || '') === SERIE_OPTIONS.normal ? '' : 'font-sans italic text-gray-500'}>
+                            {getSerieDisplay(d.serie)}
+                          </span>
+                        )}
                     </td>
                   )}
                   {visibleCols.proveedor && <td className="table-cell text-sm">{d.proveedor_nombre || '—'}</td>}
@@ -678,9 +732,31 @@ export default function Dispositivos() {
             ) : (
               <>
                 <div>
-                  <label className="label">Número de serie *</label>
-                  <input className="input" required placeholder="SN-XXXXXXXX"
-                    value={form.serie} onChange={e => setForm(f => ({ ...f, serie: e.target.value }))} />
+                  <label className="label">
+                    Número de serie {form.serie_mode === SERIE_OPTIONS.normal ? '*' : ''}
+                  </label>
+                  <select
+                    className="input mb-2"
+                    value={form.serie_mode}
+                    onChange={e => setForm(f => ({ ...f, serie_mode: e.target.value, serie: e.target.value === SERIE_OPTIONS.normal ? f.serie : '' }))}
+                  >
+                    <option value={SERIE_OPTIONS.normal}>Capturar número de serie</option>
+                    <option value={SERIE_OPTIONS.sin_numero}>Sin número de serie</option>
+                    <option value={SERIE_OPTIONS.no_visible}>Serie no visible</option>
+                  </select>
+                  <input
+                    className={`input ${form.serie_mode !== SERIE_OPTIONS.normal ? 'bg-gray-50 text-gray-400' : ''}`}
+                    required={form.serie_mode === SERIE_OPTIONS.normal}
+                    disabled={form.serie_mode !== SERIE_OPTIONS.normal}
+                    placeholder={form.serie_mode === SERIE_OPTIONS.normal ? 'SN-XXXXXXXX' : SPECIAL_SERIAL_LABEL[form.serie_mode]}
+                    value={form.serie}
+                    onChange={e => setForm(f => ({ ...f, serie: e.target.value }))}
+                  />
+                  {form.serie_mode !== SERIE_OPTIONS.normal && (
+                    <p className="mt-1 text-xs text-gray-500">
+                      El sistema registrará este equipo con la etiqueta <strong>{SPECIAL_SERIAL_LABEL[form.serie_mode]}</strong>.
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="label">Modelo</label>
