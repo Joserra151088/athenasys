@@ -26,6 +26,8 @@ const createIcon = (color) => L.divIcon({
 const CORP_ICON = createIcon('#6366f1')
 const SUC_ICON  = createIcon('#14b8a6')
 const EMP_ICON  = createIcon('#f97316')
+const MAP_BOUNDS = [[-85, -180], [85, 180]]
+const MEXICO_CENTER = [23.6345, -102.5528]
 
 // ─── MapController: fly to coordinates ───────────────────────────────────────
 function MapController({ flyTarget }) {
@@ -201,10 +203,20 @@ export default function MapaInteractivo() {
               <div className="animate-spin rounded-full h-8 w-8 border-4 border-primary-600 border-t-transparent" />
             </div>
           ) : (
-            <MapContainer center={[23.6345, -102.5528]} zoom={5} className="h-full w-full">
+            <MapContainer
+              center={MEXICO_CENTER}
+              zoom={5}
+              minZoom={4}
+              maxBounds={MAP_BOUNDS}
+              maxBoundsViscosity={1}
+              worldCopyJump={false}
+              className="h-full w-full"
+            >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                noWrap
+                bounds={MAP_BOUNDS}
               />
 
               {/* Controlador de fly-to */}

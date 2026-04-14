@@ -141,7 +141,7 @@ export default function Documentos() {
 
   const showFirmaOnlineError = (err) => {
     if (err?.response?.data?.code === 'SIN_FIRMA_AGENTE' || err?.message?.includes('firma digital')) {
-      showError('Debes registrar tu firma digital antes de enviar documentos. Ve a Usuarios del Sistema → tu perfil → agrega tu firma.', 'Firma requerida')
+      showError('Debes registrar tu firma digital antes de enviar documentos. Ve a Mi Firma y agrega tu firma.', 'Firma requerida')
     } else {
       showError(err?.message || 'Error generando link de firma')
     }

@@ -61,7 +61,7 @@ function AppRoutes() {
         <Route path="tarifas" element={<Tarifas />} />
         <Route path="reportes" element={<Reportes />} />
         <Route path="catalogos" element={<ProtectedRoute roles={['super_admin','agente_soporte']}><Catalogos /></ProtectedRoute>} />
-        <Route path="usuarios-sistema" element={<ProtectedRoute roles={['super_admin']}><UsuariosSistema /></ProtectedRoute>} />
+        <Route path="usuarios-sistema" element={<ProtectedRoute roles={['super_admin', 'agente_soporte']}><UsuariosSistema /></ProtectedRoute>} />
         <Route path="auditoria" element={<ProtectedRoute roles={['super_admin']}><Auditoria /></ProtectedRoute>} />
       </Route>
       {/* Ruta pública — sin autenticación requerida */}

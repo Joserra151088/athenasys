@@ -17,6 +17,7 @@ const EMPTY = { username: '', password: '', nombre: '', email: '', rol: 'agente_
 export default function UsuariosSistema() {
   const { user: currentUser } = useAuth()
   const { showError } = useNotification()
+  const isSuperAdmin = currentUser?.rol === 'super_admin'
   const [usuarios, setUsuarios] = useState([])
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
@@ -46,6 +47,10 @@ export default function UsuariosSistema() {
   const [dbReloadMsg, setDbReloadMsg] = useState(null)
 
   const load = () => {
+    if (!isSuperAdmin) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     usuarioSistemaAPI.getAll().then(setUsuarios).finally(() => setLoading(false))
   }
@@ -56,6 +61,7 @@ export default function UsuariosSistema() {
   }
 
   const loadDocsPath = () => {
+    if (!isSuperAdmin) return
     configAPI.getDocsPath().then(d => { setDocsPath(d.path || ''); setDocsPathInput(d.path || '') }).catch(() => {})
   }
 
@@ -96,7 +102,7 @@ export default function UsuariosSistema() {
     finally { setDocsPathSaving(false) }
   }
 
-  useEffect(() => { load(); loadMyFirma(); loadDocsPath() }, [])
+  useEffect(() => { load(); loadMyFirma(); loadDocsPath() }, [isSuperAdmin])
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setModal(true) }
   const openEdit = (u) => { setEditing(u); setForm({ username: u.username, password: '', nombre: u.nombre, email: u.email, rol: u.rol }); setModal(true) }
@@ -157,8 +163,13 @@ export default function UsuariosSistema() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Usuarios del Sistema" subtitle="Administra los accesos y roles de la plataforma">
-        <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nuevo Usuario</button>
+      <PageHeader
+        title={isSuperAdmin ? 'Usuarios del Sistema' : 'Mi Firma Digital'}
+        subtitle={isSuperAdmin ? 'Administra accesos, firmas y roles de la plataforma' : 'Registra tu firma para documentos de salida, entrada y responsivas'}
+      >
+        {isSuperAdmin && (
+          <button className="btn-primary" onClick={openCreate}><PlusIcon className="h-4 w-4" /> Nuevo Usuario</button>
+        )}
       </PageHeader>
 
       {/* ── Mi Firma ──────────────────────────────────────────────────────── */}
@@ -224,6 +235,8 @@ export default function UsuariosSistema() {
         )}
       </div>
 
+      {isSuperAdmin && (
+        <>
       {/* ── Almacenamiento de Documentos en S3 ───────────────────────────── */}
       <div className="card space-y-4">
         <div>
@@ -341,6 +354,10 @@ export default function UsuariosSistema() {
         </div>
       </div>
 
+        </>
+      )}
+
+      {isSuperAdmin && (
       <Modal open={modal} onClose={() => setModal(false)} title={editing ? 'Editar Usuario' : 'Nuevo Usuario'} size="md">
         <form onSubmit={handleSave} className="space-y-4">
           <div>
@@ -371,8 +388,11 @@ export default function UsuariosSistema() {
           </div>
         </form>
       </Modal>
+      )}
 
-      <ConfirmDialog open={!!deactivateId} onClose={() => setDeactivateId(null)} onConfirm={() => handleDeactivate(deactivateId)} title="Desactivar usuario" message="El usuario no podrá iniciar sesión. ¿Confirmar?" />
+      {isSuperAdmin && (
+        <ConfirmDialog open={!!deactivateId} onClose={() => setDeactivateId(null)} onConfirm={() => handleDeactivate(deactivateId)} title="Desactivar usuario" message="El usuario no podrá iniciar sesión. ¿Confirmar?" />
+      )}
     </div>
   )
 }

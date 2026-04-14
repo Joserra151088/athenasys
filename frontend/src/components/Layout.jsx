@@ -41,7 +41,7 @@ const navItems = [
   { path: '/reportes', label: 'Reportes' },
   { path: '/mapa', label: 'Mapa' },
   { path: '/catalogos', label: 'Catalogos', roles: ['super_admin', 'agente_soporte'] },
-  { path: '/usuarios-sistema', label: 'Usuarios', roles: ['super_admin'] },
+  { path: '/usuarios-sistema', label: 'Usuarios', labelByRole: { agente_soporte: 'Mi Firma' }, roles: ['super_admin', 'agente_soporte'] },
   { path: '/auditoria', label: 'Auditoria', roles: ['super_admin'] },
 ]
 
@@ -56,8 +56,9 @@ function getAbbreviation(label) {
 
 function NavItem({ item, onClick, collapsed }) {
   const [open, setOpen] = useState(false)
-  const { hasRole } = useAuth()
+  const { hasRole, user } = useAuth()
   const location = useLocation()
+  const label = item.labelByRole?.[user?.rol] || item.label
 
   const isChildActive = item.children?.some(child => location.pathname.startsWith(child.path))
 
@@ -79,14 +80,14 @@ function NavItem({ item, onClick, collapsed }) {
                 ? 'border-blue-300 bg-white text-blue-700 shadow-[0_14px_30px_rgba(37,99,235,0.16)]'
                 : 'border-transparent bg-white/70 text-slate-500 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:text-slate-900'
             }`}
-            title={item.label}
+            title={label}
           >
-            {getAbbreviation(item.label)}
+            {getAbbreviation(label)}
           </button>
 
           <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 group-hover:block">
             <div className="rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-xl backdrop-blur">
-              {item.label}
+              {label}
             </div>
           </div>
 
@@ -96,7 +97,7 @@ function NavItem({ item, onClick, collapsed }) {
             }`}
           >
             <div className="border-b border-slate-100 px-4 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{item.label}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">{label}</p>
             </div>
             <div className="space-y-1 p-3">
               {item.children.map(child => (
@@ -132,7 +133,7 @@ function NavItem({ item, onClick, collapsed }) {
               : 'text-slate-600 hover:bg-white/80 hover:text-slate-900 hover:shadow-[0_10px_24px_rgba(15,23,42,0.06)]'
           }`}
         >
-          <span className="tracking-[0.01em]">{item.label}</span>
+          <span className="tracking-[0.01em]">{label}</span>
           <ChevronDownIcon className={`h-4 w-4 transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
         </button>
 
@@ -179,12 +180,12 @@ function NavItem({ item, onClick, collapsed }) {
             }`
           }
         >
-          {getAbbreviation(item.label)}
+          {getAbbreviation(label)}
         </NavLink>
 
         <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 group-hover:block">
           <div className="rounded-2xl border border-slate-200 bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-xl backdrop-blur">
-            {item.label}
+            {label}
           </div>
         </div>
       </div>
@@ -204,7 +205,7 @@ function NavItem({ item, onClick, collapsed }) {
         }`
       }
     >
-      {item.label}
+      {label}
     </NavLink>
   )
 }
