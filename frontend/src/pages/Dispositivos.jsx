@@ -13,15 +13,10 @@ import {
   CurrencyDollarIcon, CubeIcon, TagIcon, AdjustmentsHorizontalIcon, XMarkIcon
 } from '@heroicons/react/24/outline'
 
-const TIPOS_SIN_SERIE = ['Mouse', 'Teclado']
 const SERIE_OPTIONS = {
-  normal: 'normal',
+  normal: 'capturada',
   sin_numero: 'sin_numero',
   no_visible: 'no_visible',
-}
-const SPECIAL_SERIAL_PREFIX = {
-  [SERIE_OPTIONS.sin_numero]: 'SIN NUMERO DE SERIE :: ',
-  [SERIE_OPTIONS.no_visible]: 'SERIE NO VISIBLE :: ',
 }
 const SPECIAL_SERIAL_LABEL = {
   [SERIE_OPTIONS.sin_numero]: 'Sin número de serie',
@@ -85,27 +80,18 @@ function resolveCostoValor(costo, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-function getSpecialSerieMode(serie = '') {
+function getSpecialSerieMode(serie = '', serieEstado = '') {
+  if (serieEstado === SERIE_OPTIONS.sin_numero || serieEstado === SERIE_OPTIONS.no_visible) return serieEstado
   if (!serie) return SERIE_OPTIONS.normal
-  if (serie.startsWith(SPECIAL_SERIAL_PREFIX[SERIE_OPTIONS.sin_numero])) return SERIE_OPTIONS.sin_numero
-  if (serie.startsWith(SPECIAL_SERIAL_PREFIX[SERIE_OPTIONS.no_visible])) return SERIE_OPTIONS.no_visible
+  const normalized = serie.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+  if (normalized.startsWith('SIN NUMERO DE SERIE ::')) return SERIE_OPTIONS.sin_numero
+  if (normalized.startsWith('SERIE NO VISIBLE ::')) return SERIE_OPTIONS.no_visible
   return SERIE_OPTIONS.normal
 }
 
-function getSerieDisplay(serie = '') {
-  const mode = getSpecialSerieMode(serie)
-  if (mode !== SERIE_OPTIONS.normal) return SPECIAL_SERIAL_LABEL[mode]
-  return serie || '—'
-}
-
-function buildSpecialSerie(mode, currentSerie = '') {
-  if (mode === SERIE_OPTIONS.normal) return currentSerie
-
-  const prefix = SPECIAL_SERIAL_PREFIX[mode]
-  if (currentSerie?.startsWith(prefix)) return currentSerie
-
-  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`.toUpperCase()
-  return `${prefix}${token}`
+function getSerieBadgeLabel(dispositivo) {
+  const mode = getSpecialSerieMode(dispositivo?.serie || '', dispositivo?.serie_estado || '')
+  return mode === SERIE_OPTIONS.normal ? '' : SPECIAL_SERIAL_LABEL[mode]
 }
 
 // Muestra costo con estilo según tipo de tarifa
@@ -354,7 +340,7 @@ export default function Dispositivos() {
 
   const openCreate = () => { setEditing(null); setForm(EMPTY_FORM); setModal(true) }
   const openEdit = (d) => {
-    const serieMode = getSpecialSerieMode(d.serie || '')
+    const serieMode = getSpecialSerieMode(d.serie || '', d.serie_estado || '')
     setEditing(d)
     setForm({
       tipo: d.tipo, marca: d.marca, serie: serieMode === SERIE_OPTIONS.normal ? (d.serie || '') : '', serie_mode: serieMode, modelo: d.modelo || '',
@@ -372,16 +358,13 @@ export default function Dispositivos() {
     setSaving(true)
     try {
       const payload = { ...form }
-      if (!TIPOS_SIN_SERIE.includes(payload.tipo)) {
-        if (payload.serie_mode === SERIE_OPTIONS.normal) {
-          payload.serie = payload.serie.trim()
-        } else {
-          payload.serie = buildSpecialSerie(payload.serie_mode, editing?.serie || '')
-        }
+      payload.serie_estado = payload.serie_mode
+      if (payload.serie_mode === SERIE_OPTIONS.normal) {
+        payload.serie = payload.serie.trim()
       } else {
         payload.serie = ''
-        payload.serie_mode = SERIE_OPTIONS.normal
       }
+      payload.cantidad = 1
       delete payload.serie_mode
 
       if (editing) await deviceAPI.update(editing.id, payload)
@@ -643,13 +626,12 @@ export default function Dispositivos() {
                   )}
                   {visibleCols.serie && (
                     <td className="table-cell font-mono text-xs text-gray-600">
-                      {TIPOS_SIN_SERIE.includes(d.tipo)
-                        ? <span className="text-gray-500 italic">{d.cantidad || 1} uds.</span>
-                        : (
-                          <span className={getSpecialSerieMode(d.serie || '') === SERIE_OPTIONS.normal ? '' : 'font-sans italic text-gray-500'}>
-                            {getSerieDisplay(d.serie)}
-                          </span>
-                        )}
+                      <span>{d.serie || '—'}</span>
+                      {getSerieBadgeLabel(d) && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 font-sans text-[10px] font-semibold text-slate-500">
+                          {getSerieBadgeLabel(d)}
+                        </span>
+                      )}
                     </td>
                   )}
                   {visibleCols.proveedor && <td className="table-cell text-sm">{d.proveedor_nombre || '—'}</td>}
@@ -721,50 +703,38 @@ export default function Dispositivos() {
                 value={form.marca} onChange={e => setForm(f => ({ ...f, marca: e.target.value }))} />
             </div>
 
-            {/* Mouse y Teclado: cantidad en lugar de serie/modelo */}
-            {TIPOS_SIN_SERIE.includes(form.tipo) ? (
-              <div className="col-span-2">
-                <label className="label">Cantidad de unidades</label>
-                <input type="number" min="1" className="input" value={form.cantidad}
-                  onChange={e => setForm(f => ({ ...f, cantidad: parseInt(e.target.value) || 1 }))} />
-                <p className="text-xs text-gray-400 mt-1">Los {form.tipo}s se registran por cantidad, no por número de serie individual</p>
-              </div>
-            ) : (
-              <>
-                <div>
-                  <label className="label">
-                    Número de serie {form.serie_mode === SERIE_OPTIONS.normal ? '*' : ''}
-                  </label>
-                  <select
-                    className="input mb-2"
-                    value={form.serie_mode}
-                    onChange={e => setForm(f => ({ ...f, serie_mode: e.target.value, serie: e.target.value === SERIE_OPTIONS.normal ? f.serie : '' }))}
-                  >
-                    <option value={SERIE_OPTIONS.normal}>Capturar número de serie</option>
-                    <option value={SERIE_OPTIONS.sin_numero}>Sin número de serie</option>
-                    <option value={SERIE_OPTIONS.no_visible}>Serie no visible</option>
-                  </select>
-                  <input
-                    className={`input ${form.serie_mode !== SERIE_OPTIONS.normal ? 'bg-gray-50 text-gray-400' : ''}`}
-                    required={form.serie_mode === SERIE_OPTIONS.normal}
-                    disabled={form.serie_mode !== SERIE_OPTIONS.normal}
-                    placeholder={form.serie_mode === SERIE_OPTIONS.normal ? 'SN-XXXXXXXX' : SPECIAL_SERIAL_LABEL[form.serie_mode]}
-                    value={form.serie}
-                    onChange={e => setForm(f => ({ ...f, serie: e.target.value }))}
-                  />
-                  {form.serie_mode !== SERIE_OPTIONS.normal && (
-                    <p className="mt-1 text-xs text-gray-500">
-                      El sistema registrará este equipo con la etiqueta <strong>{SPECIAL_SERIAL_LABEL[form.serie_mode]}</strong>.
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <label className="label">Modelo</label>
-                  <input className="input" placeholder="OptiPlex 7090, EliteBook 840..."
-                    value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} />
-                </div>
-              </>
-            )}
+            <div>
+              <label className="label">
+                Número de serie {form.serie_mode === SERIE_OPTIONS.normal ? '*' : ''}
+              </label>
+              <select
+                className="input mb-2"
+                value={form.serie_mode}
+                onChange={e => setForm(f => ({ ...f, serie_mode: e.target.value, serie: e.target.value === SERIE_OPTIONS.normal ? f.serie : '' }))}
+              >
+                <option value={SERIE_OPTIONS.normal}>Capturar número de serie</option>
+                <option value={SERIE_OPTIONS.sin_numero}>Sin número de serie</option>
+                <option value={SERIE_OPTIONS.no_visible}>Serie no visible</option>
+              </select>
+              <input
+                className={`input ${form.serie_mode !== SERIE_OPTIONS.normal ? 'bg-gray-50 text-gray-400' : ''}`}
+                required={form.serie_mode === SERIE_OPTIONS.normal}
+                disabled={form.serie_mode !== SERIE_OPTIONS.normal}
+                placeholder={form.serie_mode === SERIE_OPTIONS.normal ? 'SN-XXXXXXXX' : SPECIAL_SERIAL_LABEL[form.serie_mode]}
+                value={form.serie}
+                onChange={e => setForm(f => ({ ...f, serie: e.target.value }))}
+              />
+              {form.serie_mode !== SERIE_OPTIONS.normal && (
+                <p className="mt-1 text-xs text-gray-500">
+                  El sistema generará un consecutivo único para control de inventario y mantendrá la nota <strong>{SPECIAL_SERIAL_LABEL[form.serie_mode]}</strong>.
+                </p>
+              )}
+            </div>
+            <div>
+              <label className="label">Modelo</label>
+              <input className="input" placeholder="OptiPlex 7090, EliteBook 840..."
+                value={form.modelo} onChange={e => setForm(f => ({ ...f, modelo: e.target.value }))} />
+            </div>
 
             <div className="col-span-2">
               <label className="label">Proveedor</label>

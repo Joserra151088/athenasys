@@ -13,6 +13,12 @@ const bcrypt = require('bcryptjs')
 const { v4: uuidv4 } = require('uuid')
 const fs     = require('fs')
 const path   = require('path')
+const {
+  SERIE_ESTADOS,
+  inferMissingSerialEstado,
+  isMissingSerial,
+  nextGeneratedSerial,
+} = require('../utils/deviceSerials')
 
 // ─── Campos que se almacenan como JSON string en MySQL ───────────────────────
 const JSON_FIELDS = {
@@ -174,6 +180,50 @@ async function persistDelete(table, id) {
     await _pool.query(`DELETE FROM \`${table}\` WHERE \`id\` = ?`, [id])
   } catch (e) {
     console.error(`[DB] DELETE error [${table}]:`, e.message)
+  }
+}
+
+async function migrateMissingDeviceSerials() {
+  try {
+    const [rows] = await _pool.query('SELECT * FROM `dispositivos` ORDER BY `created_at`, `id`')
+    const reserved = new Set()
+    const updates = []
+
+    for (const row of rows) {
+      if (!isMissingSerial(row.serie)) {
+        if (!row.serie_estado) {
+          updates.push({
+            id: row.id,
+            serie: row.serie,
+            serie_estado: SERIE_ESTADOS.CAPTURADA,
+            cantidad: row.cantidad || 1,
+          })
+        }
+        continue
+      }
+
+      const serie = nextGeneratedSerial(row.tipo || 'Dispositivo', rows, reserved)
+      updates.push({
+        id: row.id,
+        serie,
+        serie_estado: inferMissingSerialEstado(row.serie),
+        cantidad: 1,
+      })
+      row.serie = serie
+    }
+
+    for (const item of updates) {
+      await _pool.query(
+        'UPDATE `dispositivos` SET `serie` = ?, `serie_estado` = ?, `cantidad` = ?, `updated_at` = NOW() WHERE `id` = ?',
+        [item.serie, item.serie_estado, item.cantidad, item.id]
+      )
+    }
+
+    if (updates.length) {
+      console.log(`✓ Series de dispositivos normalizadas (${updates.length})`)
+    }
+  } catch (e) {
+    console.warn('[DB] No se pudo normalizar series de dispositivos:', e.message)
   }
 }
 
@@ -353,6 +403,7 @@ const DDL = [
     \`tipo\` VARCHAR(100),
     \`marca\` VARCHAR(100),
     \`serie\` VARCHAR(200),
+    \`serie_estado\` VARCHAR(20) DEFAULT 'capturada',
     \`modelo\` VARCHAR(200),
     \`cantidad\` INT DEFAULT 1,
     \`proveedor_id\` VARCHAR(36),
@@ -993,6 +1044,7 @@ async function initDB() {
   }
   await alterIfNotExists('dispositivos',  'costo_dia',            'DECIMAL(10,2) DEFAULT 0')
   await alterIfNotExists('dispositivos',  'cantidad',             'INT DEFAULT 1')
+  await alterIfNotExists('dispositivos',  'serie_estado',         "VARCHAR(20) DEFAULT 'capturada'")
   await alterIfNotExists('dispositivos',  'creado_por',           'VARCHAR(36)')
   await alterIfNotExists('dispositivos',  'creado_por_nombre',    'VARCHAR(200)')
   await alterIfNotExists('dispositivos',  'actualizado_por',      'VARCHAR(36)')
@@ -1206,6 +1258,9 @@ async function initDB() {
                     'dispositivos','plantillas','licencias','tarifas_equipo','centros_costo']) {
     await loadTable(t)
   }
+
+  await migrateMissingDeviceSerials()
+  await loadTable('dispositivos')
 
   console.log(`✓ DB lista en memoria (${Object.entries(_data).map(([k,v])=>`${k}:${Array.isArray(v)?v.length:0}`).join(', ')})`)
 

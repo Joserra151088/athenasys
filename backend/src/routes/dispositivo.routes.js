@@ -3,6 +3,12 @@ const { v4: uuidv4 } = require('uuid')
 const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
+const {
+  SERIE_ESTADOS,
+  isMissingSerial,
+  nextGeneratedSerial,
+  normalizeSerieEstado,
+} = require('../utils/deviceSerials')
 
 router.use(authMiddleware)
 
@@ -33,6 +39,44 @@ function resolveCostoDia(tipo, proveedorNombre, costoDiaBody) {
   }
 
   return getCostoDia(tipo)
+}
+
+function resolveDeviceSerial({ tipo, serie, serie_estado, existingId = null, currentSerie = '', currentTipo = '', currentSerieEstado = '' }) {
+  const estado = normalizeSerieEstado(serie_estado)
+  const dispositivos = db.get('dispositivos').value()
+
+  if (estado === SERIE_ESTADOS.CAPTURADA) {
+    const normalizedSerie = String(serie || '').trim()
+    if (!normalizedSerie) throw Object.assign(new Error('El número de serie es requerido'), { status: 400 })
+
+    const duplicate = dispositivos.find(d =>
+      d.activo &&
+      d.id !== existingId &&
+      String(d.serie || '').trim().toLowerCase() === normalizedSerie.toLowerCase()
+    )
+    if (duplicate) throw Object.assign(new Error('Ya existe un dispositivo con ese número de serie'), { status: 409 })
+
+    return { serie: normalizedSerie, serie_estado: SERIE_ESTADOS.CAPTURADA }
+  }
+
+  if (
+    currentSerie &&
+    currentTipo === tipo &&
+    normalizeSerieEstado(currentSerieEstado) !== SERIE_ESTADOS.CAPTURADA &&
+    !isMissingSerial(currentSerie)
+  ) {
+    const duplicate = dispositivos.find(d =>
+      d.activo &&
+      d.id !== existingId &&
+      String(d.serie || '').trim().toLowerCase() === String(currentSerie).trim().toLowerCase()
+    )
+    if (!duplicate) return { serie: currentSerie, serie_estado: estado }
+  }
+
+  return {
+    serie: nextGeneratedSerial(tipo, dispositivos),
+    serie_estado: estado,
+  }
 }
 
 // Estadísticas
@@ -151,37 +195,34 @@ router.get('/:id', (req, res) => {
   res.json(item)
 })
 
-const TIPOS_SIN_SERIE = ['Mouse', 'Teclado']
-
 // Crear
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'dispositivo'), (req, res) => {
-  const { tipo, marca, serie, modelo, proveedor_id, caracteristicas, costo_dia, cantidad } = req.body
-  if (!tipo || !marca) return res.status(400).json({ message: 'Tipo y marca son requeridos' })
-  if (!TIPOS_SIN_SERIE.includes(tipo) && !serie) return res.status(400).json({ message: 'El número de serie es requerido para este tipo de dispositivo' })
+  try {
+    const { tipo, marca, serie, serie_estado, modelo, proveedor_id, caracteristicas, costo_dia } = req.body
+    if (!tipo || !marca) return res.status(400).json({ message: 'Tipo y marca son requeridos' })
 
-  if (serie) {
-    const existe = db.get('dispositivos').find({ serie, activo: true }).value()
-    if (existe) return res.status(409).json({ message: 'Ya existe un dispositivo con ese número de serie' })
+    const serialInfo = resolveDeviceSerial({ tipo, serie, serie_estado })
+    const proveedor = proveedor_id ? db.get('proveedores').find({ id: proveedor_id }).value() : null
+    const now = new Date().toISOString()
+    // costo_dia: usa el valor del body si se proporcionó, si no calcula automáticamente
+    const costoDia = resolveCostoDia(tipo, proveedor?.nombre || '', costo_dia)
+    const item = {
+      id: uuidv4(), tipo, marca, serie: serialInfo.serie, serie_estado: serialInfo.serie_estado, modelo: modelo || '',
+      cantidad: 1,
+      proveedor_id: proveedor_id || null, proveedor_nombre: proveedor?.nombre || null,
+      caracteristicas: caracteristicas || '',
+      costo_dia: costoDia,
+      estado: 'stock', ubicacion_tipo: 'almacen',
+      ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
+      lat: null, lng: null, activo: true,
+      creado_por: req.user.id, creado_por_nombre: req.user.nombre,
+      created_at: now, updated_at: now
+    }
+    db.get('dispositivos').push(item).write()
+    res.status(201).json(item)
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Error al crear dispositivo' })
   }
-
-  const proveedor = proveedor_id ? db.get('proveedores').find({ id: proveedor_id }).value() : null
-  const now = new Date().toISOString()
-  // costo_dia: usa el valor del body si se proporcionó, si no calcula automáticamente
-  const costoDia = resolveCostoDia(tipo, proveedor?.nombre || '', costo_dia)
-  const item = {
-    id: uuidv4(), tipo, marca, serie: serie || null, modelo: modelo || '',
-    cantidad: TIPOS_SIN_SERIE.includes(tipo) ? (parseInt(cantidad) || 1) : 1,
-    proveedor_id: proveedor_id || null, proveedor_nombre: proveedor?.nombre || null,
-    caracteristicas: caracteristicas || '',
-    costo_dia: costoDia,
-    estado: 'stock', ubicacion_tipo: 'almacen',
-    ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
-    lat: null, lng: null, activo: true,
-    creado_por: req.user.id, creado_por_nombre: req.user.nombre,
-    created_at: now, updated_at: now
-  }
-  db.get('dispositivos').push(item).write()
-  res.status(201).json(item)
 })
 
 // Actualizar
@@ -189,21 +230,37 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
   const item = db.get('dispositivos').find({ id: req.params.id, activo: true }).value()
   if (!item) return res.status(404).json({ message: 'Dispositivo no encontrado' })
 
-  const proveedor = req.body.proveedor_id ? db.get('proveedores').find({ id: req.body.proveedor_id }).value() : null
-  const nuevoTipo = req.body.tipo || item.tipo
-  // costo_dia: si viene en el body lo respeta, si no lo recalcula
-  const costoDia = resolveCostoDia(nuevoTipo, proveedor?.nombre || item.proveedor_nombre || '', req.body.costo_dia)
-  const updated = {
-    ...item,
-    ...req.body,
-    proveedor_nombre: proveedor?.nombre || item.proveedor_nombre,
-    costo_dia: costoDia,
-    actualizado_por: req.user.id,
-    actualizado_por_nombre: req.user.nombre,
-    updated_at: new Date().toISOString()
+  try {
+    const proveedor = req.body.proveedor_id ? db.get('proveedores').find({ id: req.body.proveedor_id }).value() : null
+    const nuevoTipo = req.body.tipo || item.tipo
+    const serialInfo = resolveDeviceSerial({
+      tipo: nuevoTipo,
+      serie: req.body.serie,
+      serie_estado: req.body.serie_estado ?? item.serie_estado,
+      existingId: item.id,
+      currentSerie: item.serie,
+      currentTipo: item.tipo,
+      currentSerieEstado: item.serie_estado,
+    })
+    // costo_dia: si viene en el body lo respeta, si no lo recalcula
+    const costoDia = resolveCostoDia(nuevoTipo, proveedor?.nombre || item.proveedor_nombre || '', req.body.costo_dia)
+    const updated = {
+      ...item,
+      ...req.body,
+      serie: serialInfo.serie,
+      serie_estado: serialInfo.serie_estado,
+      cantidad: 1,
+      proveedor_nombre: proveedor?.nombre || item.proveedor_nombre,
+      costo_dia: costoDia,
+      actualizado_por: req.user.id,
+      actualizado_por_nombre: req.user.nombre,
+      updated_at: new Date().toISOString()
+    }
+    db.get('dispositivos').find({ id: req.params.id }).assign(updated).write()
+    res.json(updated)
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Error al actualizar dispositivo' })
   }
-  db.get('dispositivos').find({ id: req.params.id }).assign(updated).write()
-  res.json(updated)
 })
 
 // Eliminar (soft delete)
