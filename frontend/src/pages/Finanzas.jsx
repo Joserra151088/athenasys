@@ -66,6 +66,55 @@ function EmpleadoSearch({ value, display, onSelect, onClear }) {
   )
 }
 
+// ── SucursalSearch ────────────────────────────────────────────────────────────
+function SucursalSearch({ value, display, onSelect, onClear }) {
+  const [query, setQuery] = useState(display || '')
+  const [results, setResults] = useState([])
+  const [open, setOpen] = useState(false)
+  useEffect(() => { if (!value) setQuery('') }, [value])
+
+  const search = async (q) => {
+    setQuery(q)
+    if (q.length < 2) { setResults([]); setOpen(false); return }
+    try {
+      const data = await fetch(`/api/sucursales?search=${encodeURIComponent(q)}&limit=10`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('ti_token')}` }
+      }).then(r => r.json())
+      setResults((data.data || data).slice(0, 10))
+      setOpen(true)
+    } catch(_) {}
+  }
+  const select = (sucursal) => { setQuery(sucursal.nombre); setOpen(false); onSelect(sucursal) }
+  const clear = () => { setQuery(''); setResults([]); setOpen(false); onClear() }
+
+  return (
+    <div className="relative">
+      <div className="flex gap-1">
+        <input
+          className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm"
+          value={query}
+          onChange={e => search(e.target.value)}
+          onFocus={() => query && results.length && setOpen(true)}
+          placeholder="Buscar por sucursal, determinante o estado..."
+        />
+        {value && (
+          <button type="button" onClick={clear} className="px-2 text-gray-400 hover:text-red-400 text-lg">×</button>
+        )}
+      </div>
+      {open && results.length > 0 && (
+        <div className="absolute z-50 w-full bg-white border border-gray-200 rounded-xl shadow-xl mt-1 max-h-48 overflow-y-auto">
+          {results.map(s => (
+            <div key={s.id} onClick={() => select(s)} className="px-3 py-2 hover:bg-emerald-50 cursor-pointer">
+              <div className="text-xs font-semibold text-gray-800">{s.nombre}</div>
+              <div className="text-xs text-gray-400">{[s.determinante && `Det. ${s.determinante}`, s.estado, s.tipo].filter(Boolean).join(' · ')}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── CentroCostoSearch ─────────────────────────────────────────────────────────
 function CentroCostoSearch({ value, nombre, onChange }) {
   const [query, setQuery] = useState(nombre || '')
@@ -697,6 +746,8 @@ function TabDesgloce() {
     'Total MXN':            calcTotalMXN(d),
     'Moneda':               d.moneda || 'MXN',
     'Centro Costo':         d.centro_costo_codigo || '',
+    'Asignado a':           d.empleado_nombre || d.sucursal_nombre || '',
+    'Tipo asignación':      d.empleado_nombre ? 'Empleado' : d.sucursal_nombre ? 'Sucursal' : '',
     'Tipo':                 d.identificador || '',
     'Departamento':         d.departamento || '',
     'Factura Folio':        d.factura_folio || '',
@@ -825,7 +876,10 @@ function TabDesgloce() {
       identificador: 'Administrativo',
       centro_costo_codigo: '', centro_costo_nombre: '',
       ahorro_soporte: '', ahorro_descripcion: '',
-      es_gasto_usuario: false, empleado_id: null, empleado_nombre: ''
+      asignacion_gasto_tipo: 'ninguno',
+      es_gasto_usuario: false,
+      empleado_id: null, empleado_nombre: '',
+      sucursal_id: null, sucursal_nombre: ''
     })
     setModal('new')
   }
@@ -837,9 +891,12 @@ function TabDesgloce() {
       modo_calculo: d.modo_calculo || 'dias',
       subtotal_directo: d.modo_calculo === 'total' ? d.subtotal : '',
       ahorro_soporte: '', ahorro_descripcion: '',
+      asignacion_gasto_tipo: (d.sucursal_id || d.sucursal_nombre) ? 'sucursal' : d.es_gasto_usuario ? 'empleado' : 'ninguno',
       es_gasto_usuario: !!d.es_gasto_usuario,
       empleado_id: d.empleado_id || null,
-      empleado_nombre: d.empleado_nombre || ''
+      empleado_nombre: d.empleado_nombre || '',
+      sucursal_id: d.sucursal_id || null,
+      sucursal_nombre: d.sucursal_nombre || ''
     })
     setModal('edit')
   }
@@ -884,6 +941,7 @@ function TabDesgloce() {
         ...form,
         subtotal_directo: form.modo_calculo === 'total' ? (parseFloat(form.subtotal_directo) || 0) : undefined,
       }
+      delete payload.asignacion_gasto_tipo
       if (modal === 'new') await presupuestoAPI.createDetalle(payload)
       else await presupuestoAPI.updateDetalle(form.id, payload)
 
@@ -1333,6 +1391,11 @@ function TabDesgloce() {
                           <span>👤</span> {d.empleado_nombre}
                         </div>
                       )}
+                      {d.sucursal_nombre && (
+                        <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1 truncate">
+                          <span>🏢</span> {d.sucursal_nombre}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
                     <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
@@ -1436,24 +1499,46 @@ function TabDesgloce() {
             />
           </div>
 
-          {/* ¿Es gasto de usuario? */}
+          {/* Asignación del gasto */}
           <div className="col-span-2">
             <div className="flex items-center gap-3 mb-2">
-              <label className="block text-xs font-medium text-gray-600">¿Es gasto de usuario?</label>
+              <label className="block text-xs font-medium text-gray-600">Asignar gasto a</label>
               <div className="flex gap-1">
                 <button type="button"
-                  onClick={() => setForm(f => ({...f, es_gasto_usuario: false, empleado_id: null, empleado_nombre: ''}))}
-                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${!form.es_gasto_usuario ? 'bg-gray-200 text-gray-700 border-gray-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    asignacion_gasto_tipo: 'ninguno',
+                    es_gasto_usuario: false,
+                    empleado_id: null, empleado_nombre: '',
+                    sucursal_id: null, sucursal_nombre: ''
+                  }))}
+                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${(form.asignacion_gasto_tipo || 'ninguno') === 'ninguno' ? 'bg-gray-200 text-gray-700 border-gray-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
                   No
                 </button>
                 <button type="button"
-                  onClick={() => setForm(f => ({...f, es_gasto_usuario: true}))}
-                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${form.es_gasto_usuario ? 'bg-blue-100 text-blue-700 border-blue-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
-                  Sí — vincular empleado
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    asignacion_gasto_tipo: 'empleado',
+                    es_gasto_usuario: true,
+                    sucursal_id: null, sucursal_nombre: ''
+                  }))}
+                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${form.asignacion_gasto_tipo === 'empleado' ? 'bg-blue-100 text-blue-700 border-blue-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+                  Empleado
+                </button>
+                <button type="button"
+                  onClick={() => setForm(f => ({
+                    ...f,
+                    asignacion_gasto_tipo: 'sucursal',
+                    es_gasto_usuario: false,
+                    empleado_id: null, empleado_nombre: '', puesto: '', email: '',
+                    sucursal_id: f.sucursal_id || null
+                  }))}
+                  className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${form.asignacion_gasto_tipo === 'sucursal' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'border-gray-200 text-gray-400 hover:bg-gray-50'}`}>
+                  Sucursal
                 </button>
               </div>
             </div>
-            {form.es_gasto_usuario && (
+            {form.asignacion_gasto_tipo === 'empleado' && (
               <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 space-y-2">
                 <label className="block text-xs font-semibold text-blue-700 mb-1">Empleado asignado</label>
                 {form.empleado_id ? (
@@ -1475,13 +1560,52 @@ function TabDesgloce() {
                     display={form.empleado_nombre}
                     onSelect={emp => setForm(f => ({
                       ...f,
+                      asignacion_gasto_tipo: 'empleado',
                       empleado_id: emp.id,
                       empleado_nombre: emp.nombre_completo,
+                      sucursal_id: null,
+                      sucursal_nombre: '',
                       email: f.email || emp.email || '',
                       departamento: f.departamento || emp.area || emp.departamento_nombre || '',
                       puesto: f.puesto || emp.puesto || ''
                     }))}
                     onClear={() => setForm(f => ({...f, empleado_id: null, empleado_nombre: ''}))}
+                  />
+                )}
+              </div>
+            )}
+            {form.asignacion_gasto_tipo === 'sucursal' && (
+              <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 space-y-2">
+                <label className="block text-xs font-semibold text-emerald-700 mb-1">Sucursal asignada</label>
+                {form.sucursal_id ? (
+                  <div className="flex items-start justify-between bg-white border border-emerald-200 rounded-lg px-3 py-2.5">
+                    <div>
+                      <div className="text-sm font-semibold text-gray-800">{form.sucursal_nombre}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {[form.departamento, form.centro_costo_codigo].filter(Boolean).join(' · ')}
+                      </div>
+                    </div>
+                    <button type="button"
+                      onClick={() => setForm(f => ({...f, sucursal_id: null, sucursal_nombre: '', departamento: ''}))}
+                      className="ml-3 text-gray-400 hover:text-red-400 text-xl leading-none">×</button>
+                  </div>
+                ) : (
+                  <SucursalSearch
+                    value={form.sucursal_id}
+                    display={form.sucursal_nombre}
+                    onSelect={sucursal => setForm(f => ({
+                      ...f,
+                      asignacion_gasto_tipo: 'sucursal',
+                      es_gasto_usuario: false,
+                      empleado_id: null,
+                      empleado_nombre: '',
+                      sucursal_id: sucursal.id,
+                      sucursal_nombre: sucursal.nombre,
+                      departamento: f.departamento || sucursal.tipo || sucursal.estado || '',
+                      centro_costo_codigo: f.centro_costo_codigo || sucursal.centro_costo_codigo || '',
+                      centro_costo_nombre: f.centro_costo_nombre || sucursal.centro_costo_nombre || sucursal.centro_costos || ''
+                    }))}
+                    onClear={() => setForm(f => ({...f, sucursal_id: null, sucursal_nombre: ''}))}
                   />
                 )}
               </div>

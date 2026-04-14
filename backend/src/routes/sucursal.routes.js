@@ -95,8 +95,13 @@ router.get('/', (req, res) => {
     const q = norm(search)
     items = items.filter(s =>
       norm(s.nombre).includes(q) ||
+      norm(s.tipo).includes(q) ||
       norm(s.estado).includes(q) ||
-      norm(s.direccion).includes(q)
+      norm(s.direccion).includes(q) ||
+      norm(s.determinante).includes(q) ||
+      norm(s.centro_costos).includes(q) ||
+      norm(s.centro_costo_codigo).includes(q) ||
+      norm(s.centro_costo_nombre).includes(q)
     )
   }
 

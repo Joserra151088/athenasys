@@ -248,21 +248,29 @@ router.get('/gastos', (req, res) => {
           ? (parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1)
           : parseFloat(d.total) || 0)
       const empDet = d.empleado_id ? empleados.find(e => e.id === d.empleado_id) : null
+      const sucDet = d.sucursal_id ? sucursales.find(s => s.id === d.sucursal_id) : null
       // _cc_full: concatena código + nombre para poder hacer substring en cualquier dirección
       const ccFull = normalize(
-        [d.centro_costo_codigo, d.centro_costo_nombre].filter(Boolean).join(' ')
+        [
+          d.centro_costo_codigo,
+          d.centro_costo_nombre,
+          sucDet?.centro_costo_codigo,
+          sucDet?.centro_costos,
+          sucDet?.centro_costo_nombre
+        ].filter(Boolean).join(' ')
       )
       return {
         descripcion:  d.nombre          || '',
         servicio:     d.tipo_servicio   || '',
         proveedor:    d.proveedor       || '',
         folio:        d.telefono_serie  || d.factura_folio || '',
-        asignado_a:   d.empleado_nombre || '',
-        area:         empDet?.area      || d.departamento || '',
-        centro_costo: d.centro_costo_nombre || d.centro_costo_codigo || '',
-        tipo:         d.es_gasto_usuario ? 'Usuario' : 'Servicio',
+        asignado_a:   d.empleado_nombre || d.sucursal_nombre || '',
+        area:         empDet?.area || d.departamento || sucDet?.tipo || '',
+        centro_costo: d.centro_costo_nombre || d.centro_costo_codigo || sucDet?.centro_costo_nombre || sucDet?.centro_costo_codigo || '',
+        tipo:         d.empleado_id ? 'Usuario' : d.sucursal_id ? 'Sucursal' : 'Servicio',
         total_mxn:    parseFloat(totalMXN.toFixed(2)),
         _emp_id:      d.empleado_id || null,
+        _sucursal_id: d.sucursal_id || null,
         _cc_codigo:   normalize(d.centro_costo_codigo || d.centro_costo_nombre || ''),
         _cc_full:     ccFull,
       }
@@ -277,6 +285,9 @@ router.get('/gastos', (req, res) => {
     if (hayFiltroActivo) {
       filtered = data.filter(row => {
         if (empIds === null) return false
+
+        // Gasto asignado directamente a la sucursal filtrada
+        if (filtroSucursalId && row._sucursal_id) return row._sucursal_id === filtroSucursalId
 
         // (a) Gasto con empleado asignado
         if (row._emp_id) return empIds.has(row._emp_id)
@@ -372,10 +383,18 @@ router.get('/gastos-historico', (req, res) => {
 
     if (empIds !== null) {
       items = items.filter(d => {
+        if (filtroSucursalId && d.sucursal_id) return d.sucursal_id === filtroSucursalId
         if (d.empleado_id) return empIds.has(d.empleado_id)
         // Sin empleado_id → coincidir si algún token aparece en el CC del registro
         if (ccSet && ccSet.size > 0) {
-          const dCC = normalize([d.centro_costo_codigo, d.centro_costo_nombre].filter(Boolean).join(' '))
+          const sucDet = d.sucursal_id ? sucursales.find(s => s.id === d.sucursal_id) : null
+          const dCC = normalize([
+            d.centro_costo_codigo,
+            d.centro_costo_nombre,
+            sucDet?.centro_costo_codigo,
+            sucDet?.centro_costos,
+            sucDet?.centro_costo_nombre
+          ].filter(Boolean).join(' '))
           for (const token of ccSet) {
             if (token && dCC.includes(token)) return true
           }

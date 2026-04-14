@@ -232,6 +232,8 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
     partida_id: body.partida_id || null,
     empleado_id: body.empleado_id || null,
     empleado_nombre: body.empleado_nombre || null,
+    sucursal_id: body.sucursal_id || null,
+    sucursal_nombre: body.sucursal_nombre || null,
     es_gasto_usuario: body.es_gasto_usuario ? 1 : 0,
     created_at: new Date().toISOString(), updated_at: new Date().toISOString()
   }
@@ -274,8 +276,10 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'admini
   delete updates.subtotal_directo  // campo de cálculo, no existe en MySQL
   delete updates.ahorro_soporte    // pertenece a presupuesto_gastos_mes, no a finanzas_detalle
   delete updates.ahorro_descripcion
+  delete updates.asignacion_gasto_tipo // solo controla la UI del formulario
   if (body.es_gasto_usuario !== undefined) updates.es_gasto_usuario = body.es_gasto_usuario ? 1 : 0
   if (body.empleado_nombre !== undefined) updates.empleado_nombre = body.empleado_nombre || null
+  if (body.sucursal_nombre !== undefined) updates.sucursal_nombre = body.sucursal_nombre || null
   db.get('finanzas_detalle').find({ id: req.params.id }).assign(updates).write()
   const updated = db.get('finanzas_detalle').find({ id: req.params.id }).value()
   syncGastoReal(updated.partida_id, updated.mes, updated.anio)

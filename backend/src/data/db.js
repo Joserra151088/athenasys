@@ -732,6 +732,9 @@ const DDL = [
     \`dispositivo_id\` VARCHAR(36),
     \`partida_id\` VARCHAR(36),
     \`empleado_id\` VARCHAR(36),
+    \`empleado_nombre\` VARCHAR(200),
+    \`sucursal_id\` VARCHAR(36),
+    \`sucursal_nombre\` VARCHAR(200),
     \`total_mxn\` DECIMAL(15,2) DEFAULT NULL,
     \`created_at\` DATETIME,
     \`updated_at\` DATETIME
@@ -1015,6 +1018,8 @@ async function initDB() {
   await alterIfNotExists('finanzas_detalle', 'total_mxn',        'DECIMAL(15,2) DEFAULT NULL')
   await alterIfNotExists('finanzas_detalle', 'es_gasto_usuario', 'TINYINT(1) DEFAULT 0')
   await alterIfNotExists('finanzas_detalle', 'empleado_nombre',  'VARCHAR(200) DEFAULT NULL')
+  await alterIfNotExists('finanzas_detalle', 'sucursal_id',      'VARCHAR(36) DEFAULT NULL')
+  await alterIfNotExists('finanzas_detalle', 'sucursal_nombre',  'VARCHAR(200) DEFAULT NULL')
   await alterIfNotExists('presupuesto_partidas', 'montos_por_mes', 'LONGTEXT')
   // SharePoint
   await alterIfNotExists('documentos', 'sharepoint_item_id',     'VARCHAR(500)')
