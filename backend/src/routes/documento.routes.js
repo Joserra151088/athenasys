@@ -97,6 +97,8 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     dispositivos: dispositivosEnriquecidos,
     agente_id: req.user.id, agente_nombre: req.user.nombre,
     firma_agente: null, firma_agente_path: null,
+    logistica_nombre: null, logistica_area: null,
+    firma_logistica: null, firma_logistica_path: null,
     receptor_id: receptor_id || null,
     receptor_nombre: receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null),
     firma_receptor: null, firma_receptor_path: null,
@@ -129,8 +131,13 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
   if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado' })
 
-  const { firma_agente, firma_receptor } = req.body
+  const { firma_agente, firma_receptor, firma_logistica, logistica_nombre, logistica_area } = req.body
   if (!firma_receptor) return res.status(400).json({ message: 'Se requiere la firma del receptor' })
+  if (doc.tipo === 'salida') {
+    if (!firma_logistica) return res.status(400).json({ message: 'Se requiere la firma de logística o almacén para documentos de salida' })
+    if (!String(logistica_nombre || '').trim()) return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén' })
+    if (!String(logistica_area || '').trim()) return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén' })
+  }
 
   // Usar firma almacenada del agente si no viene en el body
   const agentUser = db.get('usuarios_sistema').find({ id: req.user.id }).value()
@@ -138,13 +145,16 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   if (!firmaAgenteData) return res.status(400).json({ message: 'Se requiere la firma del agente (sube tu firma en tu perfil de usuario)' })
 
   // Guardar firmas como archivos (con try-catch para no dejar la request colgada)
-  const agentePath   = path.join(uploadsDir, `${doc.id}_agente.png`)
-  const receptorPath = path.join(uploadsDir, `${doc.id}_receptor.png`)
+  const agentePath    = path.join(uploadsDir, `${doc.id}_agente.png`)
+  const logisticaPath = path.join(uploadsDir, `${doc.id}_logistica.png`)
+  const receptorPath  = path.join(uploadsDir, `${doc.id}_receptor.png`)
   try {
-    const base64Agente   = firmaAgenteData.replace(/^data:[^;]+;base64,/, '')
-    const base64Receptor = firma_receptor.replace(/^data:[^;]+;base64,/, '')
-    if (base64Agente)   fs.writeFileSync(agentePath,   Buffer.from(base64Agente,   'base64'))
-    if (base64Receptor) fs.writeFileSync(receptorPath, Buffer.from(base64Receptor, 'base64'))
+    const base64Agente    = firmaAgenteData.replace(/^data:[^;]+;base64,/, '')
+    const base64Logistica = firma_logistica ? firma_logistica.replace(/^data:[^;]+;base64,/, '') : ''
+    const base64Receptor  = firma_receptor.replace(/^data:[^;]+;base64,/, '')
+    if (base64Agente)    fs.writeFileSync(agentePath,    Buffer.from(base64Agente,    'base64'))
+    if (base64Logistica) fs.writeFileSync(logisticaPath, Buffer.from(base64Logistica, 'base64'))
+    if (base64Receptor)  fs.writeFileSync(receptorPath,  Buffer.from(base64Receptor,  'base64'))
   } catch (writeErr) {
     console.error('[Firma] Error guardando archivo de firma:', writeErr.message)
     // Continuar aunque no se haya podido guardar el archivo físico
@@ -155,6 +165,10 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     ...doc,
     firma_agente: firmaAgenteData,
     firma_agente_path: fs.existsSync(agentePath)   ? `/uploads/firmas/${doc.id}_agente.png`   : null,
+    logistica_nombre: doc.tipo === 'salida' ? String(logistica_nombre || '').trim() : doc.logistica_nombre || null,
+    logistica_area: doc.tipo === 'salida' ? String(logistica_area || '').trim() : doc.logistica_area || null,
+    firma_logistica: doc.tipo === 'salida' ? firma_logistica : doc.firma_logistica || null,
+    firma_logistica_path: fs.existsSync(logisticaPath) ? `/uploads/firmas/${doc.id}_logistica.png` : doc.firma_logistica_path || null,
     firma_receptor,
     firma_receptor_path: fs.existsSync(receptorPath) ? `/uploads/firmas/${doc.id}_receptor.png` : null,
     firmado: true, fecha_firma: now, updated_at: now,

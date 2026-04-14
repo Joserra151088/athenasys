@@ -81,6 +81,7 @@ export async function generateDocumentPDF(doc, options = {}) {
   const {
     logo = null,
     firmaAgenteImg = null,
+    firmaLogisticaImg = null,
     firmaReceptorImg = null,
   } = options
 
@@ -313,22 +314,21 @@ export async function generateDocumentPDF(doc, options = {}) {
   y += 11
 
   const firmaA = firmaAgenteImg || doc.firma_agente || null
+  const firmaL = firmaLogisticaImg || doc.firma_logistica || null
   const firmaR = firmaReceptorImg || doc.firma_receptor || null
-  const bw = cw / 2 - 8
-  const bx2 = ml + cw / 2 + 8
-
-  pdf.setFillColor(250, 251, 253)
-  pdf.setDrawColor(203, 213, 225)
-  pdf.setLineWidth(0.3)
-  pdf.roundedRect(ml, y, bw, sigH, 1, 1, 'FD')
-  pdf.roundedRect(bx2, y, bw, sigH, 1, 1, 'FD')
-  addImg(firmaA, ml + bw / 2 - 24, y + 4, 48, 26)
-  addImg(firmaR, bx2 + bw / 2 - 24, y + 4, 48, 26)
-
-  pdf.setDrawColor(148, 163, 184)
-  pdf.setLineWidth(0.4)
-  pdf.line(ml + 5, y + sigH - 14, ml + bw - 5, y + sigH - 14)
-  pdf.line(bx2 + 5, y + sigH - 14, bx2 + bw - 5, y + sigH - 14)
+  const isSalida = doc.tipo === 'salida'
+  const gap = isSalida ? 5 : 16
+  const bw = isSalida ? (cw - gap * 2) / 3 : cw / 2 - 8
+  const boxes = isSalida
+    ? [
+        { x: ml, img: firmaA, name: doc.agente_nombre, role: 'Agente de Soporte TI' },
+        { x: ml + bw + gap, img: firmaL, name: doc.logistica_nombre, role: doc.logistica_area || 'Logística / Almacén' },
+        { x: ml + (bw + gap) * 2, img: firmaR, name: doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
+      ]
+    : [
+        { x: ml, img: firmaA, name: doc.agente_nombre, role: 'Agente de Soporte TI' },
+        { x: ml + cw / 2 + 8, img: firmaR, name: doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
+      ]
 
   const writeName = (name, x, cy) => {
     pdf.setFont('helvetica', 'bold')
@@ -337,14 +337,24 @@ export async function generateDocumentPDF(doc, options = {}) {
     pdf.text(pdf.splitTextToSize(name || '-', bw - 10)[0], x, cy, { align: 'center' })
   }
 
-  writeName(doc.agente_nombre, ml + bw / 2, y + sigH - 8)
-  writeName(doc.receptor_nombre || doc.entidad_nombre, bx2 + bw / 2, y + sigH - 8)
+  boxes.forEach(box => {
+    pdf.setFillColor(250, 251, 253)
+    pdf.setDrawColor(203, 213, 225)
+    pdf.setLineWidth(0.3)
+    pdf.roundedRect(box.x, y, bw, sigH, 1, 1, 'FD')
+    addImg(box.img, box.x + bw / 2 - 22, y + 4, 44, 25)
 
-  pdf.setFont('helvetica', 'normal')
-  pdf.setFontSize(7)
-  pdf.setTextColor(100, 116, 139)
-  pdf.text('Agente de Soporte TI', ml + bw / 2, y + sigH - 3, { align: 'center' })
-  pdf.text('Receptor', bx2 + bw / 2, y + sigH - 3, { align: 'center' })
+    pdf.setDrawColor(148, 163, 184)
+    pdf.setLineWidth(0.4)
+    pdf.line(box.x + 5, y + sigH - 14, box.x + bw - 5, y + sigH - 14)
+
+    writeName(box.name, box.x + bw / 2, y + sigH - 8)
+
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.setTextColor(100, 116, 139)
+    pdf.text(pdf.splitTextToSize(box.role || '', bw - 10)[0] || '', box.x + bw / 2, y + sigH - 3, { align: 'center' })
+  })
 
   y += sigH + 4
   pdf.setFontSize(6.5)

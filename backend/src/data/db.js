@@ -497,6 +497,10 @@ const DDL = [
     \`agente_id\` VARCHAR(36),
     \`agente_nombre\` VARCHAR(200),
     \`firma_agente\` MEDIUMTEXT,
+    \`logistica_nombre\` VARCHAR(200),
+    \`logistica_area\` VARCHAR(200),
+    \`firma_logistica\` MEDIUMTEXT,
+    \`firma_logistica_path\` VARCHAR(500),
     \`receptor_id\` VARCHAR(36),
     \`receptor_nombre\` VARCHAR(200),
     \`firma_receptor\` MEDIUMTEXT,
@@ -1102,6 +1106,10 @@ async function initDB() {
   // no puede persistir local_pdf_path, firmas, datos del empleado, etc.
   await alterIfNotExists('documentos', 'updated_at',           'DATETIME')
   await alterIfNotExists('documentos', 'firma_agente_path',    'VARCHAR(500)')
+  await alterIfNotExists('documentos', 'logistica_nombre',     'VARCHAR(200)')
+  await alterIfNotExists('documentos', 'logistica_area',       'VARCHAR(200)')
+  await alterIfNotExists('documentos', 'firma_logistica',      'MEDIUMTEXT')
+  await alterIfNotExists('documentos', 'firma_logistica_path', 'VARCHAR(500)')
   await alterIfNotExists('documentos', 'firma_receptor_path',  'VARCHAR(500)')
   await alterIfNotExists('documentos', 'local_pdf_path',       'VARCHAR(500)')
   await alterIfNotExists('documentos', 'pdf_pendiente_path',   'VARCHAR(500)')

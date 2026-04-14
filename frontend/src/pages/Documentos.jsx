@@ -80,7 +80,10 @@ export default function Documentos() {
   const [saving, setSaving] = useState(false)
   const previewRef = useRef(null)
   const firmaAgenteRef = useRef(null)
+  const firmaLogisticaRef = useRef(null)
   const firmaReceptorRef = useRef(null)
+  const [logisticaNombre, setLogisticaNombre] = useState('')
+  const [logisticaArea, setLogisticaArea] = useState('')
 
   // Agent firma pre-loaded
   const [agenteFirma, setAgenteFirma] = useState(null)
@@ -231,6 +234,8 @@ export default function Documentos() {
   const openSign = async (doc) => {
     const full = await documentoAPI.getById(doc.id)
     setSelected(full)
+    setLogisticaNombre(full.logistica_nombre || '')
+    setLogisticaArea(full.logistica_area || 'Logística / Almacén')
     // Load agent's firma
     try {
       const firmaData = await usuarioSistemaAPI.getMyFirma()
@@ -253,14 +258,27 @@ export default function Documentos() {
   const handleSign = async () => {
     if (!selected) return
     const firmaAgente = firmaAgenteRef.current?.getDataURL()
+    const firmaLogistica = selected.tipo === 'salida' ? firmaLogisticaRef.current?.getDataURL() : null
     const firmaReceptor = firmaReceptorRef.current?.getDataURL()
     if (!firmaReceptor) { showError('La firma del receptor es requerida', 'Campo requerido'); return }
     if (!firmaAgente) { showError('La firma del agente es requerida. Sube tu firma en tu perfil de usuario o dibuja una en el campo de firma.', 'Firma del agente'); return }
+    if (selected.tipo === 'salida') {
+      if (!logisticaNombre.trim()) { showError('Captura el nombre de quien firma por logística o almacén.', 'Campo requerido'); return }
+      if (!logisticaArea.trim()) { showError('Captura el área de quien firma por logística o almacén.', 'Campo requerido'); return }
+      if (!firmaLogistica) { showError('La firma de logística o almacén es requerida para documentos de salida.', 'Campo requerido'); return }
+    }
     setSaving(true)
 
     let pdf_base64 = null
     try {
-      const pdf = await generateDocumentPDF(selected, firmaAgente, firmaReceptor)
+      const pdf = await generateDocumentPDF(
+        selected.tipo === 'salida'
+          ? { ...selected, logistica_nombre: logisticaNombre.trim(), logistica_area: logisticaArea.trim() }
+          : selected,
+        firmaAgente,
+        firmaReceptor,
+        firmaLogistica
+      )
       pdf_base64 = pdf.output('datauristring')
     } catch (pdfErr) {
       console.error('[PDF] Error generando PDF:', pdfErr)
@@ -268,7 +286,14 @@ export default function Documentos() {
     }
 
     try {
-      const result = await documentoAPI.sign(selected.id, { firma_agente: firmaAgente, firma_receptor: firmaReceptor, pdf_base64 })
+      const result = await documentoAPI.sign(selected.id, {
+        firma_agente: firmaAgente,
+        firma_receptor: firmaReceptor,
+        firma_logistica: firmaLogistica,
+        logistica_nombre: logisticaNombre.trim(),
+        logistica_area: logisticaArea.trim(),
+        pdf_base64
+      })
       setModal(null)
       load(1)
       const pdfInfo = result?.pdf_save_info
@@ -376,7 +401,7 @@ export default function Documentos() {
   }
 
   // ─── Generador PDF programático (jsPDF directo — sin html2canvas) ──────────
-  const generateDocumentPDF = async (doc, firmaAgenteImg = null, firmaReceptorImg = null) => {
+  const generateDocumentPDF = async (doc, firmaAgenteImg = null, firmaReceptorImg = null, firmaLogisticaImg = null) => {
     return generateSharedDocumentPDF(
       {
         ...doc,
@@ -385,6 +410,7 @@ export default function Documentos() {
       {
         logo: globalLogo,
         firmaAgenteImg,
+        firmaLogisticaImg,
         firmaReceptorImg,
       }
     )
@@ -855,7 +881,34 @@ export default function Documentos() {
                 <span>El PDF se guardará automáticamente en <span className="font-mono font-semibold">{docsPath}\{selected.tipo}\</span></span>
               </div>
             )}
-            <div className="grid grid-cols-2 gap-5">
+            {selected.tipo === 'salida' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700">
+                  Firma logística / almacén
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label">Nombre de quien firma *</label>
+                    <input
+                      className="input bg-white"
+                      value={logisticaNombre}
+                      onChange={e => setLogisticaNombre(e.target.value)}
+                      placeholder="Nombre completo"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Área *</label>
+                    <input
+                      className="input bg-white"
+                      value={logisticaArea}
+                      onChange={e => setLogisticaArea(e.target.value)}
+                      placeholder="Logística, Almacén..."
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className={`grid gap-5 ${selected.tipo === 'salida' ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <div>
                 <FirmaCanvas ref={firmaAgenteRef} label={`Firma del Agente — ${selected.agente_nombre}`} existingSignature={agenteFirma} />
                 {agenteFirma && (
@@ -865,6 +918,13 @@ export default function Documentos() {
                   </p>
                 )}
               </div>
+              {selected.tipo === 'salida' && (
+                <FirmaCanvas
+                  ref={firmaLogisticaRef}
+                  label={`Firma Logística / Almacén${logisticaNombre ? ` — ${logisticaNombre}` : ''}`}
+                  existingSignature={selected.firma_logistica || null}
+                />
+              )}
               <FirmaCanvas ref={firmaReceptorRef} label={`Firma del Receptor — ${selected.receptor_nombre || selected.entidad_nombre}`} existingSignature={null} />
             </div>
             <div className="flex justify-end gap-3">
@@ -1035,7 +1095,7 @@ export default function Documentos() {
               )}
 
               {/* Firmas */}
-              <div className="grid grid-cols-2 gap-8 pt-6 border-t border-gray-200">
+              <div className={`grid gap-8 pt-6 border-t border-gray-200 ${selected.tipo === 'salida' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                 <div className="text-center">
                   {selected.firma_agente ? (
                     <img src={selected.firma_agente} alt="Firma agente" className="h-16 mx-auto mb-2 object-contain" />
@@ -1046,6 +1106,17 @@ export default function Documentos() {
                   <div className="text-xs text-gray-500">Agente de Soporte TI</div>
                   {selected.fecha_firma && <div className="text-xs text-gray-400 mt-0.5">{format(new Date(selected.fecha_firma), 'dd/MM/yyyy HH:mm')}</div>}
                 </div>
+                {selected.tipo === 'salida' && (
+                  <div className="text-center">
+                    {selected.firma_logistica ? (
+                      <img src={selected.firma_logistica} alt="Firma logística o almacén" className="h-16 mx-auto mb-2 object-contain" />
+                    ) : (
+                      <div className="h-16 border-b border-gray-400 mb-2" />
+                    )}
+                    <div className="text-xs font-semibold text-gray-700">{selected.logistica_nombre || 'Logística / Almacén'}</div>
+                    <div className="text-xs text-gray-500">{selected.logistica_area || 'Logística / Almacén'}</div>
+                  </div>
+                )}
                 <div className="text-center">
                   {selected.firma_receptor ? (
                     <img src={selected.firma_receptor} alt="Firma receptor" className="h-16 mx-auto mb-2 object-contain" />

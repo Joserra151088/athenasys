@@ -21,6 +21,7 @@ async function generarPDF(doc, firmaAgenteImg, firmaReceptorImg) {
     {
       logo: doc?.logo_global || null,
       firmaAgenteImg,
+      firmaLogisticaImg: doc?.firma_logistica || null,
       firmaReceptorImg,
     }
   )
@@ -188,6 +189,12 @@ export default function FirmaOnline() {
               <span className="text-gray-500">Agente TI</span>
               <span className="font-medium text-gray-800">{docInfo?.agente_nombre}</span>
             </div>
+            {docInfo?.tipo === 'salida' && docInfo?.logistica_nombre && (
+              <div className="flex justify-between py-2 text-sm">
+                <span className="text-gray-500">{docInfo.logistica_area || 'Logística / Almacén'}</span>
+                <span className="font-medium text-gray-800">{docInfo.logistica_nombre}</span>
+              </div>
+            )}
             {docInfo?.dispositivos?.length > 0 && (
               <div className="py-2 text-sm">
                 <p className="text-gray-500 mb-2">Equipos ({docInfo.dispositivos.length})</p>
