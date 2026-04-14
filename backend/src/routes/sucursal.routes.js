@@ -79,7 +79,7 @@ router.get('/', (req, res) => {
   const { search, tipo, estado, determinante, email, centro_costos, direccion, page = 1, limit = 50 } = req.query
   let items = db.get('sucursales').filter({ activo: true }).value()
 
-  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+  const norm = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
 
   if (tipo) items = items.filter(s => s.tipo === tipo)
   if (estado) items = items.filter(s => s.estado === estado)
