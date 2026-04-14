@@ -167,6 +167,9 @@ export default function Documentos() {
   const [showEntidadDrop, setShowEntidadDrop] = useState(false)
   const [receptorSearch, setReceptorSearch] = useState('')
   const [showReceptorDrop, setShowReceptorDrop] = useState(false)
+  const [deviceSearch, setDeviceSearch] = useState('')
+  const [deviceTypeFilter, setDeviceTypeFilter] = useState('')
+  const [deviceAssignFilter, setDeviceAssignFilter] = useState('todos')
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -187,7 +190,7 @@ export default function Documentos() {
       plantillaAPI.getAll(),
       empleadoAPI.getAll({ limit: 200 }),
       sucursalAPI.getAll({ limit: 300 }),
-      deviceAPI.getAll({ limit: 200 })
+      deviceAPI.getAll({ limit: 1000 })
     ])
     const empSorted = [...emp.data].sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'))
     setPlantillas(pl)
@@ -195,6 +198,9 @@ export default function Documentos() {
     setEntidades(empSorted)
     setEntidadSearch('')
     setDispositivos(devs.data)
+    setDeviceSearch('')
+    setDeviceTypeFilter('')
+    setDeviceAssignFilter('todos')
     setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', observaciones: '' })
     setModal('create')
   }
@@ -290,6 +296,27 @@ export default function Documentos() {
       showError('Error al exportar PDF: ' + err.message)
     }
   }
+
+  const deviceTypes = [...new Set(dispositivos.map(d => d.tipo).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'es'))
+
+  const filteredDocumentDevices = dispositivos.filter(device => {
+    const q = deviceSearch.trim().toLowerCase()
+    const isAssigned = device.ubicacion_tipo && device.ubicacion_tipo !== 'almacen'
+
+    if (deviceTypeFilter && device.tipo !== deviceTypeFilter) return false
+    if (deviceAssignFilter === 'disponibles' && isAssigned) return false
+    if (deviceAssignFilter === 'asignados' && !isAssigned) return false
+    if (!q) return true
+
+    return [
+      device.tipo,
+      device.marca,
+      device.modelo,
+      device.serie,
+      device.ubicacion_nombre,
+    ].some(value => String(value || '').toLowerCase().includes(q))
+  })
 
   const getPlantillaTexto = (doc) => {
     if (!doc?.plantilla?.texto_legal) return ''
@@ -708,15 +735,50 @@ export default function Documentos() {
                 <span className="text-xs text-primary-600 font-medium">{form.dispositivos.length} seleccionado(s)</span>
               )}
             </div>
+            <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1.4fr_1fr_1fr]">
+              <div className="relative">
+                <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <input
+                  className="input pl-9"
+                  placeholder="Buscar por serie, marca, modelo, tipo o ubicación..."
+                  value={deviceSearch}
+                  onChange={e => setDeviceSearch(e.target.value)}
+                />
+              </div>
+              <select className="input" value={deviceTypeFilter} onChange={e => setDeviceTypeFilter(e.target.value)}>
+                <option value="">Todos los tipos</option>
+                {deviceTypes.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+              </select>
+              <select className="input" value={deviceAssignFilter} onChange={e => setDeviceAssignFilter(e.target.value)}>
+                <option value="todos">Todos</option>
+                <option value="disponibles">Sin asignar / stock</option>
+                <option value="asignados">Asignados</option>
+              </select>
+            </div>
+            <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              <span>{filteredDocumentDevices.length} de {dispositivos.length} dispositivo(s)</span>
+              {(deviceSearch || deviceTypeFilter || deviceAssignFilter !== 'todos') && (
+                <button
+                  type="button"
+                  className="rounded-full border border-gray-200 px-2 py-0.5 text-gray-500 hover:border-red-200 hover:bg-red-50 hover:text-red-500"
+                  onClick={() => { setDeviceSearch(''); setDeviceTypeFilter(''); setDeviceAssignFilter('todos') }}
+                >
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
             <div className="border border-gray-200 rounded-xl overflow-y-auto max-h-52 divide-y divide-gray-100">
-              {dispositivos.length === 0 ? (
-                <p className="text-center text-gray-400 text-sm py-6">No hay dispositivos disponibles</p>
-              ) : dispositivos.map(d => {
+              {filteredDocumentDevices.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm py-6">
+                  {dispositivos.length === 0 ? 'No hay dispositivos disponibles' : 'No hay dispositivos que coincidan con los filtros'}
+                </p>
+              ) : filteredDocumentDevices.map(d => {
                 const sel = form.dispositivos.find(x => x.id === d.id)
                 const toggleDevice = () => {
                   if (sel) setForm(f => ({ ...f, dispositivos: f.dispositivos.filter(x => x.id !== d.id) }))
                   else setForm(f => ({ ...f, dispositivos: [...f.dispositivos, { id: d.id, costo: 0 }] }))
                 }
+                const isAssigned = d.ubicacion_tipo && d.ubicacion_tipo !== 'almacen'
                 return (
                   <div key={d.id} className={`flex items-center gap-3 px-3 py-2.5 transition-colors ${sel ? 'bg-primary-50' : 'hover:bg-gray-50'}`}>
                     <input
@@ -750,8 +812,13 @@ export default function Documentos() {
                         <span className="text-xs text-gray-400 select-none">MXN</span>
                       </div>
                     )}
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${d.ubicacion_tipo === 'almacen' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {d.ubicacion_tipo === 'almacen' ? 'Stock' : d.ubicacion_nombre}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 max-w-[180px] truncate ${
+                        isAssigned ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'
+                      }`}
+                      title={isAssigned ? d.ubicacion_nombre : 'Stock'}
+                    >
+                      {isAssigned ? d.ubicacion_nombre : 'Stock'}
                     </span>
                   </div>
                 )

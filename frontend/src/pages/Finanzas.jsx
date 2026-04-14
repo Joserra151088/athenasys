@@ -1308,6 +1308,9 @@ function TabDesgloce() {
                             {d.empleado_nombre && (
                               <div className="text-xs text-blue-500 mt-0.5 truncate">👤 {d.empleado_nombre}</div>
                             )}
+                            {d.sucursal_nombre && (
+                              <div className="text-xs text-emerald-600 mt-0.5 truncate">🏢 {d.sucursal_nombre}</div>
+                            )}
                           </td>
                           <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.telefono_serie || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-500 text-xs">{d.tipo_servicio || '—'}</td>
