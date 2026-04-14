@@ -8,8 +8,25 @@ import { useParams } from 'react-router-dom'
 import SignatureCanvas from 'react-signature-canvas'
 import { firmaOnlineAPI } from '../utils/api'
 import { generateDocumentPDF as generateSharedDocumentPDF } from '../utils/documentPdf'
+import previtaLogo from '../assets/previta.png'
 
-const tipoLabel = { entrada: 'Entrega de equipo', salida: 'Devolución de equipo', responsiva: 'Responsiva de resguardo' }
+const tipoLabel = { entrada: 'Entrada de equipo', salida: 'Salida de equipo', responsiva: 'Responsiva de resguardo' }
+
+function PublicSignatureHeader({ compact = false }) {
+  return (
+    <div className={`bg-white border-b border-slate-200 shadow-sm ${compact ? 'px-4 py-4' : 'px-4 py-5'}`}>
+      <div className="max-w-lg mx-auto flex items-center justify-between gap-4">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">AthenaSys</p>
+          <h1 className="text-lg font-bold leading-tight text-slate-900">Firma de documento</h1>
+        </div>
+        <div className="rounded-2xl border border-slate-100 bg-white px-3 py-2 shadow-sm">
+          <img src={previtaLogo} alt="Previta" className="h-10 w-auto object-contain" />
+        </div>
+      </div>
+    </div>
+  )
+}
 
 async function generarPDF(doc, firmaAgenteImg, firmaReceptorImg) {
   return generateSharedDocumentPDF(
@@ -95,10 +112,13 @@ export default function FirmaOnline() {
   // ── Pantallas de estado ─────────────────────────────────────────────────
   if (estado === 'cargando') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent mx-auto mb-4" />
-          <p className="text-gray-500 text-sm">Cargando documento...</p>
+      <div className="min-h-screen bg-gray-50">
+        <PublicSignatureHeader compact />
+        <div className="flex min-h-[70vh] items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-indigo-600 border-t-transparent mx-auto mb-4" />
+            <p className="text-gray-500 text-sm">Cargando documento...</p>
+          </div>
         </div>
       </div>
     )
@@ -106,11 +126,14 @@ export default function FirmaOnline() {
 
   if (estado === 'expirado') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
-          <div className="text-5xl mb-4">⏰</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Link expirado</h2>
-          <p className="text-gray-500 text-sm">{mensaje || 'Este enlace de firma ya no es válido. Solicita uno nuevo al agente de TI.'}</p>
+      <div className="min-h-screen bg-gray-50">
+        <PublicSignatureHeader compact />
+        <div className="flex min-h-[70vh] items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
+            <div className="text-5xl mb-4">⏰</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Link expirado</h2>
+            <p className="text-gray-500 text-sm">{mensaje || 'Este enlace de firma ya no es válido. Solicita uno nuevo al agente de TI.'}</p>
+          </div>
         </div>
       </div>
     )
@@ -118,11 +141,14 @@ export default function FirmaOnline() {
 
   if (estado === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
-          <div className="text-5xl mb-4">❌</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Link no válido</h2>
-          <p className="text-gray-500 text-sm">{mensaje || 'Este enlace no existe o ya fue cancelado.'}</p>
+      <div className="min-h-screen bg-gray-50">
+        <PublicSignatureHeader compact />
+        <div className="flex min-h-[70vh] items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
+            <div className="text-5xl mb-4">❌</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Link no válido</h2>
+            <p className="text-gray-500 text-sm">{mensaje || 'Este enlace no existe o ya fue cancelado.'}</p>
+          </div>
         </div>
       </div>
     )
@@ -130,24 +156,27 @@ export default function FirmaOnline() {
 
   if (estado === 'firmado') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
-          <div className="text-6xl mb-4">✅</div>
-          <h2 className="text-xl font-bold text-gray-800 mb-2">
-            {firmado ? '¡Documento firmado!' : 'Ya firmado'}
-          </h2>
-          <p className="text-gray-500 text-sm">
-            {firmado
-              ? 'Tu firma fue registrada correctamente. Puedes cerrar esta página.'
-              : (mensaje || 'Este documento ya fue firmado anteriormente.')}
-          </p>
-          {firmado && (
-            <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4">
-              <p className="text-green-700 text-xs font-medium">
-                El documento ha sido registrado en el sistema AthenaSys TI.
-              </p>
-            </div>
-          )}
+      <div className="min-h-screen bg-gray-50">
+        <PublicSignatureHeader compact />
+        <div className="flex min-h-[70vh] items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-lg p-8 max-w-sm w-full text-center">
+            <div className="text-6xl mb-4">✅</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-2">
+              {firmado ? '¡Documento firmado!' : 'Ya firmado'}
+            </h2>
+            <p className="text-gray-500 text-sm">
+              {firmado
+                ? 'Tu firma fue registrada correctamente. Puedes cerrar esta página.'
+                : (mensaje || 'Este documento ya fue firmado anteriormente.')}
+            </p>
+            {firmado && (
+              <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4">
+                <p className="text-green-700 text-xs font-medium">
+                  El documento ha sido registrado en el sistema AthenaSys TI.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -156,13 +185,7 @@ export default function FirmaOnline() {
   // ── Pantalla principal de firma ──────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-indigo-700 text-white px-4 py-4 shadow-lg">
-        <div className="max-w-lg mx-auto">
-          <p className="text-indigo-200 text-xs uppercase tracking-wide mb-0.5">AthenaSys Inventario TI</p>
-          <h1 className="text-lg font-bold leading-tight">Firma de documento</h1>
-        </div>
-      </div>
+      <PublicSignatureHeader />
 
       <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
 
