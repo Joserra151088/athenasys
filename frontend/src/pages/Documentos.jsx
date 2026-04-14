@@ -81,6 +81,7 @@ export default function Documentos() {
   const previewRef = useRef(null)
   const firmaAgenteRef = useRef(null)
   const firmaLogisticaRef = useRef(null)
+  const firmaOnlineLogisticaRef = useRef(null)
   const firmaReceptorRef = useRef(null)
   const [logisticaNombre, setLogisticaNombre] = useState('')
   const [logisticaArea, setLogisticaArea] = useState('')
@@ -134,19 +135,60 @@ export default function Documentos() {
   const [firmaLink, setFirmaLink]     = useState(null)  // { url, expires_at, token }
   const [enviandoLink, setEnviandoLink] = useState(false)
   const [linkCopiado, setLinkCopiado] = useState(false)
+  const [onlineSalidaDoc, setOnlineSalidaDoc] = useState(null)
+  const [onlineLogisticaNombre, setOnlineLogisticaNombre] = useState('')
+  const [onlineLogisticaArea, setOnlineLogisticaArea] = useState('Logística / Almacén')
+
+  const showFirmaOnlineError = (err) => {
+    if (err?.response?.data?.code === 'SIN_FIRMA_AGENTE' || err?.message?.includes('firma digital')) {
+      showError('Debes registrar tu firma digital antes de enviar documentos. Ve a Usuarios del Sistema → tu perfil → agrega tu firma.', 'Firma requerida')
+    } else {
+      showError(err?.message || 'Error generando link de firma')
+    }
+  }
+
+  const solicitarFirmaOnline = async (doc, extra = {}) => {
+    const result = await firmaOnlineAPI.solicitar(doc.id, extra)
+    setFirmaLink({ url: result.url, expires_at: result.expires_at, token: result.token, doc, email_enviado: result.email_enviado, email_destino: result.email_destino })
+    setModal('firmaLink')
+  }
 
   const handleEnviarFirma = async (doc) => {
     setEnviandoLink(true)
     try {
-      const result = await firmaOnlineAPI.solicitar(doc.id)
-      setFirmaLink({ url: result.url, expires_at: result.expires_at, token: result.token, doc, email_enviado: result.email_enviado, email_destino: result.email_destino })
-      setModal('firmaLink')
-    } catch (err) {
-      if (err?.response?.data?.code === 'SIN_FIRMA_AGENTE' || err?.message?.includes('firma digital')) {
-        showError('Debes registrar tu firma digital antes de enviar documentos. Ve a Usuarios del Sistema → tu perfil → agrega tu firma.', 'Firma requerida')
-      } else {
-        showError(err?.message || 'Error generando link de firma')
+      if (doc.tipo === 'salida') {
+        const full = await documentoAPI.getById(doc.id)
+        setOnlineSalidaDoc(full)
+        setOnlineLogisticaNombre(full.logistica_nombre || '')
+        setOnlineLogisticaArea(full.logistica_area || 'Logística / Almacén')
+        setModal('firmaOnlineSalida')
+        return
       }
+      await solicitarFirmaOnline(doc)
+    } catch (err) {
+      showFirmaOnlineError(err)
+    } finally {
+      setEnviandoLink(false)
+    }
+  }
+
+  const confirmarFirmaOnlineSalida = async () => {
+    if (!onlineSalidaDoc) return
+    const firmaLogistica = firmaOnlineLogisticaRef.current?.getDataURL()
+    if (!onlineLogisticaNombre.trim()) { showError('Captura el nombre de quien firma por logística o almacén.', 'Campo requerido'); return }
+    if (!onlineLogisticaArea.trim()) { showError('Captura el área de quien firma por logística o almacén.', 'Campo requerido'); return }
+    if (!firmaLogistica) { showError('La firma de logística o almacén es requerida para enviar una salida a firma en línea.', 'Campo requerido'); return }
+
+    setEnviandoLink(true)
+    try {
+      await solicitarFirmaOnline(onlineSalidaDoc, {
+        logistica_nombre: onlineLogisticaNombre.trim(),
+        logistica_area: onlineLogisticaArea.trim(),
+        firma_logistica: firmaLogistica,
+      })
+      setOnlineSalidaDoc(null)
+    } catch (err) {
+      showFirmaOnlineError(err)
     } finally {
       setEnviandoLink(false)
     }
@@ -961,6 +1003,58 @@ export default function Documentos() {
           >✕</button>
         </div>
       )}
+
+      {/* Modal — Firma previa de logística para salidas en línea */}
+      <Modal
+        open={modal === 'firmaOnlineSalida'}
+        onClose={() => { setModal(null); setOnlineSalidaDoc(null) }}
+        title={`Firma logística — ${onlineSalidaDoc?.folio || ''}`}
+        size="lg"
+      >
+        {onlineSalidaDoc && (
+          <div className="space-y-5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Para enviar una salida a firma en línea, primero debe quedar registrada la firma de logística o almacén. Después se generará el QR para el receptor.
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Nombre de quien firma *</label>
+                <input
+                  className="input"
+                  value={onlineLogisticaNombre}
+                  onChange={e => setOnlineLogisticaNombre(e.target.value)}
+                  placeholder="Nombre completo"
+                />
+              </div>
+              <div>
+                <label className="label">Área *</label>
+                <input
+                  className="input"
+                  value={onlineLogisticaArea}
+                  onChange={e => setOnlineLogisticaArea(e.target.value)}
+                  placeholder="Logística, Almacén..."
+                />
+              </div>
+            </div>
+
+            <FirmaCanvas
+              ref={firmaOnlineLogisticaRef}
+              label={`Firma Logística / Almacén${onlineLogisticaNombre ? ` — ${onlineLogisticaNombre}` : ''}`}
+              existingSignature={onlineSalidaDoc.firma_logistica || null}
+            />
+
+            <div className="flex justify-end gap-3">
+              <button className="btn-secondary" onClick={() => { setModal(null); setOnlineSalidaDoc(null) }}>
+                Cancelar
+              </button>
+              <button className="btn-primary" onClick={confirmarFirmaOnlineSalida} disabled={enviandoLink}>
+                {enviandoLink ? 'Generando link...' : 'Generar link de firma'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Modal — Enviar link de firma al receptor */}
       <Modal open={modal === 'firmaLink'} onClose={() => { setModal(null); setFirmaLink(null) }} title="Enviar para firma en línea" size="md">

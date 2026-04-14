@@ -62,7 +62,7 @@ function getLocalIP() {
 // ── POST /api/firma-online/solicitar  (requiere auth) ────────────────────────
 router.post('/solicitar', authMiddleware, async (req, res) => {
   try {
-    const { documento_id } = req.body
+    const { documento_id, firma_logistica, logistica_nombre, logistica_area } = req.body
     if (!documento_id) return res.status(400).json({ message: 'documento_id requerido' })
 
     const doc = db.get('documentos').find({ id: documento_id }).value()
@@ -78,11 +78,35 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
       })
     }
 
-    // Guardar firma del agente en el documento
-    db.get('documentos').find({ id: documento_id }).assign({
+    const docUpdates = {
       firma_agente: agentUser.firma_base64,
       updated_at: new Date().toISOString()
-    }).write()
+    }
+
+    if (doc.tipo === 'salida') {
+      const nombreLogistica = String(logistica_nombre || doc.logistica_nombre || '').trim()
+      const areaLogistica = String(logistica_area || doc.logistica_area || '').trim()
+      const firmaLogistica = firma_logistica || doc.firma_logistica || null
+
+      if (!nombreLogistica) {
+        return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén para documentos de salida' })
+      }
+      if (!areaLogistica) {
+        return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén para documentos de salida' })
+      }
+      if (!firmaLogistica) {
+        return res.status(400).json({ message: 'Se requiere la firma de logística o almacén para enviar una salida a firma en línea' })
+      }
+
+      Object.assign(docUpdates, {
+        logistica_nombre: nombreLogistica,
+        logistica_area: areaLogistica,
+        firma_logistica: firmaLogistica,
+      })
+    }
+
+    // Guardar firma del agente y, para salidas, la firma previa de logística.
+    db.get('documentos').find({ id: documento_id }).assign(docUpdates).write()
 
     // Cancelar token anterior pendiente si existe
     const tokenAnterior = db.get('firma_tokens').find({ documento_id, estado: 'pendiente' }).value()
@@ -253,6 +277,9 @@ router.post('/:token/firmar', async (req, res) => {
 
     const doc = db.get('documentos').find({ id: ft.documento_id }).value()
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+    if (doc.tipo === 'salida' && (!doc.firma_logistica || !doc.logistica_nombre || !doc.logistica_area)) {
+      return res.status(400).json({ message: 'La salida requiere firma, nombre y área de logística o almacén antes de la firma del receptor' })
+    }
 
     const now        = new Date().toISOString()
     const ipFirmante = req.headers['x-forwarded-for'] || req.socket.remoteAddress || ''

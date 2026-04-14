@@ -272,7 +272,7 @@ const publicApi = axios.create({ baseURL: API_URL })
 publicApi.interceptors.response.use(r => r.data, err => Promise.reject(err.response?.data || err))
 
 export const firmaOnlineAPI = {
-  solicitar:    (documento_id) => api.post('/firma-online/solicitar', { documento_id }),
+  solicitar:    (documento_id, data = {}) => api.post('/firma-online/solicitar', { documento_id, ...data }),
   getDocumento: (token)        => publicApi.get(`/firma-online/${token}`),
   firmar:       (token, data)  => publicApi.post(`/firma-online/${token}/firmar`, data),
   getEstado:    (documento_id) => api.get(`/firma-online/estado/${documento_id}`),
