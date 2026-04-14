@@ -26,6 +26,14 @@ router.use(authMiddleware)
 const uploadsDir = path.join(__dirname, '../../uploads/firmas')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
+function writeSignatureFile(dataUrl, filePath) {
+  if (!dataUrl) return false
+  const raw = String(dataUrl).replace(/^data:[^;]+;base64,/, '')
+  if (!raw) return false
+  fs.writeFileSync(filePath, Buffer.from(raw, 'base64'))
+  return true
+}
+
 router.get('/', (req, res) => {
   const { tipo, page = 1, limit = 20, search, entidad_tipo } = req.query
   let items = db.get('documentos').value()
@@ -125,6 +133,42 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   res.status(201).json(doc)
 })
 
+// Guardar datos/firma de logística sin cerrar el documento de salida.
+router.patch('/:id/logistica', requireRoles('super_admin', 'agente_soporte'), auditLog('actualizar_logistica', 'documento'), (req, res) => {
+  const doc = db.get('documentos').find({ id: req.params.id }).value()
+  if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+  if (doc.tipo !== 'salida') return res.status(400).json({ message: 'Solo los documentos de salida usan firma de logística o almacén' })
+  if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado y no puede modificarse' })
+
+  const nombre = String(req.body.logistica_nombre || doc.logistica_nombre || '').trim()
+  const area = String(req.body.logistica_area || doc.logistica_area || '').trim()
+  const firmaLogistica = req.body.firma_logistica || doc.firma_logistica || null
+
+  if (!nombre) return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén' })
+  if (!area) return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén' })
+
+  const logisticaPath = path.join(uploadsDir, `${doc.id}_logistica.png`)
+  let firmaPath = doc.firma_logistica_path || null
+  try {
+    if (req.body.firma_logistica && writeSignatureFile(req.body.firma_logistica, logisticaPath)) {
+      firmaPath = `/uploads/firmas/${doc.id}_logistica.png`
+    }
+  } catch (writeErr) {
+    console.error('[Firma] Error guardando firma de logística:', writeErr.message)
+  }
+
+  const updated = {
+    logistica_nombre: nombre,
+    logistica_area: area,
+    firma_logistica: firmaLogistica,
+    firma_logistica_path: firmaPath,
+    updated_at: new Date().toISOString(),
+  }
+
+  db.get('documentos').find({ id: req.params.id }).assign(updated).write()
+  res.json({ ...doc, ...updated })
+})
+
 // Firmar documento
 router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditLog('firmar', 'documento'), async (req, res) => {
   const doc = db.get('documentos').find({ id: req.params.id }).value()
@@ -133,10 +177,13 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
 
   const { firma_agente, firma_receptor, firma_logistica, logistica_nombre, logistica_area } = req.body
   if (!firma_receptor) return res.status(400).json({ message: 'Se requiere la firma del receptor' })
+  const nombreLogistica = String(logistica_nombre || doc.logistica_nombre || '').trim()
+  const areaLogistica = String(logistica_area || doc.logistica_area || '').trim()
+  const firmaLogisticaData = firma_logistica || doc.firma_logistica || null
   if (doc.tipo === 'salida') {
-    if (!firma_logistica) return res.status(400).json({ message: 'Se requiere la firma de logística o almacén para documentos de salida' })
-    if (!String(logistica_nombre || '').trim()) return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén' })
-    if (!String(logistica_area || '').trim()) return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén' })
+    if (!firmaLogisticaData) return res.status(400).json({ message: 'Se requiere la firma de logística o almacén para documentos de salida' })
+    if (!nombreLogistica) return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén' })
+    if (!areaLogistica) return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén' })
   }
 
   // Usar firma almacenada del agente si no viene en el body
@@ -149,12 +196,9 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   const logisticaPath = path.join(uploadsDir, `${doc.id}_logistica.png`)
   const receptorPath  = path.join(uploadsDir, `${doc.id}_receptor.png`)
   try {
-    const base64Agente    = firmaAgenteData.replace(/^data:[^;]+;base64,/, '')
-    const base64Logistica = firma_logistica ? firma_logistica.replace(/^data:[^;]+;base64,/, '') : ''
-    const base64Receptor  = firma_receptor.replace(/^data:[^;]+;base64,/, '')
-    if (base64Agente)    fs.writeFileSync(agentePath,    Buffer.from(base64Agente,    'base64'))
-    if (base64Logistica) fs.writeFileSync(logisticaPath, Buffer.from(base64Logistica, 'base64'))
-    if (base64Receptor)  fs.writeFileSync(receptorPath,  Buffer.from(base64Receptor,  'base64'))
+    writeSignatureFile(firmaAgenteData, agentePath)
+    if (firma_logistica) writeSignatureFile(firma_logistica, logisticaPath)
+    writeSignatureFile(firma_receptor, receptorPath)
   } catch (writeErr) {
     console.error('[Firma] Error guardando archivo de firma:', writeErr.message)
     // Continuar aunque no se haya podido guardar el archivo físico
@@ -165,9 +209,9 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     ...doc,
     firma_agente: firmaAgenteData,
     firma_agente_path: fs.existsSync(agentePath)   ? `/uploads/firmas/${doc.id}_agente.png`   : null,
-    logistica_nombre: doc.tipo === 'salida' ? String(logistica_nombre || '').trim() : doc.logistica_nombre || null,
-    logistica_area: doc.tipo === 'salida' ? String(logistica_area || '').trim() : doc.logistica_area || null,
-    firma_logistica: doc.tipo === 'salida' ? firma_logistica : doc.firma_logistica || null,
+    logistica_nombre: doc.tipo === 'salida' ? nombreLogistica : doc.logistica_nombre || null,
+    logistica_area: doc.tipo === 'salida' ? areaLogistica : doc.logistica_area || null,
+    firma_logistica: doc.tipo === 'salida' ? firmaLogisticaData : doc.firma_logistica || null,
     firma_logistica_path: fs.existsSync(logisticaPath) ? `/uploads/firmas/${doc.id}_logistica.png` : doc.firma_logistica_path || null,
     firma_receptor,
     firma_receptor_path: fs.existsSync(receptorPath) ? `/uploads/firmas/${doc.id}_receptor.png` : null,

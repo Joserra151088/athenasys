@@ -82,6 +82,7 @@ export const documentoAPI = {
    * @param {{ firma_agente?, firma_receptor, pdf_base64? }} data
    */
   sign:             (id, data) => api.post(`/documentos/${id}/firmar`, data),
+  saveLogistica:    (id, data) => api.patch(`/documentos/${id}/logistica`, data),
   delete:           (id)       => api.delete(`/documentos/${id}`),
   sharepointStatus: ()         => api.get('/documentos/sharepoint/status'),
 }

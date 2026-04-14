@@ -23,15 +23,21 @@ try { emailSvc = require('../services/email.service') } catch (_) {}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 const EXPIRY_HOURS = 72
+const SALIDA_EXPIRY_DAYS = 45
 
 function generateToken() {
   return crypto.randomBytes(32).toString('hex')   // 64 chars hex
 }
 
-function getExpiryDate() {
+function getExpiryDate(tipo) {
   const d = new Date()
-  d.setHours(d.getHours() + EXPIRY_HOURS)
+  if (tipo === 'salida') d.setDate(d.getDate() + SALIDA_EXPIRY_DAYS)
+  else d.setHours(d.getHours() + EXPIRY_HOURS)
   return d.toISOString()
+}
+
+function getExpiryLabel(tipo) {
+  return tipo === 'salida' ? `${SALIDA_EXPIRY_DAYS} días` : `${EXPIRY_HOURS} horas`
 }
 
 function getPublicBaseURL(req) {
@@ -115,7 +121,8 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
     }
 
     const token      = generateToken()
-    const expires_at = getExpiryDate()
+    const expires_at = getExpiryDate(doc.tipo)
+    const expires_label = getExpiryLabel(doc.tipo)
     const now        = new Date().toISOString()
 
     const nuevoToken = {
@@ -165,7 +172,7 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
       }
     }
 
-    res.json({ token, url: signingURL, email_enviado: emailEnviado, email_destino: emailDestino, expires_at })
+    res.json({ token, url: signingURL, email_enviado: emailEnviado, email_destino: emailDestino, expires_at, expires_label })
   } catch (e) {
     console.error('[FirmaOnline] Error en /solicitar:', e.message)
     res.status(500).json({ message: 'Error generando token de firma: ' + e.message })

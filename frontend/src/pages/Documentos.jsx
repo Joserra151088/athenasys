@@ -85,6 +85,7 @@ export default function Documentos() {
   const firmaReceptorRef = useRef(null)
   const [logisticaNombre, setLogisticaNombre] = useState('')
   const [logisticaArea, setLogisticaArea] = useState('')
+  const [logisticaSaving, setLogisticaSaving] = useState(false)
 
   // Agent firma pre-loaded
   const [agenteFirma, setAgenteFirma] = useState(null)
@@ -149,8 +150,41 @@ export default function Documentos() {
 
   const solicitarFirmaOnline = async (doc, extra = {}) => {
     const result = await firmaOnlineAPI.solicitar(doc.id, extra)
-    setFirmaLink({ url: result.url, expires_at: result.expires_at, token: result.token, doc, email_enviado: result.email_enviado, email_destino: result.email_destino })
+    setFirmaLink({ url: result.url, expires_at: result.expires_at, expires_label: result.expires_label, token: result.token, doc, email_enviado: result.email_enviado, email_destino: result.email_destino })
     setModal('firmaLink')
+  }
+
+  const saveSalidaLogistica = async ({ doc, nombre, area, firma }) => {
+    const payload = {
+      logistica_nombre: nombre.trim(),
+      logistica_area: area.trim(),
+    }
+    if (firma) payload.firma_logistica = firma
+    return documentoAPI.saveLogistica(doc.id, payload)
+  }
+
+  const handleSaveLogistica = async () => {
+    if (!selected || selected.tipo !== 'salida') return
+    const firmaLogistica = firmaLogisticaRef.current?.getDataURL()
+    if (!logisticaNombre.trim()) { showError('Captura el nombre de quien firma por logística o almacén.', 'Campo requerido'); return }
+    if (!logisticaArea.trim()) { showError('Captura el área de quien firma por logística o almacén.', 'Campo requerido'); return }
+
+    setLogisticaSaving(true)
+    try {
+      const updated = await saveSalidaLogistica({
+        doc: selected,
+        nombre: logisticaNombre,
+        area: logisticaArea,
+        firma: firmaLogistica,
+      })
+      setSelected(updated)
+      load(pagination.page || 1)
+      showToast(firmaLogistica ? 'Datos y firma de logística guardados.' : 'Datos de logística guardados. La firma puede agregarse después.')
+    } catch (err) {
+      showError(err?.message || 'Error al guardar datos de logística')
+    } finally {
+      setLogisticaSaving(false)
+    }
   }
 
   const handleEnviarFirma = async (doc) => {
@@ -181,7 +215,13 @@ export default function Documentos() {
 
     setEnviandoLink(true)
     try {
-      await solicitarFirmaOnline(onlineSalidaDoc, {
+      const updated = await saveSalidaLogistica({
+        doc: onlineSalidaDoc,
+        nombre: onlineLogisticaNombre,
+        area: onlineLogisticaArea,
+        firma: firmaLogistica,
+      })
+      await solicitarFirmaOnline(updated, {
         logistica_nombre: onlineLogisticaNombre.trim(),
         logistica_area: onlineLogisticaArea.trim(),
         firma_logistica: firmaLogistica,
@@ -194,6 +234,30 @@ export default function Documentos() {
     }
   }
 
+  const handleSaveOnlineLogistica = async () => {
+    if (!onlineSalidaDoc) return
+    const firmaLogistica = firmaOnlineLogisticaRef.current?.getDataURL()
+    if (!onlineLogisticaNombre.trim()) { showError('Captura el nombre de quien firma por logística o almacén.', 'Campo requerido'); return }
+    if (!onlineLogisticaArea.trim()) { showError('Captura el área de quien firma por logística o almacén.', 'Campo requerido'); return }
+
+    setLogisticaSaving(true)
+    try {
+      const updated = await saveSalidaLogistica({
+        doc: onlineSalidaDoc,
+        nombre: onlineLogisticaNombre,
+        area: onlineLogisticaArea,
+        firma: firmaLogistica,
+      })
+      setOnlineSalidaDoc(updated)
+      load(pagination.page || 1)
+      showToast(firmaLogistica ? 'Datos y firma de logística guardados.' : 'Datos de logística guardados. La firma puede agregarse después.')
+    } catch (err) {
+      showError(err?.message || 'Error al guardar datos de logística')
+    } finally {
+      setLogisticaSaving(false)
+    }
+  }
+
   const copiarLink = () => {
     if (!firmaLink?.url) return
     navigator.clipboard.writeText(firmaLink.url).then(() => {
@@ -201,6 +265,8 @@ export default function Documentos() {
       setTimeout(() => setLinkCopiado(false), 2500)
     })
   }
+
+  const firmaLinkVigencia = firmaLink?.expires_label || (firmaLink?.doc?.tipo === 'salida' ? '45 días' : '72 horas')
 
   // Create form
   const [form, setForm] = useState({ tipo: 'responsiva', plantilla_id: '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', observaciones: '' })
@@ -925,9 +991,21 @@ export default function Documentos() {
             )}
             {selected.tipo === 'salida' && (
               <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-amber-700">
-                  Firma logística / almacén
-                </p>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">
+                      Logística / almacén
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700/80">
+                      Puedes guardar estos datos ahora y completar la firma/receptor después.
+                    </p>
+                  </div>
+                  {(selected.logistica_nombre || selected.firma_logistica) && (
+                    <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                      {selected.firma_logistica ? 'Firma guardada' : 'Datos guardados'}
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="label">Nombre de quien firma *</label>
@@ -947,6 +1025,16 @@ export default function Documentos() {
                       placeholder="Logística, Almacén..."
                     />
                   </div>
+                </div>
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs"
+                    onClick={handleSaveLogistica}
+                    disabled={logisticaSaving}
+                  >
+                    {logisticaSaving ? 'Guardando...' : 'Guardar logística sin cerrar documento'}
+                  </button>
                 </div>
               </div>
             )}
@@ -1014,7 +1102,7 @@ export default function Documentos() {
         {onlineSalidaDoc && (
           <div className="space-y-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Para enviar una salida a firma en línea, primero debe quedar registrada la firma de logística o almacén. Después se generará el QR para el receptor.
+              Para enviar una salida a firma en línea, logística puede quedar preparada por etapas: primero guarda nombre/área, después agrega la firma y genera el QR para el receptor.
             </div>
 
             <div className="grid grid-cols-2 gap-3">
@@ -1048,6 +1136,9 @@ export default function Documentos() {
               <button className="btn-secondary" onClick={() => { setModal(null); setOnlineSalidaDoc(null) }}>
                 Cancelar
               </button>
+              <button className="btn-secondary" onClick={handleSaveOnlineLogistica} disabled={logisticaSaving}>
+                {logisticaSaving ? 'Guardando...' : 'Guardar datos'}
+              </button>
               <button className="btn-primary" onClick={confirmarFirmaOnlineSalida} disabled={enviandoLink}>
                 {enviandoLink ? 'Generando link...' : 'Generar link de firma'}
               </button>
@@ -1075,7 +1166,7 @@ export default function Documentos() {
                 <QRCodeSVG value={firmaLink.url} size={200} level="M" includeMargin={false} />
               </div>
               <p className="text-xs text-gray-400">
-                Válido por 72 horas · Expira: {new Date(firmaLink.expires_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
+                Válido por {firmaLinkVigencia} · Expira: {new Date(firmaLink.expires_at).toLocaleString('es-MX', { dateStyle: 'short', timeStyle: 'short' })}
               </p>
             </div>
 
@@ -1100,7 +1191,7 @@ export default function Documentos() {
 
             {/* WhatsApp */}
             <a
-              href={`https://wa.me/?text=${encodeURIComponent(`Hola, por favor firma el documento ${firmaLink.doc?.folio} en este enlace:\n${firmaLink.url}\n\nVálido por 72 horas.`)}`}
+              href={`https://wa.me/?text=${encodeURIComponent(`Hola, por favor firma el documento ${firmaLink.doc?.folio} en este enlace:\n${firmaLink.url}\n\nVálido por ${firmaLinkVigencia}.`)}`}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-center gap-2 w-full py-2.5 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold text-sm transition-colors"
