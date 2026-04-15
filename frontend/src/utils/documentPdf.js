@@ -285,23 +285,32 @@ export async function generateDocumentPDF(doc, options = {}) {
   })
   y += 8
 
-  if (doc.observaciones) {
-    checkPage(18)
+  const renderObservationBlock = (title, value) => {
+    const text = String(value || '').trim()
+    if (!text) return
+
+    const lines = pdf.splitTextToSize(text, cw - 8)
+    const lineHeight = 4
+    const blockH = Math.max(18, 13 + lines.length * lineHeight)
+    checkPage(blockH + 4)
+
     pdf.setFillColor(255, 251, 235)
     pdf.setDrawColor(251, 191, 36)
     pdf.setLineWidth(0.4)
-    pdf.roundedRect(ml, y, cw, 14, 1, 1, 'FD')
+    pdf.roundedRect(ml, y, cw, blockH, 1, 1, 'FD')
     pdf.setFont('helvetica', 'bold')
     pdf.setFontSize(7.5)
     pdf.setTextColor(146, 64, 14)
-    pdf.text('Observaciones:', ml + 3, y + 5.5)
+    pdf.text(`${title}:`, ml + 3, y + 5.5)
     pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7.2)
     pdf.setTextColor(30, 20, 5)
-    const obsLines = pdf.splitTextToSize(doc.observaciones, cw - 42)
-    pdf.text(obsLines[0] || '', ml + 38, y + 5.5)
-    if (obsLines.length > 1) pdf.text(obsLines.slice(1).join('\n'), ml + 3, y + 10)
-    y += 18
+    pdf.text(lines, ml + 3, y + 11, { lineHeightFactor: 1.35 })
+    y += blockH + 5
   }
+
+  renderObservationBlock('Observaciones', doc.observaciones)
+  renderObservationBlock('Observaciones del receptor', doc.receptor_observaciones)
 
   const sigH = 44
   checkPage(sigH + 14)

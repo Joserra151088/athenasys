@@ -244,6 +244,7 @@ router.get('/:token', (req, res) => {
         receptor_nombre: doc.receptor_nombre,
         dispositivos:    doc.dispositivos || [],
         observaciones:   doc.observaciones || '',
+        receptor_observaciones: doc.receptor_observaciones || '',
         created_at:      doc.created_at,
         firma_agente:    doc.firma_agente || null,
         logistica_nombre: doc.logistica_nombre || '',
@@ -267,9 +268,10 @@ router.get('/:token', (req, res) => {
 router.post('/:token/firmar', async (req, res) => {
   try {
     const { token } = req.params
-    const { firma_receptor, pdf_base64 } = req.body
+    const { firma_receptor, pdf_base64, receptor_observaciones } = req.body
 
     if (!firma_receptor) return res.status(400).json({ message: 'Se requiere la firma del receptor' })
+    const receptorObs = String(receptor_observaciones || '').trim()
 
     const ft = db.get('firma_tokens').find({ token }).value()
     if (!ft) return res.status(404).json({ message: 'Link de firma no válido' })
@@ -299,6 +301,7 @@ router.post('/:token/firmar', async (req, res) => {
       firma_receptor,
       firmado:             true,
       fecha_firma:         now,
+      receptor_observaciones: receptorObs || null,
       firma_online_estado: 'firmado',
       updated_at:          now,
     }

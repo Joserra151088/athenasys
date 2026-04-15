@@ -54,6 +54,8 @@ export default function FirmaOnline() {
   const [enviando, setEnviando] = useState(false)
   const [firmado,  setFirmado]  = useState(false)
   const [canvasVacio, setCanvasVacio] = useState(true)
+  const [agregarObservaciones, setAgregarObservaciones] = useState(false)
+  const [receptorObservaciones, setReceptorObservaciones] = useState('')
 
   useEffect(() => {
     firmaOnlineAPI.getDocumento(token)
@@ -84,22 +86,35 @@ export default function FirmaOnline() {
       setMensaje('Por favor dibuja tu firma antes de continuar.')
       return
     }
+    const receptorObs = agregarObservaciones ? receptorObservaciones.trim() : ''
+    if (agregarObservaciones && !receptorObs) {
+      setMensaje('Captura la observación de recepción o desmarca la casilla para continuar.')
+      return
+    }
     setEnviando(true)
     setMensaje('')
     try {
       const firmaReceptor = sigRef.current.getTrimmedCanvas().toDataURL('image/png')
       const firmaAgente   = docInfo.firma_agente || null
+      const docConObservaciones = {
+        ...docInfo,
+        receptor_observaciones: receptorObs,
+      }
 
       // Generar PDF con ambas firmas
       let pdf_base64 = null
       try {
-        const pdf = await generarPDF(docInfo, firmaAgente, firmaReceptor)
+        const pdf = await generarPDF(docConObservaciones, firmaAgente, firmaReceptor)
         pdf_base64 = pdf.output('datauristring')
       } catch (pdfErr) {
         console.warn('[FirmaOnline] No se pudo generar el PDF:', pdfErr.message)
       }
 
-      await firmaOnlineAPI.firmar(token, { firma_receptor: firmaReceptor, pdf_base64 })
+      await firmaOnlineAPI.firmar(token, {
+        firma_receptor: firmaReceptor,
+        receptor_observaciones: receptorObs,
+        pdf_base64,
+      })
       setFirmado(true)
       setEstado('firmado')
     } catch (err) {
@@ -239,6 +254,38 @@ export default function FirmaOnline() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Observaciones de recepción */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <label className="flex items-start gap-3 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={agregarObservaciones}
+              onChange={event => {
+                setAgregarObservaciones(event.target.checked)
+                if (!event.target.checked) setReceptorObservaciones('')
+              }}
+              className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span>
+              <span className="font-semibold text-gray-800">Agregar observaciones de recepción</span>
+              <span className="block text-xs text-gray-400">
+                Marca esta opción si el paquete llegó dañado, incompleto o si necesitas dejar alguna nota antes de firmar.
+              </span>
+            </span>
+          </label>
+
+          {agregarObservaciones && (
+            <textarea
+              value={receptorObservaciones}
+              onChange={event => setReceptorObservaciones(event.target.value)}
+              maxLength={1000}
+              rows={4}
+              className="mt-4 w-full rounded-xl border border-amber-200 bg-amber-50/40 px-3 py-2 text-sm text-gray-700 outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+              placeholder="Ej. La caja llegó golpeada, el empaque venía abierto o falta algún accesorio..."
+            />
+          )}
         </div>
 
         {/* Área de firma */}
