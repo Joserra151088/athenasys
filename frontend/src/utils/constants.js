@@ -80,6 +80,28 @@ export const LICENSE_STATUS = {
   vencida: { label: 'Vencida', color: 'bg-red-100 text-red-700' }
 }
 
+export const DOMAIN_OPERATION_STATUS = {
+  activo: { label: 'Activo', color: 'bg-emerald-100 text-emerald-700' },
+  en_transferencia: { label: 'En transferencia', color: 'bg-blue-100 text-blue-700' },
+  suspendido: { label: 'Suspendido', color: 'bg-amber-100 text-amber-700' },
+  cancelado: { label: 'Cancelado', color: 'bg-gray-100 text-gray-600' },
+}
+
+export const DOMAIN_EXPIRY_STATUS = {
+  vigente: { label: 'Vigente', color: 'bg-emerald-100 text-emerald-700' },
+  por_vencer_90: { label: 'Por vencer 90 días', color: 'bg-yellow-100 text-yellow-700' },
+  por_vencer_30: { label: 'Por vencer 30 días', color: 'bg-orange-100 text-orange-700' },
+  vencido: { label: 'Vencido', color: 'bg-red-100 text-red-700' },
+  sin_fecha: { label: 'Sin vencimiento', color: 'bg-gray-100 text-gray-600' },
+}
+
+export const DOMAIN_PERIODICITY = {
+  mensual: { label: 'Mensual', color: 'bg-blue-100 text-blue-700' },
+  anual: { label: 'Anual', color: 'bg-emerald-100 text-emerald-700' },
+  bianual: { label: 'Bianual', color: 'bg-violet-100 text-violet-700' },
+  unico: { label: 'Pago único', color: 'bg-gray-100 text-gray-600' },
+}
+
 // ── Tarifas de renta diaria por tipo de dispositivo ──────────────────────────
 // CPU: paquete (incluye Monitor + Teclado + Mouse en el mismo costo)
 // Monitor/Teclado/Mouse: costo 0 porque van incluidos en el paquete CPU

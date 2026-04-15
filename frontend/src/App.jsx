@@ -18,6 +18,7 @@ import UsuariosSistema from './pages/UsuariosSistema'
 import Auditoria from './pages/Auditoria'
 import Proveedores from './pages/Proveedores'
 import Licencias from './pages/Licencias'
+import Dominios from './pages/Dominios'
 import CentrosCosto from './pages/CentrosCosto'
 import Finanzas from './pages/Finanzas'
 import Tarifas from './pages/Tarifas'
@@ -56,6 +57,7 @@ function AppRoutes() {
         <Route path="mapa" element={<MapaInteractivo />} />
         <Route path="proveedores" element={<Proveedores />} />
         <Route path="licencias" element={<Licencias />} />
+        <Route path="dominios" element={<Dominios />} />
         <Route path="centros-costo" element={<CentrosCosto />} />
         <Route path="finanzas" element={<Finanzas />} />
         <Route path="tarifas" element={<Tarifas />} />

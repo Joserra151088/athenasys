@@ -43,7 +43,7 @@ const DATETIME_COLS = new Set([
   'fecha_firma','fecha_retorno','fecha_estimada_retorno','valido_desde',
   'fecha_liberacion',
 ])
-const DATE_COLS = new Set(['fecha_inicio','fecha_vencimiento'])
+const DATE_COLS = new Set(['fecha_inicio','fecha_vencimiento','fecha_registro'])
 
 function toMySQLDatetime(val) {
   if (!val) return null
@@ -81,7 +81,7 @@ function deserialize(table, row) {
       try { out[field] = JSON.parse(out[field]) } catch (_) { out[field] = [] }
     }
   }
-  const boolFields = ['activo','firmado','es_paquete']
+  const boolFields = ['activo','firmado','es_paquete','renovacion_auto']
   for (const f of boolFields) {
     if (f in out) out[f] = out[f] === 1 || out[f] === true
   }
@@ -658,6 +658,34 @@ const DDL = [
     \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
+  `CREATE TABLE IF NOT EXISTS \`dominios\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`dominio\` VARCHAR(255) NOT NULL,
+    \`registrador\` VARCHAR(200),
+    \`proveedor_id\` VARCHAR(36),
+    \`proveedor_nombre\` VARCHAR(200),
+    \`estado\` ENUM('activo','en_transferencia','suspendido','cancelado') DEFAULT 'activo',
+    \`fecha_registro\` DATE,
+    \`fecha_vencimiento\` DATE,
+    \`renovacion_auto\` TINYINT(1) DEFAULT 0,
+    \`costo_renovacion\` DECIMAL(15,2) DEFAULT 0,
+    \`moneda\` VARCHAR(10) DEFAULT 'MXN',
+    \`periodicidad\` ENUM('mensual','anual','bianual','unico') DEFAULT 'anual',
+    \`tipo_cambio\` DECIMAL(10,4) DEFAULT 17.15,
+    \`cuenta_admin\` VARCHAR(200),
+    \`responsable\` VARCHAR(200),
+    \`departamento\` VARCHAR(200),
+    \`uso\` VARCHAR(300),
+    \`dns_principal\` VARCHAR(200),
+    \`nameservers\` TEXT,
+    \`notas\` TEXT,
+    \`activo\` TINYINT(1) DEFAULT 1,
+    \`creado_por\` VARCHAR(36),
+    \`creado_por_nombre\` VARCHAR(200),
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
   `CREATE TABLE IF NOT EXISTS \`asignaciones_licencias\` (
     \`id\` VARCHAR(36) PRIMARY KEY,
     \`licencia_id\` VARCHAR(36),
@@ -999,7 +1027,7 @@ const ALL_TABLES = [
   'usuarios_sistema','dispositivos','empleados','sucursales',
   'asignaciones','documentos','plantillas','cambios',
   'cotizaciones','repositorio_cotizacion','proveedores',
-  'licencias','asignaciones_licencias','centros_costo',
+  'licencias','dominios','asignaciones_licencias','centros_costo',
   'tarifas_equipo','auditoria',
   'presupuesto_agrupadores','presupuesto_partidas','presupuesto_gastos_mes',
   'presupuesto_cambios','finanzas_detalle',
@@ -1099,6 +1127,7 @@ async function initDB() {
   await alterIfNotExists('sucursales', 'email',         'VARCHAR(200) DEFAULT NULL')
   await alterIfNotExists('licencias',  'updated_at',       'DATETIME')
   await alterIfNotExists('licencias',  'tipo_asignacion',  "VARCHAR(20) DEFAULT 'empleados'")
+  await alterIfNotExists('dominios',   'tipo_cambio',      'DECIMAL(10,4) DEFAULT 17.15')
   await alterIfNotExists('asignaciones_licencias', 'sucursal_id',     'VARCHAR(36) DEFAULT NULL')
   await alterIfNotExists('asignaciones_licencias', 'sucursal_nombre', 'VARCHAR(200) DEFAULT NULL')
   await alterIfNotExists('asignaciones_licencias', 'tipo_asignado',   "VARCHAR(20) DEFAULT 'empleado'")
@@ -1196,6 +1225,8 @@ async function initDB() {
   await addFKIfNotExists('proveedor_documentos',   'fk_provdoc_proveedor',    'proveedor_id',   'proveedores',            'id', 'CASCADE')
   // licencias → proveedores
   await addFKIfNotExists('licencias',              'fk_lic_proveedor',        'proveedor_id',   'proveedores',            'id', 'SET NULL')
+  // dominios → proveedores
+  await addFKIfNotExists('dominios',               'fk_dom_proveedor',        'proveedor_id',   'proveedores',            'id', 'SET NULL')
   // cambios → dispositivos
   await addFKIfNotExists('cambios',                'fk_cambio_dispositivo',   'dispositivo_id', 'dispositivos',           'id', 'RESTRICT')
   // cambios → proveedores
@@ -1265,7 +1296,7 @@ async function initDB() {
 
   // Recargar tablas que pudo haber llenado el seed
   for (const t of ['usuarios_sistema','proveedores','sucursales','empleados',
-                    'dispositivos','plantillas','licencias','tarifas_equipo','centros_costo']) {
+                    'dispositivos','plantillas','licencias','dominios','tarifas_equipo','centros_costo']) {
     await loadTable(t)
   }
 

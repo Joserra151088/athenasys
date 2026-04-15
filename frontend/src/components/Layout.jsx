@@ -29,6 +29,7 @@ const navItems = [
   { path: '/plantillas', label: 'Plantillas' },
   { path: '/cambios', label: 'Cambios de Equipo' },
   { path: '/licencias', label: 'Licencias' },
+  { path: '/dominios', label: 'Dominios' },
   { path: '/cotizaciones', label: 'Cotizaciones' },
   {
     label: 'Finanzas',

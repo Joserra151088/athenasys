@@ -158,6 +158,16 @@ export const licenciaAPI = {
   getAsignacionesByEmpleado: (empleado_id) => api.get(`/licencias/empleado/${empleado_id}/asignaciones`),
 }
 
+// Dominios
+export const dominioAPI = {
+  getAll: (params) => api.get('/dominios', { params }),
+  getById: (id) => api.get(`/dominios/${id}`),
+  getStats: () => api.get('/dominios/stats'),
+  create: (data) => api.post('/dominios', data),
+  update: (id, data) => api.put(`/dominios/${id}`, data),
+  delete: (id) => api.delete(`/dominios/${id}`),
+}
+
 // Auditoría
 export const auditoriaAPI = {
   getAll: (params) => api.get('/auditoria', { params })
