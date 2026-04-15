@@ -189,6 +189,28 @@ router.post('/detalle/clonar', requireRoles('super_admin', 'agente_soporte', 'ad
   for (const n of nuevos) db.get('finanzas_detalle').push(n).write()
   res.status(201).json({ clonados: nuevos.length, data: nuevos })
 })
+router.patch('/detalle/factura-masiva', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
+  const { ids, factura_folio } = req.body
+  const folio = String(factura_folio || '').trim()
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ message: 'IDs requeridos' })
+  if (!folio) return res.status(400).json({ message: 'El folio de factura es requerido' })
+
+  const uniqueIds = [...new Set(ids.filter(Boolean))]
+  const now = new Date().toISOString()
+  const actualizados = []
+
+  for (const id of uniqueIds) {
+    const item = db.get('finanzas_detalle').find({ id }).value()
+    if (!item) continue
+    db.get('finanzas_detalle').find({ id }).assign({
+      factura_folio: folio,
+      updated_at: now,
+    }).write()
+    actualizados.push(id)
+  }
+
+  res.json({ actualizados: actualizados.length, ids: actualizados, factura_folio: folio })
+})
 router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
   const body = req.body
   // Calculate totals

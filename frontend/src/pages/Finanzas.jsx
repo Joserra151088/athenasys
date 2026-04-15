@@ -656,6 +656,8 @@ function TabDesgloce() {
   const [selected, setSelected] = useState(new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [showBulkConfirm, setShowBulkConfirm] = useState(false)
+  const [facturaBulk, setFacturaBulk] = useState(null)
+  const [facturaBulkFolio, setFacturaBulkFolio] = useState('')
 
   // ── Filtros y ordenamiento ──────────────────────────────────────────────────
   const [showFilters, setShowFilters] = useState(false)
@@ -981,6 +983,36 @@ function TabDesgloce() {
     finally { setBulkDeleting(false) }
   }
 
+  const openFacturaBulk = (rows, label = 'líneas seleccionadas') => {
+    const lines = rows.filter(Boolean)
+    if (!lines.length) return
+    const folios = [...new Set(lines.map(d => d.factura_folio || '').filter(Boolean))]
+    setFacturaBulk({
+      ids: lines.map(d => d.id),
+      count: lines.length,
+      label,
+      sample: lines.slice(0, 5),
+    })
+    setFacturaBulkFolio(folios.length === 1 ? folios[0] : '')
+  }
+
+  const handleFacturaBulk = async () => {
+    const folio = facturaBulkFolio.trim()
+    if (!facturaBulk?.ids?.length) return
+    if (!folio) return showError('Captura el folio de factura para continuar')
+
+    setSaving(true)
+    try {
+      const r = await presupuestoAPI.bulkUpdateFactura(facturaBulk.ids, folio)
+      setFacturaBulk(null)
+      setFacturaBulkFolio('')
+      setSelected(new Set())
+      load()
+      showSuccess(`${r.actualizados} línea${r.actualizados !== 1 ? 's' : ''} actualizada${r.actualizados !== 1 ? 's' : ''} con la factura ${folio}`)
+    } catch(e) { showError(e?.message || 'Error al actualizar folio') }
+    finally { setSaving(false) }
+  }
+
   const handleClonar = async () => {
     setSaving(true)
     try {
@@ -1178,10 +1210,16 @@ function TabDesgloce() {
       )}
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl">
-          <span className="text-sm font-semibold text-red-700">{selected.size} registro{selected.size !== 1 ? 's' : ''} seleccionado{selected.size !== 1 ? 's' : ''}</span>
+        <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+          <span className="text-sm font-semibold text-slate-700">{selected.size} registro{selected.size !== 1 ? 's' : ''} seleccionado{selected.size !== 1 ? 's' : ''}</span>
           <div className="flex-1" />
           <button onClick={() => setSelected(new Set())} className="text-sm text-gray-500 hover:text-gray-700">Deseleccionar</button>
+          <button
+            onClick={() => openFacturaBulk(detalle.filter(d => selected.has(d.id)), 'líneas seleccionadas')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+          >
+            <PencilSquareIcon className="h-4 w-4" /> Cambiar folio
+          </button>
           <button onClick={() => setShowBulkConfirm(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
             <TrashIcon className="h-4 w-4" /> Eliminar {selected.size} registro{selected.size !== 1 ? 's' : ''}
@@ -1207,6 +1245,7 @@ function TabDesgloce() {
                   { label: 'Serie/Tel', campo: 'telefono_serie', align: 'left' },
                   { label: 'Servicio', campo: 'tipo_servicio', align: 'left' },
                   { label: 'Proveedor', campo: 'proveedor', align: 'left' },
+                  { label: 'Factura', campo: 'factura_folio', align: 'left' },
                   { label: 'Días', campo: 'dias_facturados', align: 'right' },
                   { label: '$/día', campo: 'costo_dia', align: 'right' },
                   { label: 'Subtotal', campo: 'subtotal', align: 'right' },
@@ -1236,9 +1275,9 @@ function TabDesgloce() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={14} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
+                <tr><td colSpan={15} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
               ) : detalleFiltrado.length === 0 ? (
-                <tr><td colSpan={14} className="py-10 text-center text-gray-400">
+                <tr><td colSpan={15} className="py-10 text-center text-gray-400">
                   {filtrosActivos ? 'Ningún registro coincide con los filtros aplicados.' : 'No hay registros para este período. Agrega líneas o clona el mes anterior.'}
                 </td></tr>
 
@@ -1259,9 +1298,22 @@ function TabDesgloce() {
                             ? <ChevronDownIcon className="h-4 w-4 text-indigo-500" />
                             : <ChevronRightIcon className="h-4 w-4 text-gray-400" />}
                         </td>
-                        {/* colSpan=4 cubre: Nombre + Serie/Tel + Servicio + Proveedor → deja alineado desde Días en adelante */}
-                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[200px]" colSpan={4}>
-                          <div className="truncate text-indigo-800">{grupo.proveedor}</div>
+                        {/* colSpan=5 cubre: Nombre + Serie/Tel + Servicio + Proveedor + Factura */}
+                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[220px]" colSpan={5}>
+                          <div className="flex items-center gap-2">
+                            <div className="truncate text-indigo-800">{grupo.proveedor}</div>
+                            <button
+                              type="button"
+                              onClick={e => {
+                                e.stopPropagation()
+                                openFacturaBulk(grupo.lines, `grupo ${grupo.proveedor}`)
+                              }}
+                              className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
+                              title="Actualizar el folio de factura para todas las líneas de este grupo"
+                            >
+                              Actualizar factura
+                            </button>
+                          </div>
                           <div className="text-xs font-normal text-indigo-500 mt-0.5">
                             {count} {count === 1 ? 'línea' : 'líneas'} · expandir para ver detalle
                           </div>
@@ -1315,6 +1367,7 @@ function TabDesgloce() {
                           <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.telefono_serie || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-500 text-xs">{d.tipo_servicio || '—'}</td>
                           <td className="px-3 py-1.5 text-gray-400 text-xs">{d.proveedor || '—'}</td>
+                          <td className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.factura_folio || '—'}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-xs">{d.dias_facturados}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-xs">{fmtDec(d.costo_dia)}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-gray-600 text-xs">{fmtDec(d.subtotal)}</td>
@@ -1349,7 +1402,7 @@ function TabDesgloce() {
                       {/* Fila subtotal del grupo (solo si tiene más de 1 línea y está expandido) */}
                       {isOpen && count > 1 && (
                         <tr key={`sub-${grupo.key}`} className="bg-indigo-50 border-b-2 border-indigo-200">
-                          <td colSpan={7} className="px-3 py-1.5 pl-8 text-xs text-indigo-600 font-semibold">
+                          <td colSpan={8} className="px-3 py-1.5 pl-8 text-xs text-indigo-600 font-semibold">
                             Subtotal — {grupo.proveedor} ({count} líneas)
                           </td>
                           {/* Subtotal */}
@@ -1403,6 +1456,7 @@ function TabDesgloce() {
                     <td className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
                     <td className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
                     <td className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-gray-500">{d.factura_folio || '—'}</td>
                     <td className="px-3 py-2 text-right font-mono">{d.dias_facturados}</td>
                     <td className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>
                     <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>
@@ -1823,6 +1877,55 @@ function TabDesgloce() {
             {saving ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
+      </Modal>
+
+      {/* Modal actualización masiva de factura */}
+      <Modal open={!!facturaBulk} onClose={() => setFacturaBulk(null)} title="Actualizar folio de factura">
+        {facturaBulk && (
+          <div className="space-y-4 text-sm">
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+              <p className="font-semibold text-indigo-800">
+                Se actualizarán {facturaBulk.count} línea{facturaBulk.count !== 1 ? 's' : ''} de {facturaBulk.label}.
+              </p>
+              <p className="mt-1 text-xs text-indigo-600">
+                Solo cambiará el folio de factura. No se modificarán costos, IVA, centros de costo ni asignaciones.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Nuevo folio de factura *</label>
+              <input
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono"
+                value={facturaBulkFolio}
+                onChange={e => setFacturaBulkFolio(e.target.value)}
+                placeholder="Ej. FAC-ABR-2026-001"
+                autoFocus
+              />
+            </div>
+
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Vista previa</p>
+              <div className="space-y-1.5">
+                {facturaBulk.sample.map(line => (
+                  <div key={line.id} className="flex items-center justify-between gap-3 text-xs">
+                    <span className="truncate text-gray-600">{line.nombre || line.tipo_servicio || line.proveedor || 'Línea sin nombre'}</span>
+                    <span className="font-mono text-gray-400">{line.factura_folio || 'Sin folio'}</span>
+                  </div>
+                ))}
+                {facturaBulk.count > facturaBulk.sample.length && (
+                  <p className="text-xs text-gray-400">+ {facturaBulk.count - facturaBulk.sample.length} línea{facturaBulk.count - facturaBulk.sample.length !== 1 ? 's' : ''} más</p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setFacturaBulk(null)} className="px-4 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
+              <button onClick={handleFacturaBulk} disabled={saving || !facturaBulkFolio.trim()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700 disabled:opacity-50">
+                {saving ? 'Actualizando...' : 'Actualizar folio'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal clonar */}
