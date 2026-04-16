@@ -222,17 +222,17 @@ export async function generateDocumentPDF(doc, options = {}) {
   const isResponsiva = doc.tipo === 'responsiva'
   const cols = isResponsiva
     ? [
-        { h: 'Tipo', w: cw * 0.16 },
-        { h: 'Marca / Modelo', w: cw * 0.22 },
-        { h: 'No. Serie', w: cw * 0.20 },
-        { h: 'Caracteristicas', w: cw * 0.28 },
-        { h: 'Costo', w: cw * 0.14 },
+        { h: 'Tipo', w: cw * 0.14 },
+        { h: 'Marca / Modelo', w: cw * 0.20 },
+        { h: 'No. Serie', w: cw * 0.28 },
+        { h: 'Caracteristicas', w: cw * 0.25 },
+        { h: 'Costo', w: cw * 0.13 },
       ]
     : [
-        { h: 'Tipo', w: cw * 0.18 },
-        { h: 'Marca / Modelo', w: cw * 0.25 },
-        { h: 'No. Serie', w: cw * 0.22 },
-        { h: 'Caracteristicas', w: cw * 0.35 },
+        { h: 'Tipo', w: cw * 0.15 },
+        { h: 'Marca / Modelo', w: cw * 0.22 },
+        { h: 'No. Serie', w: cw * 0.30 },
+        { h: 'Caracteristicas', w: cw * 0.33 },
       ]
 
   let xc = ml
@@ -251,9 +251,7 @@ export async function generateDocumentPDF(doc, options = {}) {
 
   const devices = doc.dispositivos || []
   devices.forEach((device, index) => {
-    checkPage(7)
     const even = index % 2 === 0
-    xc = ml
     const cells = isResponsiva
       ? [
           device.tipo,
@@ -269,19 +267,28 @@ export async function generateDocumentPDF(doc, options = {}) {
           device.caracteristicas || '',
         ]
 
+    const cellLines = cells.map((cell, colIndex) => {
+      pdf.setFont(colIndex === 2 ? 'courier' : 'helvetica', 'normal')
+      pdf.setFontSize(colIndex === 2 ? 6.5 : 7)
+      return pdf.splitTextToSize(String(cell || ''), cols[colIndex].w - 4)
+    })
+    const lineHeight = 3.8
+    const rowH = Math.max(7, 4 + Math.max(...cellLines.map(lines => lines.length || 1)) * lineHeight)
+    checkPage(rowH)
+
+    xc = ml
     cols.forEach((col, colIndex) => {
       pdf.setFillColor(even ? 255 : 248, even ? 255 : 250, even ? 255 : 252)
       pdf.setDrawColor(226, 232, 240)
       pdf.setLineWidth(0.2)
-      pdf.rect(xc, y, col.w, 7, 'FD')
+      pdf.rect(xc, y, col.w, rowH, 'FD')
       pdf.setFont(colIndex === 2 ? 'courier' : 'helvetica', 'normal')
-      pdf.setFontSize(7)
+      pdf.setFontSize(colIndex === 2 ? 6.5 : 7)
       pdf.setTextColor(17, 24, 39)
-      const cellText = pdf.splitTextToSize(String(cells[colIndex] || ''), col.w - 4)[0] || ''
-      pdf.text(cellText, xc + 2, y + 4.8)
+      pdf.text(cellLines[colIndex], xc + 2, y + 4.8, { lineHeightFactor: 1.15 })
       xc += col.w
     })
-    y += 7
+    y += rowH
   })
   y += 8
 
