@@ -409,6 +409,8 @@ const DDL = [
     \`proveedor_id\` VARCHAR(36),
     \`proveedor_nombre\` VARCHAR(200),
     \`caracteristicas\` TEXT,
+    \`campos_extra\` LONGTEXT,
+    \`costo_tipo\` VARCHAR(20) DEFAULT 'mensual',
     \`costo_dia\` DECIMAL(10,2) DEFAULT 0,
     \`estado\` ENUM('activo','en_reparacion','danado','baja','stock') DEFAULT 'stock',
     \`ubicacion_tipo\` ENUM('almacen','sucursal','empleado','proveedor') DEFAULT 'almacen',

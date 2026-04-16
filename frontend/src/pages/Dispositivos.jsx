@@ -94,6 +94,32 @@ function getSerieBadgeLabel(dispositivo) {
   return mode === SERIE_OPTIONS.normal ? '' : SPECIAL_SERIAL_LABEL[mode]
 }
 
+function normalizeCamposExtra(camposExtra) {
+  if (!camposExtra) return {}
+  if (typeof camposExtra === 'string') {
+    try {
+      const parsed = JSON.parse(camposExtra)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch (_) {
+      return {}
+    }
+  }
+  if (typeof camposExtra === 'object' && !Array.isArray(camposExtra)) return camposExtra
+  return {}
+}
+
+function formatCampoLabel(key = '') {
+  return key
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function formatCamposExtra(camposExtra) {
+  return Object.entries(normalizeCamposExtra(camposExtra))
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => `${formatCampoLabel(key)}: ${value}`)
+}
+
 // Muestra costo con estilo según tipo de tarifa
 function CostoBadge({ tipo, costo, proveedorNombre }) {
   const rate = DEVICE_DAILY_RATES[tipo]
@@ -205,6 +231,7 @@ export default function Dispositivos() {
   const [filterTipo, setFilterTipo] = useState('')
   const [filterEstado, setFilterEstado] = useState('')
   const [filterUbicacion, setFilterUbicacion] = useState('')
+  const [filterProveedor, setFilterProveedor] = useState('')
   const [loading, setLoading] = useState(true)
   const [modal, setModal] = useState(false)
   const [editing, setEditing] = useState(null)
@@ -267,9 +294,10 @@ export default function Dispositivos() {
     setFilterTipo('')
     setFilterEstado('')
     setFilterUbicacion('')
+    setFilterProveedor('')
   }
 
-  const hasActiveFilters = search || filterTipo || filterEstado || filterUbicacion
+  const hasActiveFilters = search || filterTipo || filterEstado || filterUbicacion || filterProveedor
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -278,11 +306,12 @@ export default function Dispositivos() {
     if (filterTipo) params.tipo = filterTipo
     if (filterEstado) params.estado = filterEstado
     if (filterUbicacion) params.ubicacion_tipo = filterUbicacion
+    if (filterProveedor) params.proveedor_id = filterProveedor
     deviceAPI.getAll(params).then(d => {
       setDispositivos(d.data)
       setPagination({ page: d.page, pages: d.pages, total: d.total, limit: d.limit })
     }).finally(() => setLoading(false))
-  }, [search, filterTipo, filterEstado, filterUbicacion])
+  }, [search, filterTipo, filterEstado, filterUbicacion, filterProveedor])
 
   useEffect(() => { load(1) }, [load])
   useEffect(() => {
@@ -347,7 +376,7 @@ export default function Dispositivos() {
       cantidad: d.cantidad || 1, proveedor_id: d.proveedor_id || '',
       caracteristicas: d.caracteristicas || '',
       costo_dia: d.costo_dia !== undefined ? d.costo_dia : '',
-      campos_extra: d.campos_extra || {},
+      campos_extra: normalizeCamposExtra(d.campos_extra),
       costo_tipo: d.costo_tipo || 'mensual'
     })
     setModal(true)
@@ -443,7 +472,7 @@ export default function Dispositivos() {
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text" className="input pl-9"
-              placeholder="Buscar por serie, marca, tipo..."
+              placeholder="Buscar por serie, marca, modelo, proveedor, características u observaciones..."
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -472,6 +501,14 @@ export default function Dispositivos() {
             <option value="almacen">Almacén</option>
             <option value="sucursal">Sucursal</option>
             <option value="empleado">Empleado</option>
+          </select>
+
+          {/* Filtro Proveedor */}
+          <select className="input w-48" value={filterProveedor} onChange={e => setFilterProveedor(e.target.value)}>
+            <option value="">Todos los proveedores</option>
+            {proveedores.map(p => (
+              <option key={p.id} value={p.id}>{p.nombre}</option>
+            ))}
           </select>
 
           {/* Toggle columnas */}
@@ -615,7 +652,9 @@ export default function Dispositivos() {
                 </td></tr>
               ) : sorted.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-gray-400">No se encontraron dispositivos</td></tr>
-              ) : sorted.map(d => (
+              ) : sorted.map(d => {
+                const camposExtra = formatCamposExtra(d.campos_extra)
+                return (
                 <tr key={d.id} className="hover:bg-gray-50">
                   {visibleCols.tipo && <td className="table-cell font-medium">{d.tipo}</td>}
                   {visibleCols.marca_modelo && (
@@ -637,7 +676,29 @@ export default function Dispositivos() {
                   {visibleCols.proveedor && <td className="table-cell text-sm">{d.proveedor_nombre || '—'}</td>}
                   {visibleCols.caracteristicas && (
                     <td className="table-cell max-w-48">
-                      <p className="text-xs text-gray-500 truncate">{d.caracteristicas || '—'}</p>
+                      {d.caracteristicas || camposExtra.length > 0 ? (
+                        <div className="space-y-1 text-xs text-gray-500">
+                          {d.caracteristicas && (
+                            <p className="line-clamp-2" title={d.caracteristicas}>{d.caracteristicas}</p>
+                          )}
+                          {camposExtra.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {camposExtra.slice(0, 4).map(campo => (
+                                <span key={campo} className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">
+                                  {campo}
+                                </span>
+                              ))}
+                              {camposExtra.length > 4 && (
+                                <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-400">
+                                  +{camposExtra.length - 4}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </td>
                   )}
                   {visibleCols.costo && (
@@ -678,7 +739,8 @@ export default function Dispositivos() {
                     </td>
                   )}
                 </tr>
-              ))}
+                )
+              })}
             </tbody>
           </table>
         </div>

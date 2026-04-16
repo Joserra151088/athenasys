@@ -79,6 +79,43 @@ function resolveDeviceSerial({ tipo, serie, serie_estado, existingId = null, cur
   }
 }
 
+function normalizeCamposExtra(camposExtra, fallback = {}) {
+  if (camposExtra === undefined || camposExtra === null) return fallback || {}
+
+  if (typeof camposExtra === 'string') {
+    try {
+      const parsed = JSON.parse(camposExtra)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch (_) {
+      return {}
+    }
+  }
+
+  if (typeof camposExtra === 'object' && !Array.isArray(camposExtra)) return camposExtra
+  return {}
+}
+
+function camposExtraSearchText(camposExtra) {
+  if (typeof camposExtra === 'string') {
+    try {
+      const parsed = JSON.parse(camposExtra)
+      return camposExtraSearchText(parsed)
+    } catch (_) {
+      return camposExtra
+    }
+  }
+
+  const normalized = normalizeCamposExtra(camposExtra)
+  return Object.entries(normalized)
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => `${key} ${value}`)
+    .join(' ')
+}
+
+function includesSearch(value, query) {
+  return String(value || '').toLowerCase().includes(query)
+}
+
 // Estadísticas
 router.get('/stats', (req, res) => {
   const dispositivos = db.get('dispositivos').filter({ activo: true }).value()
@@ -98,20 +135,24 @@ router.get('/stats', (req, res) => {
 
 // Listar con filtros y paginación
 router.get('/', (req, res) => {
-  const { page = 1, limit = 20, tipo, estado, ubicacion_tipo, search } = req.query
+  const { page = 1, limit = 20, tipo, estado, ubicacion_tipo, proveedor_id, search } = req.query
   let items = db.get('dispositivos').filter({ activo: true }).value()
 
   if (tipo) items = items.filter(d => d.tipo === tipo)
   if (estado) items = items.filter(d => d.estado === estado)
   if (ubicacion_tipo) items = items.filter(d => d.ubicacion_tipo === ubicacion_tipo)
+  if (proveedor_id) items = items.filter(d => d.proveedor_id === proveedor_id)
   if (search) {
-    const q = search.toLowerCase()
+    const q = search.toLowerCase().trim()
     items = items.filter(d =>
-      d.serie?.toLowerCase().includes(q) ||
-      d.marca?.toLowerCase().includes(q) ||
-      d.modelo?.toLowerCase().includes(q) ||
-      d.tipo?.toLowerCase().includes(q) ||
-      d.ubicacion_nombre?.toLowerCase().includes(q)
+      includesSearch(d.serie, q) ||
+      includesSearch(d.marca, q) ||
+      includesSearch(d.modelo, q) ||
+      includesSearch(d.tipo, q) ||
+      includesSearch(d.proveedor_nombre, q) ||
+      includesSearch(d.caracteristicas, q) ||
+      includesSearch(d.ubicacion_nombre, q) ||
+      includesSearch(camposExtraSearchText(d.campos_extra), q)
     )
   }
 
@@ -198,7 +239,7 @@ router.get('/:id', (req, res) => {
 // Crear
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'dispositivo'), (req, res) => {
   try {
-    const { tipo, marca, serie, serie_estado, modelo, proveedor_id, caracteristicas, costo_dia } = req.body
+    const { tipo, marca, serie, serie_estado, modelo, proveedor_id, caracteristicas, costo_dia, campos_extra, costo_tipo } = req.body
     if (!tipo || !marca) return res.status(400).json({ message: 'Tipo y marca son requeridos' })
 
     const serialInfo = resolveDeviceSerial({ tipo, serie, serie_estado })
@@ -211,6 +252,8 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
       cantidad: 1,
       proveedor_id: proveedor_id || null, proveedor_nombre: proveedor?.nombre || null,
       caracteristicas: caracteristicas || '',
+      campos_extra: normalizeCamposExtra(campos_extra),
+      costo_tipo: costo_tipo || 'mensual',
       costo_dia: costoDia,
       estado: 'stock', ubicacion_tipo: 'almacen',
       ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
@@ -251,6 +294,8 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('actu
       serie_estado: serialInfo.serie_estado,
       cantidad: 1,
       proveedor_nombre: proveedor?.nombre || item.proveedor_nombre,
+      campos_extra: normalizeCamposExtra(req.body.campos_extra, item.campos_extra),
+      costo_tipo: req.body.costo_tipo || item.costo_tipo || 'mensual',
       costo_dia: costoDia,
       actualizado_por: req.user.id,
       actualizado_por_nombre: req.user.nombre,
