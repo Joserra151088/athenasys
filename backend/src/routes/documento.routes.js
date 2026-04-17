@@ -144,21 +144,30 @@ router.patch('/:id/logistica', requireRoles('super_admin', 'agente_soporte'), au
   const nombre = String(req.body.logistica_nombre || doc.logistica_nombre || '').trim()
   const area = String(req.body.logistica_area || doc.logistica_area || '').trim()
   const firmaLogistica = req.body.firma_logistica || doc.firma_logistica || null
+  const agentUser = db.get('usuarios_sistema').find({ id: req.user.id }).value()
+  const firmaAgente = req.body.firma_agente || doc.firma_agente || agentUser?.firma_base64 || null
 
   if (!nombre) return res.status(400).json({ message: 'Se requiere el nombre de quien firma por logística o almacén' })
   if (!area) return res.status(400).json({ message: 'Se requiere el área de quien firma por logística o almacén' })
 
+  const agentePath = path.join(uploadsDir, `${doc.id}_agente.png`)
   const logisticaPath = path.join(uploadsDir, `${doc.id}_logistica.png`)
+  let firmaAgentePath = doc.firma_agente_path || null
   let firmaPath = doc.firma_logistica_path || null
   try {
+    if ((req.body.firma_agente || (!doc.firma_agente && agentUser?.firma_base64)) && writeSignatureFile(firmaAgente, agentePath)) {
+      firmaAgentePath = `/uploads/firmas/${doc.id}_agente.png`
+    }
     if (req.body.firma_logistica && writeSignatureFile(req.body.firma_logistica, logisticaPath)) {
       firmaPath = `/uploads/firmas/${doc.id}_logistica.png`
     }
   } catch (writeErr) {
-    console.error('[Firma] Error guardando firma de logística:', writeErr.message)
+    console.error('[Firma] Error guardando firmas internas:', writeErr.message)
   }
 
   const updated = {
+    firma_agente: firmaAgente,
+    firma_agente_path: firmaAgentePath,
     logistica_nombre: nombre,
     logistica_area: area,
     firma_logistica: firmaLogistica,

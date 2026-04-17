@@ -154,17 +154,19 @@ export default function Documentos() {
     setModal('firmaLink')
   }
 
-  const saveSalidaLogistica = async ({ doc, nombre, area, firma }) => {
+  const saveSalidaLogistica = async ({ doc, nombre, area, firma, firmaAgente }) => {
     const payload = {
       logistica_nombre: nombre.trim(),
       logistica_area: area.trim(),
     }
     if (firma) payload.firma_logistica = firma
+    if (firmaAgente) payload.firma_agente = firmaAgente
     return documentoAPI.saveLogistica(doc.id, payload)
   }
 
   const handleSaveLogistica = async () => {
     if (!selected || selected.tipo !== 'salida') return
+    const firmaAgente = firmaAgenteRef.current?.getDataURL() || selected.firma_agente || agenteFirma
     const firmaLogistica = firmaLogisticaRef.current?.getDataURL()
     if (!logisticaNombre.trim()) { showError('Captura el nombre de quien firma por logística o almacén.', 'Campo requerido'); return }
     if (!logisticaArea.trim()) { showError('Captura el área de quien firma por logística o almacén.', 'Campo requerido'); return }
@@ -176,10 +178,17 @@ export default function Documentos() {
         nombre: logisticaNombre,
         area: logisticaArea,
         firma: firmaLogistica,
+        firmaAgente,
       })
       setSelected(updated)
       load(pagination.page || 1)
-      showToast(firmaLogistica ? 'Datos y firma de logística guardados.' : 'Datos de logística guardados. La firma puede agregarse después.')
+      if (updated.firma_agente && updated.firma_logistica) {
+        showToast('Firmas internas guardadas. Ya puedes imprimir la salida con firma del agente y logística.')
+      } else if (updated.firma_agente) {
+        showToast('Firma del agente y datos de logística guardados. Falta la firma de logística para imprimir completo.', 'info')
+      } else {
+        showToast('Datos de logística guardados. Para imprimir con firmas, agrega firma del agente y logística y vuelve a guardar.', 'info')
+      }
     } catch (err) {
       showError(err?.message || 'Error al guardar datos de logística')
     } finally {
@@ -423,8 +432,10 @@ export default function Documentos() {
   const exportPDF = async () => {
     if (!selected) return
     try {
-      const pdf = await generateDocumentPDF(selected)
-      pdf.save(`${selected.folio || 'documento'}.pdf`)
+      const full = await documentoAPI.getById(selected.id)
+      setSelected(full)
+      const pdf = await generateDocumentPDF(full)
+      pdf.save(`${full.folio || 'documento'}.pdf`)
     } catch (err) {
       showError('Error al exportar PDF: ' + err.message)
     }
@@ -1033,7 +1044,7 @@ export default function Documentos() {
                     onClick={handleSaveLogistica}
                     disabled={logisticaSaving}
                   >
-                    {logisticaSaving ? 'Guardando...' : 'Guardar logística sin cerrar documento'}
+                    {logisticaSaving ? 'Guardando...' : 'Guardar datos y firmas internas'}
                   </button>
                 </div>
               </div>
