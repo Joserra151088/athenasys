@@ -243,6 +243,7 @@ router.get('/:token', (req, res) => {
         agente_nombre:   doc.agente_nombre,
         receptor_nombre: doc.receptor_nombre,
         dispositivos:    doc.dispositivos || [],
+        motivo_salida:   doc.motivo_salida || '',
         observaciones:   doc.observaciones || '',
         receptor_observaciones: doc.receptor_observaciones || '',
         created_at:      doc.created_at,

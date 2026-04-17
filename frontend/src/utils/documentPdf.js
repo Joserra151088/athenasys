@@ -51,7 +51,7 @@ function getPlantillaTexto(doc) {
     .replaceAll('{{agente_nombre}}', doc.agente_nombre || '')
     .replaceAll('{{fecha_documento}}', fechaDoc)
     .replaceAll('{{folio}}', doc.folio || '')
-    .replaceAll('{{motivo_salida}}', doc.observaciones || '')
+    .replaceAll('{{motivo_salida}}', doc.motivo_salida || doc.observaciones || '')
     .replaceAll('{{num_dispositivos}}', String(doc.dispositivos?.length || 0))
     .replaceAll('{{lista_dispositivos}}', listaDispositivos)
 }

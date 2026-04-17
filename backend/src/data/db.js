@@ -508,6 +508,7 @@ const DDL = [
     \`firma_receptor\` MEDIUMTEXT,
     \`firmado\` TINYINT(1) DEFAULT 0,
     \`fecha_firma\` DATETIME,
+    \`motivo_salida\` TEXT,
     \`observaciones\` TEXT,
     \`receptor_observaciones\` TEXT,
     \`pdf_path\` VARCHAR(500),
@@ -1151,6 +1152,7 @@ async function initDB() {
   await alterIfNotExists('documentos', 'entidad_email',        'VARCHAR(200)')
   await alterIfNotExists('documentos', 'entidad_departamento', 'VARCHAR(200)')
   await alterIfNotExists('documentos', 'receptor_observaciones', 'TEXT')
+  await alterIfNotExists('documentos', 'motivo_salida', 'TEXT')
   // ── Firma online (envío de link al receptor) ──────────────────────────────
   await alterIfNotExists('documentos', 'firma_online_estado', "VARCHAR(20) DEFAULT NULL")
   await alterIfNotExists('documentos', 'firma_online_token',  'VARCHAR(64) DEFAULT NULL')

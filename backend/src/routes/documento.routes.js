@@ -61,7 +61,7 @@ router.get('/:id', (req, res) => {
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'documento'), (req, res) => {
-  const { tipo, plantilla_id, entidad_tipo, entidad_id, dispositivos, observaciones, receptor_id, desde_asignacion } = req.body
+  const { tipo, plantilla_id, entidad_tipo, entidad_id, dispositivos, observaciones, motivo_salida, receptor_id, desde_asignacion } = req.body
   if (!tipo || !entidad_tipo || !entidad_id || !dispositivos?.length) {
     const missing = { tipo: !tipo, entidad_tipo: !entidad_tipo, entidad_id: !entidad_id, dispositivos: !dispositivos?.length }
     console.log('[documento.routes] Validación fallida. Body recibido:', JSON.stringify(req.body), 'Campos faltantes:', JSON.stringify(missing))
@@ -111,6 +111,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     receptor_nombre: receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null),
     firma_receptor: null, firma_receptor_path: null,
     firmado: false, fecha_firma: null,
+    motivo_salida: tipo === 'salida' ? String(motivo_salida || '').trim() : '',
     observaciones: observaciones || '',
     receptor_observaciones: null,
     created_by: req.user.id, created_by_nombre: req.user.nombre,

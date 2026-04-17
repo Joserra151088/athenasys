@@ -278,7 +278,7 @@ export default function Documentos() {
   const firmaLinkVigencia = firmaLink?.expires_label || (firmaLink?.doc?.tipo === 'salida' ? '45 días' : '72 horas')
 
   // Create form
-  const [form, setForm] = useState({ tipo: 'responsiva', plantilla_id: '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', observaciones: '' })
+  const [form, setForm] = useState({ tipo: 'responsiva', plantilla_id: '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', observaciones: '' })
   const [plantillas, setPlantillas] = useState([])
   const [entidades, setEntidades] = useState([])
   const [empleados, setEmpleados] = useState([])
@@ -321,7 +321,7 @@ export default function Documentos() {
     setDeviceSearch('')
     setDeviceTypeFilter('')
     setDeviceAssignFilter('todos')
-    setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', observaciones: '' })
+    setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', observaciones: '' })
     setModal('create')
   }
 
@@ -506,7 +506,7 @@ export default function Documentos() {
       // Documento
       .replaceAll('{{fecha_documento}}',       fechaDoc)
       .replaceAll('{{folio}}',                 doc.folio || '')
-      .replaceAll('{{motivo_salida}}',         doc.observaciones || '')
+      .replaceAll('{{motivo_salida}}',         doc.motivo_salida || doc.observaciones || '')
       // Dispositivos
       .replaceAll('{{num_dispositivos}}',      String(doc.dispositivos?.length || 0))
       .replaceAll('{{lista_dispositivos}}',    listaDispositivos)
@@ -740,7 +740,7 @@ export default function Documentos() {
               <label className="label">Tipo de documento *</label>
               <select className="input" required value={form.tipo} onChange={e => {
                 const t = e.target.value
-                setForm(f => ({ ...f, tipo: t, plantilla_id: plantillas.find(p => p.tipo === t)?.id || '' }))
+                setForm(f => ({ ...f, tipo: t, plantilla_id: plantillas.find(p => p.tipo === t)?.id || '', motivo_salida: t === 'salida' ? f.motivo_salida : '' }))
               }}>
                 {Object.entries(DOCUMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
@@ -970,6 +970,19 @@ export default function Documentos() {
               })}
             </div>
           </div>
+
+          {form.tipo === 'salida' && (
+            <div>
+              <label className="label">Motivo de salida</label>
+              <input
+                className="input"
+                value={form.motivo_salida}
+                onChange={e => setForm(f => ({ ...f, motivo_salida: e.target.value }))}
+                placeholder="Ej. Equipo funcional, envío a sucursal, reemplazo..."
+              />
+              <p className="mt-1 text-xs text-gray-400">Este campo alimenta la variable {'{{motivo_salida}}'} de la plantilla.</p>
+            </div>
+          )}
 
           <div>
             <label className="label">Observaciones</label>
@@ -1284,6 +1297,11 @@ export default function Documentos() {
               </div>
 
               {/* Observaciones */}
+              {selected.motivo_salida && (
+                <div className="text-xs text-gray-600">
+                  <span className="font-semibold">Motivo de salida: </span>{selected.motivo_salida}
+                </div>
+              )}
               {selected.observaciones && (
                 <div className="text-xs text-gray-600">
                   <span className="font-semibold">Observaciones: </span>{selected.observaciones}

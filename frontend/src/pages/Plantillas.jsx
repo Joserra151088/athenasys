@@ -7,7 +7,7 @@ import Badge from '../components/Badge'
 import {
   PlusIcon, PencilIcon, ClockIcon, ChevronDownIcon,
   EyeIcon, PencilSquareIcon, MagnifyingGlassIcon, PhotoIcon,
-  BuildingOfficeIcon, CheckIcon
+  BuildingOfficeIcon, CheckIcon, TrashIcon
 } from '@heroicons/react/24/outline'
 import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
@@ -92,9 +92,37 @@ const SAMPLE_DATA = {
   '{{num_dispositivos}}': '2',
 }
 
-function renderPreview(html) {
+function cloneTagGroups(groups) {
+  return groups.map(group => ({
+    ...group,
+    tags: group.tags.map(tag => ({ ...tag })),
+  }))
+}
+
+function buildSampleData(groups) {
+  const values = { ...SAMPLE_DATA }
+  groups.forEach(group => {
+    group.tags.forEach(tag => {
+      values[tag.tag] = tag.ejemplo || values[tag.tag] || tag.tag
+    })
+  })
+  return values
+}
+
+function normalizeTagName(value) {
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/[{}]/g, '')
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '')
+    .toLowerCase()
+  return cleaned ? `{{${cleaned}}}` : ''
+}
+
+function renderPreview(html, groups = TAG_GROUPS) {
   let out = html
-  for (const g of TAG_GROUPS) {
+  for (const g of groups) {
     for (const t of g.tags) {
       out = out.split(t.tag).join(`<mark class="preview-tag" data-color="${g.color}">${t.ejemplo}</mark>`)
     }
@@ -102,12 +130,13 @@ function renderPreview(html) {
   return out
 }
 
-function renderRealPreview(html, logo, headerCfg = {}) {
+function renderRealPreview(html, logo, headerCfg = {}, groups = TAG_GROUPS) {
   const empresa = headerCfg.empresa || 'AthenaSys'
   const subtitulo = headerCfg.subtitulo || 'Área de Tecnologías de la Información'
   const color = headerCfg.color || '#1e293b'
+  const sampleData = buildSampleData(groups)
   let body = html
-  for (const [tag, val] of Object.entries(SAMPLE_DATA)) {
+  for (const [tag, val] of Object.entries(sampleData)) {
     body = body.split(tag).join(val)
   }
   const logoHtml = logo
@@ -125,8 +154,8 @@ function renderRealPreview(html, logo, headerCfg = {}) {
         </div>
         <div style="text-align:right">
           <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em">Folio</div>
-          <div style="font-weight:bold;font-family:monospace;font-size:14px">${SAMPLE_DATA['{{folio}}']}</div>
-          <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{fecha_documento}}']}</div>
+          <div style="font-weight:bold;font-family:monospace;font-size:14px">${sampleData['{{folio}}']}</div>
+          <div style="font-size:11px;color:#94a3b8">${sampleData['{{fecha_documento}}']}</div>
         </div>
       </div>
       <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 8px 8px;padding:24px 28px">
@@ -135,13 +164,13 @@ function renderRealPreview(html, logo, headerCfg = {}) {
           <div style="border-top:2px solid ${color};padding-top:8px;text-align:center">
             <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del receptor</div>
-            <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{receptor_nombre}}']}</div>
-            <div style="font-size:11px;color:#94a3b8">${SAMPLE_DATA['{{receptor_puesto}}']}</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">${sampleData['{{receptor_nombre}}']}</div>
+            <div style="font-size:11px;color:#94a3b8">${sampleData['{{receptor_puesto}}']}</div>
           </div>
           <div style="border-top:2px solid ${color};padding-top:8px;text-align:center">
             <div style="height:40px"></div>
             <div style="font-size:12px;color:#64748b">Firma del agente TI</div>
-            <div style="font-size:13px;font-weight:600;margin-top:4px">${SAMPLE_DATA['{{agente_nombre}}']}</div>
+            <div style="font-size:13px;font-weight:600;margin-top:4px">${sampleData['{{agente_nombre}}']}</div>
             <div style="font-size:11px;color:#94a3b8">Soporte TI</div>
           </div>
         </div>
@@ -335,6 +364,11 @@ export default function Plantillas() {
   const [showHeaderEdit, setShowHeaderEdit] = useState(false)
   const [headerSaving, setHeaderSaving] = useState(false)
   const [headerSaved, setHeaderSaved] = useState(false)
+  const [tagGroups, setTagGroups] = useState(() => cloneTagGroups(TAG_GROUPS))
+  const [tagManagerOpen, setTagManagerOpen] = useState(false)
+  const [tagSaving, setTagSaving] = useState(false)
+  const [editingTag, setEditingTag] = useState(null)
+  const [tagForm, setTagForm] = useState({ group: 'Documento', color: 'orange', tag: '', desc: '', ejemplo: '' })
 
   const load = () => {
     setLoading(true)
@@ -347,6 +381,9 @@ export default function Plantillas() {
     configAPI.getHeaderConfig().then(r => {
       setHeaderConfig({ empresa: r.empresa, subtitulo: r.subtitulo, color: r.color })
       if (r.logo) setGlobalLogo(r.logo)
+    }).catch(() => {})
+    configAPI.getTemplateTags().then(r => {
+      if (Array.isArray(r.groups) && r.groups.length > 0) setTagGroups(r.groups)
     }).catch(() => {})
   }, [])
 
@@ -467,21 +504,101 @@ export default function Plantillas() {
     finally { setLogoSaving(false) }
   }
 
+  const resetTagForm = () => {
+    setEditingTag(null)
+    setTagForm({ group: 'Documento', color: 'orange', tag: '', desc: '', ejemplo: '' })
+  }
+
+  const persistTagGroups = async (nextGroups) => {
+    setTagSaving(true)
+    try {
+      const result = await configAPI.setTemplateTags(nextGroups)
+      setTagGroups(result.groups || nextGroups)
+      showSuccess('Variables de plantilla actualizadas')
+      return true
+    } catch (err) {
+      showError(err?.message || 'Error al guardar variables')
+      return false
+    } finally {
+      setTagSaving(false)
+    }
+  }
+
+  const handleTagSubmit = async (e) => {
+    e.preventDefault()
+    const normalizedTag = normalizeTagName(tagForm.tag)
+    const groupLabel = tagForm.group.trim()
+    if (!groupLabel) return showError('La categoría es requerida', 'Campo requerido')
+    if (!normalizedTag) return showError('La variable es requerida. Usa letras, números o guion bajo.', 'Campo requerido')
+    if (!tagForm.desc.trim()) return showError('La descripción es requerida', 'Campo requerido')
+
+    const nextGroups = cloneTagGroups(tagGroups)
+      .map(group => ({
+        ...group,
+        tags: group.tags.filter(tag => !(editingTag && editingTag.group === group.label && editingTag.tag === tag.tag)),
+      }))
+      .filter(group => group.tags.length > 0)
+
+    const duplicate = nextGroups.some(group => group.tags.some(tag => tag.tag === normalizedTag))
+    if (duplicate) return showError('Ya existe una variable con ese nombre', 'Variable duplicada')
+
+    const newTag = { tag: normalizedTag, desc: tagForm.desc.trim(), ejemplo: tagForm.ejemplo.trim() }
+    const groupIndex = nextGroups.findIndex(group => group.label.toLowerCase() === groupLabel.toLowerCase())
+    if (groupIndex >= 0) {
+      nextGroups[groupIndex].color = tagForm.color
+      nextGroups[groupIndex].tags.push(newTag)
+    } else {
+      nextGroups.push({ label: groupLabel, color: tagForm.color, tags: [newTag] })
+    }
+
+    const saved = await persistTagGroups(nextGroups)
+    if (saved) resetTagForm()
+  }
+
+  const handleEditTag = (group, tag) => {
+    setEditingTag({ group: group.label, tag: tag.tag })
+    setTagForm({ group: group.label, color: group.color || 'blue', tag: tag.tag, desc: tag.desc || '', ejemplo: tag.ejemplo || '' })
+  }
+
+  const handleDeleteTag = async (groupLabel, tagValue) => {
+    if (!window.confirm(`¿Eliminar la variable ${tagValue}? Las plantillas que ya la usen conservarán el texto del tag.`)) return
+    const nextGroups = cloneTagGroups(tagGroups)
+      .map(group => group.label === groupLabel
+        ? { ...group, tags: group.tags.filter(tag => tag.tag !== tagValue) }
+        : group
+      )
+      .filter(group => group.tags.length > 0)
+    await persistTagGroups(nextGroups)
+    if (editingTag?.group === groupLabel && editingTag?.tag === tagValue) resetTagForm()
+  }
+
+  const handleRestoreDefaultTags = async () => {
+    if (!window.confirm('¿Restaurar las variables base? Se reemplazará el catálogo configurable actual.')) return
+    const defaults = cloneTagGroups(TAG_GROUPS)
+    const saved = await persistTagGroups(defaults)
+    if (saved) resetTagForm()
+  }
+
   const filteredGroups = tagSearch
-    ? TAG_GROUPS.map(g => ({
+    ? tagGroups.map(g => ({
         ...g,
         tags: g.tags.filter(t =>
           t.tag.includes(tagSearch.toLowerCase()) ||
           t.desc.toLowerCase().includes(tagSearch.toLowerCase())
         )
       })).filter(g => g.tags.length > 0)
-    : TAG_GROUPS
+    : tagGroups
 
-  const tagsUsados = TAG_GROUPS.flatMap(g => g.tags).filter(t => form.texto_legal.includes(t.tag))
+  const tagsUsados = tagGroups.flatMap(g => g.tags).filter(t => form.texto_legal.includes(t.tag))
 
   return (
     <div className="space-y-5">
       <PageHeader title="Plantillas de Documentos" subtitle="Administra los templates con versionamiento">
+        {canEdit() && (
+          <button className="btn-secondary" onClick={() => { resetTagForm(); setTagManagerOpen(true) }}>
+            <PencilSquareIcon className="h-4 w-4" /> Variables
+          </button>
+        )}
         {canEdit() && (
           <button className="btn-secondary" onClick={() => { setLogoPreview(globalLogo); setLogoModal(true) }}>
             <PhotoIcon className="h-4 w-4" /> Configurar Logo
@@ -749,6 +866,11 @@ export default function Plantillas() {
               <div className="w-64 flex-shrink-0 flex flex-col gap-2">
                 <div className="flex items-center justify-between">
                   <label className="label mb-0 text-xs">Datos dinámicos</label>
+                  {canEdit() && (
+                    <button type="button" className="text-xs text-primary-600 hover:underline" onClick={() => setTagManagerOpen(true)}>
+                      Editar
+                    </button>
+                  )}
                 </div>
 
                 <div className="relative">
@@ -770,7 +892,7 @@ export default function Plantillas() {
                 <div className="flex-1 overflow-y-auto space-y-3 pr-0.5" style={{ maxHeight: '310px' }}>
                   {filteredGroups.map(group => (
                     <div key={group.label}>
-                      <div className={`text-xs font-semibold px-2 py-1 rounded-md mb-1.5 border ${GROUP_COLORS[group.color].pill}`}>
+                      <div className={`text-xs font-semibold px-2 py-1 rounded-md mb-1.5 border ${GROUP_COLORS[group.color]?.pill || GROUP_COLORS.blue.pill}`}>
                         {group.label}
                       </div>
                       <div className="space-y-1">
@@ -782,7 +904,7 @@ export default function Plantillas() {
                             onDragStart={e => handleTagDragStart(e, t.tag)}
                             onClick={() => insertTag(t.tag)}
                             title={`Ejemplo: ${t.ejemplo}`}
-                            className={`w-full text-left rounded-lg px-2.5 py-2 text-xs transition-all hover:shadow-sm cursor-grab active:cursor-grabbing ${GROUP_COLORS[group.color].btn}`}
+                            className={`w-full text-left rounded-lg px-2.5 py-2 text-xs transition-all hover:shadow-sm cursor-grab active:cursor-grabbing ${GROUP_COLORS[group.color]?.btn || GROUP_COLORS.blue.btn}`}
                           >
                             <div className="font-mono font-medium truncate">{t.tag}</div>
                             <div className="text-xs opacity-70 mt-0.5 truncate">{t.desc}</div>
@@ -808,13 +930,13 @@ export default function Plantillas() {
               <div
                 className="flex-1 bg-white border border-gray-200 rounded-xl p-6 text-sm leading-relaxed overflow-y-auto shadow-inner"
                 style={{ minHeight: '320px', fontFamily: 'Georgia, serif' }}
-                dangerouslySetInnerHTML={{ __html: renderPreview(form.texto_legal) }}
+                dangerouslySetInnerHTML={{ __html: renderPreview(form.texto_legal, tagGroups) }}
               />
               {tagsUsados.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   <span className="text-xs text-gray-500 self-center">Tags usados:</span>
                   {tagsUsados.map(t => {
-                    const g = TAG_GROUPS.find(gr => gr.tags.includes(t))
+                    const g = tagGroups.find(gr => gr.tags.some(tag => tag.tag === t.tag))
                     return (
                       <span key={t.tag} className={`text-xs px-2 py-0.5 rounded-full border font-mono ${GROUP_COLORS[g?.color || 'blue'].pill}`}>
                         {t.tag}
@@ -836,7 +958,7 @@ export default function Plantillas() {
               <div
                 className="flex-1 bg-white border border-gray-200 rounded-xl overflow-y-auto shadow-inner p-4"
                 style={{ minHeight: '380px' }}
-                dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo, headerConfig) }}
+                dangerouslySetInnerHTML={{ __html: renderRealPreview(form.texto_legal, globalLogo, headerConfig, tagGroups) }}
               />
             </div>
           )}
@@ -854,6 +976,125 @@ export default function Plantillas() {
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* ── Modal variables dinámicas ───────────────────────────────────── */}
+      <Modal open={tagManagerOpen} onClose={() => setTagManagerOpen(false)} title="Variables de plantillas" size="xl">
+        <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
+          <div className="space-y-3">
+            <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+              Crea, edita o elimina las variables disponibles para insertar en plantillas. El tag debe tener formato <span className="font-mono">{'{{nombre_variable}}'}</span>.
+            </div>
+
+            <div className="max-h-[520px] overflow-y-auto space-y-3 pr-1">
+              {tagGroups.map(group => (
+                <div key={group.label} className="rounded-xl border border-gray-200 bg-white p-3">
+                  <div className={`mb-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${GROUP_COLORS[group.color]?.pill || GROUP_COLORS.blue.pill}`}>
+                    {group.label}
+                  </div>
+                  <div className="space-y-2">
+                    {group.tags.map(tag => (
+                      <div key={tag.tag} className="flex items-start justify-between gap-3 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="truncate font-mono text-xs font-semibold text-gray-800">{tag.tag}</div>
+                          <div className="truncate text-xs text-gray-500">{tag.desc}</div>
+                          {tag.ejemplo && <div className="mt-0.5 truncate text-xs text-gray-400">Ejemplo: {tag.ejemplo}</div>}
+                        </div>
+                        {canEdit() && (
+                          <div className="flex flex-shrink-0 gap-1">
+                            <button type="button" className="rounded p-1.5 text-gray-400 hover:bg-primary-50 hover:text-primary-600" onClick={() => handleEditTag(group, tag)} title="Editar variable">
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button type="button" className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600" onClick={() => handleDeleteTag(group.label, tag.tag)} title="Eliminar variable">
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <form onSubmit={handleTagSubmit} className="rounded-xl border border-gray-200 bg-gray-50 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold text-gray-900">{editingTag ? 'Editar variable' : 'Nueva variable'}</h3>
+              <p className="text-xs text-gray-500">Las variables guardadas aparecerán en el panel de datos dinámicos.</p>
+            </div>
+
+            <div>
+              <label className="label text-xs">Categoría</label>
+              <input
+                className="input bg-white"
+                list="tag-group-options"
+                value={tagForm.group}
+                onChange={e => setTagForm(f => ({ ...f, group: e.target.value }))}
+                placeholder="Documento, Receptor, Dispositivos..."
+              />
+              <datalist id="tag-group-options">
+                {tagGroups.map(group => <option key={group.label} value={group.label} />)}
+              </datalist>
+            </div>
+
+            <div>
+              <label className="label text-xs">Color</label>
+              <select className="input bg-white" value={tagForm.color} onChange={e => setTagForm(f => ({ ...f, color: e.target.value }))}>
+                <option value="blue">Azul</option>
+                <option value="green">Verde</option>
+                <option value="purple">Morado</option>
+                <option value="orange">Naranja</option>
+                <option value="red">Rojo</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label text-xs">Variable</label>
+              <input
+                className="input bg-white font-mono"
+                value={tagForm.tag}
+                onChange={e => setTagForm(f => ({ ...f, tag: e.target.value }))}
+                onBlur={() => setTagForm(f => ({ ...f, tag: normalizeTagName(f.tag) || f.tag }))}
+                placeholder="{{motivo_salida}}"
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs">Descripción</label>
+              <input
+                className="input bg-white"
+                value={tagForm.desc}
+                onChange={e => setTagForm(f => ({ ...f, desc: e.target.value }))}
+                placeholder="Motivo de salida del equipo"
+              />
+            </div>
+
+            <div>
+              <label className="label text-xs">Ejemplo para vista previa</label>
+              <input
+                className="input bg-white"
+                value={tagForm.ejemplo}
+                onChange={e => setTagForm(f => ({ ...f, ejemplo: e.target.value }))}
+                placeholder="Equipo funcional"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button type="submit" className="btn-primary justify-center" disabled={tagSaving}>
+                {tagSaving ? 'Guardando...' : editingTag ? 'Guardar cambios' : 'Crear variable'}
+              </button>
+              {editingTag && (
+                <button type="button" className="btn-secondary justify-center" onClick={resetTagForm} disabled={tagSaving}>
+                  Cancelar edición
+                </button>
+              )}
+              <button type="button" className="btn-secondary justify-center text-amber-700" onClick={handleRestoreDefaultTags} disabled={tagSaving}>
+                Restaurar variables base
+              </button>
+            </div>
+          </form>
+        </div>
       </Modal>
 
       {/* ── Modal configurar logo global ─────────────────────────────────── */}

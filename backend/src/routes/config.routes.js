@@ -74,6 +74,51 @@ router.put('/header', requireRoles('super_admin', 'agente_soporte', 'administrad
   }
 })
 
+// GET /api/config/template-tags
+router.get('/template-tags', (req, res) => {
+  try {
+    const cfg = db.get('configuracion').find({ clave: 'template_tags' }).value()
+    const groups = cfg?.valor ? JSON.parse(cfg.valor) : null
+    res.json({ groups: Array.isArray(groups) ? groups : null })
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Error al leer variables de plantillas' })
+  }
+})
+
+// PUT /api/config/template-tags
+router.put('/template-tags', requireRoles('super_admin', 'agente_soporte', 'administrador_general'), (req, res) => {
+  try {
+    const groups = Array.isArray(req.body.groups) ? req.body.groups : []
+    const normalized = groups
+      .map(group => ({
+        label: String(group.label || '').trim(),
+        color: String(group.color || 'blue').trim(),
+        tags: Array.isArray(group.tags)
+          ? group.tags
+              .map(tag => ({
+                tag: String(tag.tag || '').trim(),
+                desc: String(tag.desc || '').trim(),
+                ejemplo: String(tag.ejemplo || '').trim(),
+              }))
+              .filter(tag => /^\{\{[a-zA-Z0-9_]+\}\}$/.test(tag.tag))
+          : [],
+      }))
+      .filter(group => group.label && group.tags.length > 0)
+
+    const now = new Date().toISOString()
+    const existing = db.get('configuracion').find({ clave: 'template_tags' }).value()
+    const valor = JSON.stringify(normalized)
+    if (existing) {
+      db.get('configuracion').find({ clave: 'template_tags' }).assign({ valor, updated_at: now }).write()
+    } else {
+      db.get('configuracion').push({ id: uuidv4(), clave: 'template_tags', valor, updated_at: now }).write()
+    }
+    res.json({ groups: normalized })
+  } catch (err) {
+    res.status(500).json({ message: err.message || 'Error al guardar variables de plantillas' })
+  }
+})
+
 // POST /api/config/reload-db — recargar caché en memoria desde MySQL
 // Útil cuando se hacen cambios directos en la BD y se necesita reflejarlos sin reiniciar
 router.post('/reload-db', requireRoles('super_admin', 'administrador_general'), async (req, res) => {
