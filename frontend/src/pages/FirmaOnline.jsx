@@ -11,6 +11,7 @@ import { generateDocumentPDF as generateSharedDocumentPDF } from '../utils/docum
 import previtaLogo from '../assets/previta.png'
 
 const tipoLabel = { entrada: 'Entrada de equipo', salida: 'Salida de equipo', responsiva: 'Responsiva de resguardo' }
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
 function PublicSignatureHeader({ compact = false }) {
   return (
@@ -47,6 +48,7 @@ async function generarPDF(doc, firmaAgenteImg, firmaReceptorImg) {
 export default function FirmaOnline() {
   const { token } = useParams()
   const sigRef    = useRef(null)
+  const signatureBoxRef = useRef(null)
 
   const [estado,   setEstado]   = useState('cargando')  // cargando | pendiente | firmado | expirado | error
   const [docInfo,  setDocInfo]  = useState(null)
@@ -56,6 +58,30 @@ export default function FirmaOnline() {
   const [canvasVacio, setCanvasVacio] = useState(true)
   const [agregarObservaciones, setAgregarObservaciones] = useState(false)
   const [receptorObservaciones, setReceptorObservaciones] = useState('')
+  const [canvasSize, setCanvasSize] = useState({ width: 360, height: 200 })
+
+  useEffect(() => {
+    if (estado !== 'pendiente') return undefined
+
+    const measureCanvas = () => {
+      if (sigRef.current && !sigRef.current.isEmpty()) return
+      const width = Math.floor(signatureBoxRef.current?.clientWidth || 360)
+      const height = Math.floor(clamp(width * 0.48, 200, 300))
+      setCanvasSize(size => (size.width === width && size.height === height ? size : { width, height }))
+    }
+
+    measureCanvas()
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measureCanvas) : null
+    if (observer && signatureBoxRef.current) observer.observe(signatureBoxRef.current)
+    window.addEventListener('resize', measureCanvas)
+    window.addEventListener('orientationchange', measureCanvas)
+
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measureCanvas)
+      window.removeEventListener('orientationchange', measureCanvas)
+    }
+  }, [estado])
 
   useEffect(() => {
     firmaOnlineAPI.getDocumento(token)
@@ -202,7 +228,7 @@ export default function FirmaOnline() {
     <div className="min-h-screen bg-gray-50">
       <PublicSignatureHeader />
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-4">
+      <div className="max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-6 space-y-4">
 
         {/* Resumen del documento */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
@@ -291,16 +317,28 @@ export default function FirmaOnline() {
         {/* Área de firma */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
           <h2 className="text-sm font-semibold text-gray-800 mb-1">Tu firma</h2>
-          <p className="text-xs text-gray-400 mb-3">Dibuja tu firma en el recuadro de abajo con tu dedo o ratón</p>
+          <p className="text-xs text-gray-400 mb-3">Dibuja tu firma en el recuadro de abajo con tu dedo o ratón. El área se ajusta automáticamente para teléfono o tablet.</p>
 
-          <div className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
-               style={{ touchAction: 'none' }}>
+          <div
+            ref={signatureBoxRef}
+            className="border-2 border-dashed border-gray-200 rounded-xl overflow-hidden bg-gray-50 relative"
+            style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+          >
             <SignatureCanvas
               ref={sigRef}
               penColor="#1e293b"
+              minWidth={0.9}
+              maxWidth={2.8}
+              velocityFilterWeight={0.65}
               canvasProps={{
-                className: 'w-full',
-                style: { width: '100%', height: '180px', display: 'block' },
+                width: canvasSize.width,
+                height: canvasSize.height,
+                style: {
+                  width: `${canvasSize.width}px`,
+                  height: `${canvasSize.height}px`,
+                  display: 'block',
+                  touchAction: 'none',
+                },
               }}
               onEnd={() => setCanvasVacio(false)}
             />
