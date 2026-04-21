@@ -84,6 +84,8 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     ubicacion_nombre: tipo_cambio === 'baja_definitiva' ? 'Dado de Baja' : (proveedor?.nombre || 'Proveedor'),
     lat: null, lng: null,
     activo: tipo_cambio !== 'baja_definitiva',
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
     updated_at: now
   }).write()
 
@@ -105,7 +107,10 @@ router.put('/:id/completar', requireRoles('super_admin', 'agente_soporte'), audi
   db.get('dispositivos').find({ id: cambio.dispositivo_id }).assign({
     estado: 'stock', ubicacion_tipo: 'almacen',
     ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
-    lat: null, lng: null, activo: true, updated_at: now
+    lat: null, lng: null, activo: true,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
+    updated_at: now
   }).write()
 
   res.json({ message: 'Cambio completado. Dispositivo regresado al almacén.' })

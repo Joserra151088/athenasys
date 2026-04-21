@@ -326,7 +326,7 @@ export default function Layout() {
   return (
     <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.32),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)]">
       <aside
-        className={`relative hidden flex-shrink-0 border-r border-white/60 bg-slate-50/75 backdrop-blur-xl transition-all duration-300 lg:flex ${
+        className={`relative hidden flex-shrink-0 border-r border-white/60 bg-slate-50/75 backdrop-blur-xl transition-all duration-300 xl:flex ${
           collapsed ? 'w-[104px]' : 'w-[312px]'
         }`}
       >
@@ -341,7 +341,7 @@ export default function Layout() {
         </button>
       </aside>
 
-      <div className={`fixed inset-0 z-40 transition-all duration-300 lg:hidden ${sidebarOpen ? 'visible' : 'invisible'}`}>
+      <div className={`fixed inset-0 z-40 transition-all duration-300 xl:hidden ${sidebarOpen ? 'visible' : 'invisible'}`}>
         <div
           className={`absolute inset-0 bg-slate-950/35 backdrop-blur-sm transition-opacity duration-300 ${
             sidebarOpen ? 'opacity-100' : 'opacity-0'
@@ -364,7 +364,7 @@ export default function Layout() {
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <header className="border-b border-white/60 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-xl lg:hidden">
+        <header className="border-b border-white/60 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-xl xl:hidden">
           <div className="flex items-center gap-3">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -380,7 +380,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 overflow-y-auto">
-          <div key={location.pathname} className="p-6 animate-fadeIn">
+          <div key={location.pathname} className="p-4 animate-fadeIn xl:p-6">
             <Outlet />
           </div>
         </main>

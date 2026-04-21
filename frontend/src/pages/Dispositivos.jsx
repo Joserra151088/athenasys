@@ -120,6 +120,20 @@ function formatCamposExtra(camposExtra) {
     .map(([key, value]) => `${formatCampoLabel(key)}: ${value}`)
 }
 
+function formatDateTime(value) {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  return new Intl.DateTimeFormat('es-MX', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 // Muestra costo con estilo según tipo de tarifa
 function CostoBadge({ tipo, costo, proveedorNombre }) {
   const rate = DEVICE_DAILY_RATES[tipo]
@@ -246,7 +260,8 @@ export default function Dispositivos() {
   // Column visibility
   const [visibleCols, setVisibleCols] = useState({
     tipo: true, marca_modelo: true, serie: true, proveedor: true,
-    caracteristicas: true, costo: true, estado: true, ubicacion: true
+    caracteristicas: true, costo: true, estado: true, ubicacion: true,
+    created_at: true, updated_at: true, actualizado_por: true
   })
   const [colsMenuOpen, setColsMenuOpen] = useState(false)
   const colsMenuRef = useRef(null)
@@ -338,6 +353,15 @@ export default function Dispositivos() {
     else if (sortCol === 'serie') { va = (a.serie || '').toLowerCase(); vb = (b.serie || '').toLowerCase() }
     else if (sortCol === 'estado') { va = (a.estado || '').toLowerCase(); vb = (b.estado || '').toLowerCase() }
     else if (sortCol === 'ubicacion') { va = (a.ubicacion_tipo || '').toLowerCase(); vb = (b.ubicacion_tipo || '').toLowerCase() }
+    else if (sortCol === 'created_at' || sortCol === 'updated_at') {
+      va = new Date(a[sortCol] || 0).getTime()
+      vb = new Date(b[sortCol] || 0).getTime()
+      return sortDir === 'asc' ? va - vb : vb - va
+    }
+    else if (sortCol === 'actualizado_por') {
+      va = (a.actualizado_por_nombre || a.creado_por_nombre || '').toLowerCase()
+      vb = (b.actualizado_por_nombre || b.creado_por_nombre || '').toLowerCase()
+    }
     return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
   })
 
@@ -425,6 +449,9 @@ export default function Dispositivos() {
     costo: 'Costo/dia',
     estado: 'Estado',
     ubicacion: 'Ubicación',
+    created_at: 'Fecha de creación',
+    updated_at: 'Fecha de modificación',
+    actualizado_por: 'Usuario última mod.',
   }
 
   const SortIcon = ({ col }) => {
@@ -438,6 +465,8 @@ export default function Dispositivos() {
       onMouseDown={(e) => startResize(colKey, e)}
     />
   )
+
+  const visibleColumnCount = Object.values(visibleCols).filter(Boolean).length + (canEdit() ? 1 : 0)
 
   return (
     <div className="space-y-5">
@@ -517,7 +546,7 @@ export default function Dispositivos() {
               <AdjustmentsHorizontalIcon className="h-4 w-4" /> Columnas
             </button>
             {colsMenuOpen && (
-              <div className="absolute right-0 mt-1 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-2 min-w-44">
+              <div className="absolute right-0 mt-1 z-50 max-h-80 min-w-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl p-2">
                 {Object.entries(colLabels).map(([k, label]) => (
                   <label key={k} className="flex items-center gap-2 px-2 py-1.5 hover:bg-gray-50 rounded-lg cursor-pointer text-sm">
                     <input
@@ -548,7 +577,7 @@ export default function Dispositivos() {
       {/* Tabla */}
       <div className="card p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[1500px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 {visibleCols.tipo && (
@@ -638,6 +667,42 @@ export default function Dispositivos() {
                     <ResizeHandle colKey="ubicacion" />
                   </th>
                 )}
+                {visibleCols.created_at && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['created_at'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('created_at')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Fecha creación <SortIcon col="created_at" />
+                    </div>
+                    <ResizeHandle colKey="created_at" />
+                  </th>
+                )}
+                {visibleCols.updated_at && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['updated_at'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('updated_at')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Fecha modificación <SortIcon col="updated_at" />
+                    </div>
+                    <ResizeHandle colKey="updated_at" />
+                  </th>
+                )}
+                {visibleCols.actualizado_por && (
+                  <th
+                    className="table-header cursor-pointer select-none hover:bg-gray-100 transition-colors"
+                    style={{ width: colWidths['actualizado_por'] || 'auto', position: 'relative' }}
+                    onClick={() => handleSort('actualizado_por')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Última modificación <SortIcon col="actualizado_por" />
+                    </div>
+                    <ResizeHandle colKey="actualizado_por" />
+                  </th>
+                )}
                 {canEdit() && (
                   <th className="table-header" style={{ position: 'relative' }}>
                     Acciones
@@ -647,13 +712,15 @@ export default function Dispositivos() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={9} className="py-12 text-center">
+                <tr><td colSpan={visibleColumnCount} className="py-12 text-center">
                   <div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" />
                 </td></tr>
               ) : sorted.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400">No se encontraron dispositivos</td></tr>
+                <tr><td colSpan={visibleColumnCount} className="py-12 text-center text-gray-400">No se encontraron dispositivos</td></tr>
               ) : sorted.map(d => {
                 const camposExtra = formatCamposExtra(d.campos_extra)
+                const ultimoUsuario = d.actualizado_por_nombre || d.creado_por_nombre || 'Sistema'
+                const esSoloCreacion = !d.actualizado_por_nombre
                 return (
                 <tr key={d.id} className="hover:bg-gray-50">
                   {visibleCols.tipo && <td className="table-cell font-medium">{d.tipo}</td>}
@@ -717,6 +784,26 @@ export default function Dispositivos() {
                       <div className="mt-0.5 max-w-[220px] whitespace-normal break-words text-xs leading-4 text-gray-400">
                         {d.ubicacion_nombre}
                       </div>
+                    </td>
+                  )}
+                  {visibleCols.created_at && (
+                    <td className="table-cell whitespace-nowrap text-xs text-gray-500">
+                      {formatDateTime(d.created_at)}
+                    </td>
+                  )}
+                  {visibleCols.updated_at && (
+                    <td className="table-cell whitespace-nowrap text-xs text-gray-500">
+                      {formatDateTime(d.updated_at)}
+                    </td>
+                  )}
+                  {visibleCols.actualizado_por && (
+                    <td className="table-cell min-w-44">
+                      <div className="max-w-[220px] truncate text-sm font-medium text-gray-700" title={ultimoUsuario}>
+                        {ultimoUsuario}
+                      </div>
+                      {esSoloCreacion && (
+                        <div className="text-xs text-gray-400">Registro inicial</div>
+                      )}
                     </td>
                   )}
                   {canEdit() && (

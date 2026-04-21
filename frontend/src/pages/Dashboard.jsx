@@ -23,12 +23,12 @@ import {
 function KpiCard({ icon: Icon, label, value, gradient, iconColor, textColor, to }) {
   const content = (
     <div
-      className="rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-default relative overflow-hidden min-h-[120px]"
+      className="rounded-2xl p-4 flex flex-col justify-between transition-all duration-300 hover:shadow-xl hover:-translate-y-1 cursor-default relative overflow-hidden min-h-[112px] xl:min-h-[120px] xl:p-5"
       style={{ background: gradient, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}
     >
       {/* Watermark icon */}
       <div className="absolute -right-3 -bottom-3 opacity-[0.13] pointer-events-none">
-        <Icon className="h-28 w-28" style={{ color: iconColor }} />
+        <Icon className="h-24 w-24 xl:h-28 xl:w-28" style={{ color: iconColor }} />
       </div>
       {/* Icon chip */}
       <div
@@ -40,7 +40,7 @@ function KpiCard({ icon: Icon, label, value, gradient, iconColor, textColor, to 
       {/* Value + label */}
       <div className="relative z-10 mt-3">
         <div
-          className="text-4xl font-black leading-none mb-1 tracking-tight"
+          className="text-3xl font-black leading-none mb-1 tracking-tight xl:text-4xl"
           style={{ color: textColor || iconColor }}
         >
           {value ?? <span style={{ color: iconColor, opacity: 0.3 }}>—</span>}
@@ -86,8 +86,8 @@ function DonutChart({ segments }) {
   })
 
   return (
-    <div className="flex items-center gap-6">
-      <svg viewBox="0 0 100 100" className="w-32 h-32 flex-shrink-0">
+    <div className="flex flex-col items-center gap-4 sm:flex-row sm:gap-6">
+      <svg viewBox="0 0 100 100" className="h-28 w-28 flex-shrink-0 xl:h-32 xl:w-32">
         {/* Track */}
         <circle cx={cx} cy={cy} r={r} fill="none" stroke="#f1f5f9" strokeWidth="10" />
         {arcs.map((arc, i) =>
@@ -129,7 +129,7 @@ function DonutChart({ segments }) {
           total
         </text>
       </svg>
-      <div className="space-y-2">
+      <div className="w-full space-y-2 sm:w-auto">
         {arcs.map((arc, i) => (
           <div
             key={i}
@@ -202,10 +202,10 @@ export default function Dashboard() {
     .sort((a, b) => b.count - a.count)
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-full space-y-5 xl:space-y-6">
       {/* Header banner */}
       <div
-        className="rounded-2xl px-7 py-7 text-white relative overflow-hidden"
+          className="rounded-2xl px-5 py-6 text-white relative overflow-hidden sm:px-6 xl:px-7 xl:py-7"
         style={{
           background: 'linear-gradient(120deg, #0d1b3e 0%, #1a3471 50%, #2d5ab0 100%)',
           boxShadow: '0 6px 30px rgba(26,52,113,0.22)',
@@ -221,7 +221,7 @@ export default function Dashboard() {
           <div className="flex items-start justify-between flex-wrap gap-4">
             <div>
               <p className="text-blue-300 text-xs font-semibold uppercase tracking-widest mb-1">Resumen del sistema</p>
-              <h1 className="text-3xl font-bold tracking-tight">Panel de Control</h1>
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Panel de Control</h1>
               <p className="text-blue-200 text-sm mt-1 capitalize">{today}</p>
             </div>
             {/* System status indicator */}
@@ -270,7 +270,7 @@ export default function Dashboard() {
           <div className="w-1 h-4 rounded-full" style={{ background: '#1a3471' }} />
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Dispositivos</h2>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
           <KpiCard
             icon={ComputerDesktopIcon}
             label="Total Dispositivos"
@@ -309,7 +309,7 @@ export default function Dashboard() {
           <div className="w-1 h-4 rounded-full" style={{ background: '#4f46e5' }} />
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Licencias de Software</h2>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 xl:gap-4">
           <KpiCard
             icon={KeyIcon}
             label="Total Licencias"
@@ -349,10 +349,10 @@ export default function Dashboard() {
           <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Distribución y Análisis</h2>
         </div>
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         {/* Ubicación — barras */}
         <div
-          className="bg-white rounded-2xl border border-gray-100 p-6"
+          className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 xl:p-6"
           style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         >
           <h3 className="font-semibold text-gray-800 mb-5 flex items-center gap-2">
@@ -389,7 +389,7 @@ export default function Dashboard() {
 
         {/* Tipos de dispositivo */}
         <div
-          className="bg-white rounded-2xl border border-gray-100 p-6"
+          className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 xl:p-6"
           style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         >
           <h3 className="font-semibold text-gray-800 mb-5 flex items-center gap-2">
@@ -420,7 +420,7 @@ export default function Dashboard() {
 
         {/* Dona de estados */}
         <div
-          className="bg-white rounded-2xl border border-gray-100 p-6"
+          className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 xl:p-6"
           style={{ boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}
         >
           <h3 className="font-semibold text-gray-800 mb-5 flex items-center gap-2">
@@ -432,11 +432,11 @@ export default function Dashboard() {
       </div>
 
       {/* Bottom row: Alertas + Accesos Rápidos */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-5">
 
         {/* ── Alertas del Sistema (2/5) ── */}
         <div
-          className="lg:col-span-2 bg-white rounded-2xl border border-gray-100 p-6"
+          className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 xl:col-span-2 xl:p-6"
           style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}
         >
           <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
@@ -526,14 +526,14 @@ export default function Dashboard() {
 
         {/* ── Accesos Rápidos (3/5) ── */}
         <div
-          className="lg:col-span-3 bg-white rounded-2xl border border-gray-100 p-6"
+          className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-5 xl:col-span-3 xl:p-6"
           style={{ boxShadow: '0 1px 6px rgba(0,0,0,0.06)' }}
         >
           <h3 className="font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <SparklesIcon className="h-4 w-4 text-gray-400" />
             Accesos Rápidos
           </h3>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {[
               {
                 label: 'Dispositivos', to: '/dispositivos', Icon: ComputerDesktopIcon,
@@ -569,7 +569,7 @@ export default function Dashboard() {
               <Link
                 key={to}
                 to={to}
-                className="flex flex-col items-center gap-2.5 p-4 rounded-xl transition-all duration-200 hover:scale-[1.04] hover:shadow-md text-center"
+                className="flex flex-col items-center gap-2.5 p-3 rounded-xl transition-all duration-200 hover:scale-[1.04] hover:shadow-md text-center sm:p-4"
                 style={{ background: gradient }}
               >
                 <div

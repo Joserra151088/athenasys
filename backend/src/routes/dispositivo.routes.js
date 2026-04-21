@@ -259,6 +259,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
       ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
       lat: null, lng: null, activo: true,
       creado_por: req.user.id, creado_por_nombre: req.user.nombre,
+      actualizado_por: req.user.id, actualizado_por_nombre: req.user.nombre,
       created_at: now, updated_at: now
     }
     db.get('dispositivos').push(item).write()
@@ -317,7 +318,12 @@ router.delete('/:id', requireRoles('super_admin'), auditLog('eliminar', 'disposi
   const asignacion = db.get('asignaciones').find({ dispositivo_id: req.params.id, activo: true }).value()
   if (asignacion) return res.status(409).json({ message: 'El dispositivo tiene una asignación activa. Primero desasígnalo.' })
 
-  db.get('dispositivos').find({ id: req.params.id }).assign({ activo: false, updated_at: new Date().toISOString() }).write()
+  db.get('dispositivos').find({ id: req.params.id }).assign({
+    activo: false,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
+    updated_at: new Date().toISOString()
+  }).write()
   res.json({ message: 'Dispositivo eliminado correctamente' })
 })
 

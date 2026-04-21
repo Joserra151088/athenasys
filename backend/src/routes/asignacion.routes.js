@@ -93,7 +93,10 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('asigna
     estado: 'activo', ubicacion_tipo: tipo_asignacion,
     ubicacion_id: asignado_a_id,
     ubicacion_nombre: tipo_asignacion === 'empleado' ? destinatario.nombre_completo : destinatario.nombre,
-    lat, lng, updated_at: now
+    lat, lng,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
+    updated_at: now
   }).write()
 
   res.status(201).json(asignacion)
@@ -171,7 +174,10 @@ router.delete('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('d
   db.get('dispositivos').find({ id: asignacion.dispositivo_id }).assign({
     estado: 'stock', ubicacion_tipo: 'almacen',
     ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
-    lat: null, lng: null, updated_at: now
+    lat: null, lng: null,
+    actualizado_por: req.user.id,
+    actualizado_por_nombre: req.user.nombre,
+    updated_at: now
   }).write()
 
   res.json({ message: 'Asignación cancelada. Dispositivo regresado al almacén.' })

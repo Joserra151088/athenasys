@@ -127,6 +127,8 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
         estado: 'pendiente',
         doc_pendiente_id: doc.id,
         doc_pendiente_folio: doc.folio,
+        actualizado_por: req.user.id,
+        actualizado_por_nombre: req.user.nombre,
         updated_at: now
       }).write()
     }
@@ -362,7 +364,10 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
         estado: 'activo', ubicacion_tipo: doc.entidad_tipo,
         ubicacion_id: doc.entidad_id,
         ubicacion_nombre: doc.entidad_tipo === 'empleado' ? destinatario.nombre_completo : destinatario.nombre,
-        lat, lng, updated_at: now,
+        lat, lng,
+        actualizado_por: req.user.id,
+        actualizado_por_nombre: req.user.nombre,
+        updated_at: now,
         doc_pendiente_id: null, doc_pendiente_folio: null
       }).write()
     }
@@ -377,7 +382,10 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
         db.get('dispositivos').find({ id: devInfo.id }).assign({
           estado: 'stock', ubicacion_tipo: 'almacen',
           ubicacion_id: null, ubicacion_nombre: 'Almacén Central',
-          lat: null, lng: null, updated_at: now
+          lat: null, lng: null,
+          actualizado_por: req.user.id,
+          actualizado_por_nombre: req.user.nombre,
+          updated_at: now
         }).write()
       }
     }
