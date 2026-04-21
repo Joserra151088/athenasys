@@ -26,6 +26,26 @@ const COL_LABELS = {
 }
 const DOC_TITLES = { responsiva: 'CARTA RESPONSIVA', entrada: 'FORMATO DE ENTRADA DE EQUIPO', salida: 'FORMATO DE SALIDA DE EQUIPO' }
 
+const normalizeText = (value = '') =>
+  String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+
+async function fetchAllPaginated(getter, params = {}, pageSize = 500) {
+  const first = await getter({ ...params, page: 1, limit: pageSize })
+  const all = [...(first.data || [])]
+  const totalPages = Number(first.pages || Math.ceil((first.total || all.length) / pageSize) || 1)
+
+  for (let page = 2; page <= totalPages; page += 1) {
+    const res = await getter({ ...params, page, limit: pageSize })
+    all.push(...(res.data || []))
+  }
+
+  return all
+}
+
 function DocumentHeader({ tipo, logo = null }) {
   return (
     <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16 }}>
@@ -306,13 +326,12 @@ export default function Documentos() {
   useEffect(() => { load(1) }, [load])
 
   const openCreate = async () => {
-    const [pl, emp, suc, devs] = await Promise.all([
+    const [pl, emp, devs] = await Promise.all([
       plantillaAPI.getAll(),
-      empleadoAPI.getAll({ limit: 200 }),
-      sucursalAPI.getAll({ limit: 300 }),
+      fetchAllPaginated(empleadoAPI.getAll),
       deviceAPI.getAll({ limit: 1000 })
     ])
-    const empSorted = [...emp.data].sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'))
+    const empSorted = [...emp].sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'))
     setPlantillas(pl)
     setEmpleados(empSorted)
     setEntidades(empSorted)
@@ -329,8 +348,8 @@ export default function Documentos() {
     if (tipo === 'empleado') {
       setEntidades(empleados)
     } else {
-      const res = await sucursalAPI.getAll({ limit: 300 })
-      setEntidades(res.data)
+      const res = await fetchAllPaginated(sucursalAPI.getAll)
+      setEntidades(res.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')))
     }
     setForm(f => ({ ...f, entidad_tipo: tipo, entidad_id: '' }))
     setEntidadSearch('')
@@ -772,8 +791,16 @@ export default function Documentos() {
                 const filteredE = entidades
                   .filter(e => {
                     if (!entidadSearch) return true
-                    const q = entidadSearch.toLowerCase()
-                    return (e.nombre_completo || e.nombre || '').toLowerCase().includes(q) || (e.num_empleado || '').toLowerCase().includes(q)
+                    const q = normalizeText(entidadSearch)
+                    return [
+                      e.nombre_completo,
+                      e.nombre,
+                      e.num_empleado,
+                      e.email,
+                      e.puesto,
+                      e.area,
+                      e.sucursal_nombre,
+                    ].some(value => normalizeText(value).includes(q))
                   })
                   .sort((a, b) => (a.nombre_completo || a.nombre || '').localeCompare(b.nombre_completo || b.nombre || '', 'es'))
                 return (
@@ -823,11 +850,18 @@ export default function Documentos() {
             </div>
             {form.tipo === 'responsiva' && (() => {
               const receptorSeleccionado = empleados.find(e => e.id === form.receptor_id)
-              const filteredReceptores = empleados.filter(e =>
-                !receptorSearch ||
-                (e.nombre_completo || '').toLowerCase().includes(receptorSearch.toLowerCase()) ||
-                (e.num_empleado || '').toLowerCase().includes(receptorSearch.toLowerCase())
-              )
+              const qReceptor = normalizeText(receptorSearch)
+              const filteredReceptores = empleados.filter(e => {
+                if (!qReceptor) return true
+                return [
+                  e.nombre_completo,
+                  e.num_empleado,
+                  e.email,
+                  e.puesto,
+                  e.area,
+                  e.sucursal_nombre,
+                ].some(value => normalizeText(value).includes(qReceptor))
+              })
               return (
                 <div className="col-span-2">
                   <label className="label">Persona que recibe *</label>
