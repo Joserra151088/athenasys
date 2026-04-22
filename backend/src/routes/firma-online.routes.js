@@ -242,6 +242,7 @@ router.get('/:token', (req, res) => {
         entidad_tipo:    doc.entidad_tipo,
         agente_nombre:   doc.agente_nombre,
         receptor_nombre: doc.receptor_nombre,
+        receptor_firmante_nombre: doc.receptor_firmante_nombre || '',
         dispositivos:    doc.dispositivos || [],
         motivo_salida:   doc.motivo_salida || '',
         observaciones:   doc.observaciones || '',
@@ -269,10 +270,12 @@ router.get('/:token', (req, res) => {
 router.post('/:token/firmar', async (req, res) => {
   try {
     const { token } = req.params
-    const { firma_receptor, pdf_base64, receptor_observaciones } = req.body
+    const { firma_receptor, pdf_base64, receptor_observaciones, receptor_firmante_nombre } = req.body
 
     if (!firma_receptor) return res.status(400).json({ message: 'Se requiere la firma del receptor' })
     const receptorObs = String(receptor_observaciones || '').trim()
+    const receptorFirmanteNombre = String(receptor_firmante_nombre || '').trim()
+    if (!receptorFirmanteNombre) return res.status(400).json({ message: 'Captura tu nombre completo para registrar quién recibe y firma el documento' })
 
     const ft = db.get('firma_tokens').find({ token }).value()
     if (!ft) return res.status(404).json({ message: 'Link de firma no válido' })
@@ -303,6 +306,7 @@ router.post('/:token/firmar', async (req, res) => {
       firmado:             true,
       fecha_firma:         now,
       receptor_observaciones: receptorObs || null,
+      receptor_firmante_nombre: receptorFirmanteNombre,
       firma_online_estado: 'firmado',
       updated_at:          now,
     }

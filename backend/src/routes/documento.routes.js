@@ -81,7 +81,9 @@ router.get('/', (req, res) => {
     items = items.filter(d =>
       d.entidad_nombre?.toLowerCase().includes(q) ||
       d.folio?.toLowerCase().includes(q) ||
-      d.agente_nombre?.toLowerCase().includes(q)
+      d.agente_nombre?.toLowerCase().includes(q) ||
+      d.logistica_nombre?.toLowerCase().includes(q) ||
+      d.receptor_firmante_nombre?.toLowerCase().includes(q)
     )
   }
   items = items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -248,6 +250,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     firma_logistica: null, firma_logistica_path: null,
     receptor_id: receptor_id || null,
     receptor_nombre: receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null),
+    receptor_firmante_nombre: req.body.receptor_firmante_nombre || null,
     firma_receptor: null, firma_receptor_path: null,
     firmado: false, fecha_firma: null,
     motivo_salida: tipo === 'salida' ? String(motivo_salida || '').trim() : '',
@@ -327,8 +330,9 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
   if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado' })
 
-  const { firma_agente, firma_receptor, firma_logistica, logistica_nombre, logistica_area, receptor_observaciones } = req.body
+  const { firma_agente, firma_receptor, firma_logistica, logistica_nombre, logistica_area, receptor_observaciones, receptor_firmante_nombre } = req.body
   if (!firma_receptor) return res.status(400).json({ message: 'Se requiere la firma del receptor' })
+  const receptorFirmanteNombre = String(receptor_firmante_nombre || doc.receptor_firmante_nombre || '').trim()
   const nombreLogistica = String(logistica_nombre || doc.logistica_nombre || '').trim()
   const areaLogistica = String(logistica_area || doc.logistica_area || '').trim()
   const firmaLogisticaData = firma_logistica || doc.firma_logistica || null
@@ -368,6 +372,7 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
     firma_receptor,
     firma_receptor_path: fs.existsSync(receptorPath) ? `/uploads/firmas/${doc.id}_receptor.png` : null,
     receptor_observaciones: String(receptor_observaciones || doc.receptor_observaciones || '').trim() || null,
+    receptor_firmante_nombre: receptorFirmanteNombre || null,
     firmado: true, fecha_firma: now, updated_at: now,
     // SharePoint — se rellenan abajo si el servicio está activo
     sharepoint_item_id:      null,

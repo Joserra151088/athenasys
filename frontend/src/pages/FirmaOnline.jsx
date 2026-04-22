@@ -58,6 +58,7 @@ export default function FirmaOnline() {
   const [canvasVacio, setCanvasVacio] = useState(true)
   const [agregarObservaciones, setAgregarObservaciones] = useState(false)
   const [receptorObservaciones, setReceptorObservaciones] = useState('')
+  const [receptorFirmanteNombre, setReceptorFirmanteNombre] = useState('')
   const [canvasSize, setCanvasSize] = useState({ width: 360, height: 200 })
 
   useEffect(() => {
@@ -112,6 +113,11 @@ export default function FirmaOnline() {
       setMensaje('Por favor dibuja tu firma antes de continuar.')
       return
     }
+    const nombreFirmante = receptorFirmanteNombre.trim()
+    if (!nombreFirmante) {
+      setMensaje('Captura tu nombre completo para registrar quién recibe y firma el documento.')
+      return
+    }
     const receptorObs = agregarObservaciones ? receptorObservaciones.trim() : ''
     if (agregarObservaciones && !receptorObs) {
       setMensaje('Captura la observación de recepción o desmarca la casilla para continuar.')
@@ -124,6 +130,7 @@ export default function FirmaOnline() {
       const firmaAgente   = docInfo.firma_agente || null
       const docConObservaciones = {
         ...docInfo,
+        receptor_firmante_nombre: nombreFirmante,
         receptor_observaciones: receptorObs,
       }
 
@@ -138,6 +145,7 @@ export default function FirmaOnline() {
 
       await firmaOnlineAPI.firmar(token, {
         firma_receptor: firmaReceptor,
+        receptor_firmante_nombre: nombreFirmante,
         receptor_observaciones: receptorObs,
         pdf_base64,
       })
@@ -280,6 +288,25 @@ export default function FirmaOnline() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Nombre de quien recibe */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <label className="block text-sm font-semibold text-gray-800 mb-1">
+            Nombre completo de quien recibe y firma <span className="text-red-500">*</span>
+          </label>
+          <p className="text-xs text-gray-400 mb-3">
+            Este nombre quedará registrado en el documento firmado, aunque el receptor sea una sucursal.
+          </p>
+          <input
+            type="text"
+            value={receptorFirmanteNombre}
+            onChange={event => setReceptorFirmanteNombre(event.target.value)}
+            maxLength={200}
+            autoComplete="name"
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            placeholder="Ej. Juan Pérez López"
+          />
         </div>
 
         {/* Observaciones de recepción */}

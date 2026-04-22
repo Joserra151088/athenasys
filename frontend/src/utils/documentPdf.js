@@ -40,7 +40,7 @@ function getPlantillaTexto(doc) {
     : '(Sin dispositivos)'
 
   return plantillaTexto
-    .replaceAll('{{receptor_nombre}}', doc.receptor_nombre || doc.entidad_nombre || '')
+    .replaceAll('{{receptor_nombre}}', doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre || '')
     .replaceAll('{{receptor_num_empleado}}', doc.entidad_num_empleado || '')
     .replaceAll('{{receptor_area}}', doc.entidad_area || doc.entidad_departamento || '')
     .replaceAll('{{receptor_puesto}}', doc.entidad_puesto || '')
@@ -349,11 +349,11 @@ export async function generateDocumentPDF(doc, options = {}) {
     ? [
         { x: ml, img: firmaA, name: doc.agente_nombre, role: 'Agente de Soporte TI' },
         { x: ml + bw + gap, img: firmaL, name: doc.logistica_nombre, role: doc.logistica_area || 'Logística / Almacén' },
-        { x: ml + (bw + gap) * 2, img: firmaR, name: doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
+        { x: ml + (bw + gap) * 2, img: firmaR, name: doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
       ]
     : [
         { x: ml, img: firmaA, name: doc.agente_nombre, role: 'Agente de Soporte TI' },
-        { x: ml + cw / 2 + 8, img: firmaR, name: doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
+        { x: ml + cw / 2 + 8, img: firmaR, name: doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre, role: 'Receptor' },
       ]
 
   const writeName = (name, x, cy) => {

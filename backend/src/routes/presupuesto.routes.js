@@ -16,6 +16,32 @@ const calcDetalleTotals = (subtotalValue, aplicaIva, moneda = 'MXN', tipoCambio 
   const total_mxn = moneda === 'USD' ? roundMoney(total * (parseFloat(tipoCambio) || 1)) : total
   return { subtotal, iva_monto, total, total_mxn }
 }
+const calcDetalleAggregateTotalMXN = (lines = []) => {
+  const buckets = {}
+  for (const d of lines) {
+    const aplicaIva = resolveIvaFlag(d.aplica_iva, false)
+    const key = [
+      d.proveedor || '',
+      d.factura_folio || '',
+      d.moneda || 'MXN',
+      parseFloat(d.tipo_cambio) || 1,
+      aplicaIva ? 1 : 0,
+    ].join('|')
+    if (!buckets[key]) {
+      buckets[key] = {
+        subtotal: 0,
+        moneda: d.moneda || 'MXN',
+        tipo_cambio: parseFloat(d.tipo_cambio) || 1,
+        aplica_iva: aplicaIva,
+      }
+    }
+    buckets[key].subtotal += parseFloat(d.subtotal) || 0
+  }
+
+  return roundMoney(Object.values(buckets).reduce((sum, bucket) => {
+    return sum + calcDetalleTotals(bucket.subtotal, bucket.aplica_iva, bucket.moneda, bucket.tipo_cambio).total_mxn
+  }, 0))
+}
 
 // ── Helper: sincronizar gasto_real en presupuesto_gastos_mes desde finanzas_detalle ──
 function syncGastoReal(partida_id, mes, anio) {
@@ -23,12 +49,7 @@ function syncGastoReal(partida_id, mes, anio) {
   mes = parseInt(mes); anio = parseInt(anio)
   const lines = db.get('finanzas_detalle').filter(d => d.partida_id === partida_id && d.mes === mes && d.anio === anio).value()
   // Siempre sumar en MXN: si la línea es USD, usar total_mxn (si existe) o convertir con tipo_cambio
-  const gasto_real = roundMoney(lines.reduce((s, d) => {
-    const totalMXN = d.total_mxn != null
-      ? roundMoney(d.total_mxn)
-      : (d.moneda === 'USD' ? roundMoney((parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1)) : roundMoney(d.total))
-    return s + totalMXN
-  }, 0))
+  const gasto_real = calcDetalleAggregateTotalMXN(lines)
   const existing = db.get('presupuesto_gastos_mes').find({ partida_id, mes, anio }).value()
   const now = new Date().toISOString()
   if (existing) {

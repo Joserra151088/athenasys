@@ -182,6 +182,39 @@ const calcIvaMonto = (d) => {
   if (Number.isFinite(stored)) return roundMoney(stored)
   return calcIvaBreakdown(d?.subtotal, true).iva_monto
 }
+const calcAggregateTotals = (lines = []) => {
+  const buckets = {}
+  lines.forEach(d => {
+    const key = [
+      d?.proveedor || '',
+      d?.factura_folio || '',
+      d?.moneda || 'MXN',
+      parseFloat(d?.tipo_cambio) || 1,
+      isIvaApplied(d) ? 1 : 0,
+    ].join('|')
+    if (!buckets[key]) {
+      buckets[key] = {
+        subtotal: 0,
+        moneda: d?.moneda || 'MXN',
+        tipo_cambio: parseFloat(d?.tipo_cambio) || 1,
+        aplica_iva: isIvaApplied(d),
+      }
+    }
+    buckets[key].subtotal += parseFloat(d?.subtotal) || 0
+  })
+
+  return Object.values(buckets).reduce((acc, bucket) => {
+    const { subtotal, iva_monto, total } = calcIvaBreakdown(bucket.subtotal, bucket.aplica_iva)
+    const total_mxn = bucket.moneda === 'USD' ? roundMoney(total * bucket.tipo_cambio) : total
+    const mxnFactor = bucket.moneda === 'USD' ? bucket.tipo_cambio : 1
+    return {
+      subtotal: roundMoney(acc.subtotal + roundMoney(subtotal * mxnFactor)),
+      iva_monto: roundMoney(acc.iva_monto + roundMoney(iva_monto * mxnFactor)),
+      total: roundMoney(acc.total + total),
+      total_mxn: roundMoney(acc.total_mxn + total_mxn),
+    }
+  }, { subtotal: 0, iva_monto: 0, total: 0, total_mxn: 0 })
+}
 
 // Calcula el total en MXN de un registro de detalle (usa total_mxn si ya está calculado)
 const calcTotalMXN = (d) => {
@@ -739,13 +772,11 @@ function TabDesgloce() {
         }
       }
       grupos[key].lines.push(d)
-      grupos[key].subtotal  += roundMoney(d.subtotal)
-      grupos[key].iva_monto += calcIvaMonto(d)
-      grupos[key].total     += roundMoney(d.total)
-      grupos[key].total_mxn += calcTotalMXN(d)
       if (isIvaApplied(d)) grupos[key].aplica_iva = true
     })
-    return Object.values(grupos).sort((a, b) => a.proveedor.localeCompare(b.proveedor))
+    return Object.values(grupos)
+      .map(grupo => ({ ...grupo, ...calcAggregateTotals(grupo.lines) }))
+      .sort((a, b) => a.proveedor.localeCompare(b.proveedor))
   }, [detalleFiltrado])
 
   // ── Exportar ────────────────────────────────────────────────────────────────
@@ -1057,15 +1088,12 @@ function TabDesgloce() {
   const ahorroVal = parseFloat(form.ahorro_soporte) || 0
   const noEjercidoVal = Math.max(0, diferencia - ahorroVal)
 
-  const totalesGlobal = detalleFiltrado.reduce((acc, d) => {
-    const tc  = parseFloat(d.tipo_cambio) || 1
-    const mxnFactor = d.moneda === 'USD' ? tc : 1
-    return {
-      subtotal: acc.subtotal + roundMoney(roundMoney(d.subtotal) * mxnFactor),
-      iva:      acc.iva      + roundMoney(calcIvaMonto(d) * mxnFactor),
-      total:    acc.total    + toMXN(d),
-    }
-  }, { subtotal: 0, iva: 0, total: 0 })
+  const aggregateGlobal = calcAggregateTotals(detalleFiltrado)
+  const totalesGlobal = {
+    subtotal: aggregateGlobal.subtotal,
+    iva: aggregateGlobal.iva_monto,
+    total: aggregateGlobal.total_mxn,
+  }
 
   return (
     <div className="space-y-4">

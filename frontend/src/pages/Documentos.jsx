@@ -20,7 +20,9 @@ const COL_LABELS = {
   folio: 'Folio',
   tipo: 'Tipo',
   dispositivos: 'Dispositivos',
+  logistica: 'Logística / Almacén',
   receptor: 'Receptor',
+  receptor_firmante: 'Recibió / Firmó',
   estado: 'Estado',
   fecha: 'Fecha'
 }
@@ -107,7 +109,8 @@ export default function Documentos() {
   // Columnas visibles
   const colsMenuRef = useRef(null)
   const [colsMenuOpen, setColsMenuOpen] = useState(false)
-  const [visibleCols, setVisibleCols] = useState({ folio: true, tipo: true, dispositivos: true, receptor: true, estado: true, fecha: true })
+  const [visibleCols, setVisibleCols] = useState({ folio: true, tipo: true, dispositivos: true, logistica: true, receptor: true, receptor_firmante: true, estado: true, fecha: true })
+  const tableColSpan = 4 + Object.values(visibleCols).filter(Boolean).length
 
   // Resize columnas
   const resizingRef = useRef(null)
@@ -584,7 +587,7 @@ export default function Documentos() {
 
     return doc.plantilla.texto_legal
       // Receptor / Empleado
-      .replaceAll('{{receptor_nombre}}',       doc.receptor_nombre || doc.entidad_nombre || '')
+      .replaceAll('{{receptor_nombre}}',       doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre || '')
       .replaceAll('{{receptor_num_empleado}}', doc.entidad_num_empleado || '')
       .replaceAll('{{receptor_area}}',         doc.entidad_area || doc.entidad_departamento || '')
       .replaceAll('{{receptor_puesto}}',       doc.entidad_puesto || '')
@@ -707,6 +710,14 @@ export default function Documentos() {
                   Agente
                   <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('agente', e)} />
                 </th>
+                {visibleCols.logistica && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['logistica'] || 'auto', position: 'relative', minWidth: 120 }}
+                    onClick={() => handleSort('logistica_nombre')}>
+                    <div className="flex items-center gap-1">Logística {sortIcon('logistica_nombre')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('logistica', e)} />
+                  </th>
+                )}
                 {visibleCols.dispositivos && (
                   <th className="table-header"
                     style={{ width: colWidths['dispositivos'] || 'auto', position: 'relative', minWidth: 80 }}>
@@ -720,6 +731,14 @@ export default function Documentos() {
                     onClick={() => handleSort('receptor_nombre')}>
                     <div className="flex items-center gap-1">Receptor {sortIcon('receptor_nombre')}</div>
                     <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('receptor', e)} />
+                  </th>
+                )}
+                {visibleCols.receptor_firmante && (
+                  <th className="table-header cursor-pointer select-none hover:bg-gray-100"
+                    style={{ width: colWidths['receptor_firmante'] || 'auto', position: 'relative', minWidth: 120 }}
+                    onClick={() => handleSort('receptor_firmante_nombre')}>
+                    <div className="flex items-center gap-1">Recibió / Firmó {sortIcon('receptor_firmante_nombre')}</div>
+                    <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize bg-transparent hover:bg-blue-400 transition-colors" onMouseDown={e => startResize('receptor_firmante', e)} />
                   </th>
                 )}
                 {visibleCols.estado && (
@@ -744,9 +763,9 @@ export default function Documentos() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={9} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
+                <tr><td colSpan={tableColSpan} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
               ) : documentos.length === 0 ? (
-                <tr><td colSpan={9} className="py-12 text-center text-gray-400">No hay documentos</td></tr>
+                <tr><td colSpan={tableColSpan} className="py-12 text-center text-gray-400">No hay documentos</td></tr>
               ) : [...documentos].sort((a, b) => {
                 if (!sortCol) return 0
                 const va = (a[sortCol] || '').toString().toLowerCase()
@@ -767,11 +786,24 @@ export default function Documentos() {
                     <div className="text-xs text-gray-400 capitalize">{d.entidad_tipo}</div>
                   </td>
                   <td className="table-cell text-sm">{d.agente_nombre}</td>
+                  {visibleCols.logistica && (
+                    <td className="table-cell text-sm">
+                      {d.logistica_nombre ? (
+                        <div>
+                          <div className="font-medium text-gray-700">{d.logistica_nombre}</div>
+                          <div className="text-xs text-gray-400">{d.logistica_area || 'Logística / Almacén'}</div>
+                        </div>
+                      ) : <span className="text-gray-300">—</span>}
+                    </td>
+                  )}
                   {visibleCols.dispositivos && (
                     <td className="table-cell text-sm">{d.dispositivos?.length || 0} dispositivo(s)</td>
                   )}
                   {visibleCols.receptor && (
                     <td className="table-cell text-sm">{d.receptor_nombre || <span className="text-gray-300">—</span>}</td>
+                  )}
+                  {visibleCols.receptor_firmante && (
+                    <td className="table-cell text-sm">{d.receptor_firmante_nombre || <span className="text-gray-300">—</span>}</td>
                   )}
                   {visibleCols.estado && (
                     <td className="table-cell">
@@ -1488,6 +1520,7 @@ export default function Documentos() {
                 <div><span className="font-semibold">Tipo:</span> {selected.entidad_tipo === 'empleado' ? 'Empleado' : 'Sucursal'}</div>
                 <div><span className="font-semibold">Agente TI:</span> {selected.agente_nombre}</div>
                 {selected.receptor_nombre && <div><span className="font-semibold">Receptor:</span> {selected.receptor_nombre}</div>}
+                {selected.receptor_firmante_nombre && <div><span className="font-semibold">Recibe y firma:</span> {selected.receptor_firmante_nombre}</div>}
               </div>
 
               {/* Texto legal */}
@@ -1566,7 +1599,7 @@ export default function Documentos() {
                   ) : (
                     <div className="h-16 border-b border-gray-400 mb-2" />
                   )}
-                  <div className="text-xs font-semibold text-gray-700">{selected.receptor_nombre || selected.entidad_nombre}</div>
+                  <div className="text-xs font-semibold text-gray-700">{selected.receptor_firmante_nombre || selected.receptor_nombre || selected.entidad_nombre}</div>
                   <div className="text-xs text-gray-500">Receptor</div>
                 </div>
               </div>
