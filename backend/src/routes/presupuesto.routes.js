@@ -5,18 +5,30 @@ const { authMiddleware, requireRoles } = require('../middleware/auth.middleware'
 
 router.use(authMiddleware)
 
+const IVA_RATE = 0.16
+const roundMoney = (value) => Math.round(((parseFloat(value) || 0) + Number.EPSILON) * 100) / 100
+const isIvaAppliedValue = (value) => value === true || value === 1 || value === '1'
+const resolveIvaFlag = (value, fallback = true) => (value === undefined || value === null ? fallback : isIvaAppliedValue(value))
+const calcDetalleTotals = (subtotalValue, aplicaIva, moneda = 'MXN', tipoCambio = 1) => {
+  const subtotal = roundMoney(subtotalValue)
+  const total = aplicaIva ? roundMoney(subtotal * (1 + IVA_RATE)) : subtotal
+  const iva_monto = aplicaIva ? roundMoney(total - subtotal) : 0
+  const total_mxn = moneda === 'USD' ? roundMoney(total * (parseFloat(tipoCambio) || 1)) : total
+  return { subtotal, iva_monto, total, total_mxn }
+}
+
 // ── Helper: sincronizar gasto_real en presupuesto_gastos_mes desde finanzas_detalle ──
 function syncGastoReal(partida_id, mes, anio) {
   if (!partida_id) return
   mes = parseInt(mes); anio = parseInt(anio)
   const lines = db.get('finanzas_detalle').filter(d => d.partida_id === partida_id && d.mes === mes && d.anio === anio).value()
   // Siempre sumar en MXN: si la línea es USD, usar total_mxn (si existe) o convertir con tipo_cambio
-  const gasto_real = lines.reduce((s, d) => {
+  const gasto_real = roundMoney(lines.reduce((s, d) => {
     const totalMXN = d.total_mxn != null
-      ? parseFloat(d.total_mxn) || 0
-      : (d.moneda === 'USD' ? (parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1) : (parseFloat(d.total) || 0))
+      ? roundMoney(d.total_mxn)
+      : (d.moneda === 'USD' ? roundMoney((parseFloat(d.total) || 0) * (parseFloat(d.tipo_cambio) || 1)) : roundMoney(d.total))
     return s + totalMXN
-  }, 0)
+  }, 0))
   const existing = db.get('presupuesto_gastos_mes').find({ partida_id, mes, anio }).value()
   const now = new Date().toISOString()
   if (existing) {
@@ -222,12 +234,10 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
   } else {
     subtotal = (parseFloat(body.dias_facturados) || 30) * (parseFloat(body.costo_dia) || 0)
   }
-  const aplica_iva = body.aplica_iva !== false && body.aplica_iva !== 0
-  const iva_monto = aplica_iva ? subtotal * 0.16 : 0
-  const total = subtotal + iva_monto
+  const aplica_iva = resolveIvaFlag(body.aplica_iva, true)
   const tc = parseFloat(body.tipo_cambio) || 1
   const moneda = body.moneda || 'MXN'
-  const total_mxn = moneda === 'USD' ? parseFloat((total * tc).toFixed(2)) : total
+  const totals = calcDetalleTotals(subtotal, aplica_iva, moneda, tc)
   const item = {
     id: uuidv4(),
     mes: parseInt(body.mes) || new Date().getMonth() + 1,
@@ -244,7 +254,7 @@ router.post('/detalle', requireRoles('super_admin', 'agente_soporte', 'administr
     tipo_cambio: parseFloat(body.tipo_cambio) || 1,
     dias_facturados: parseInt(body.dias_facturados) || 30,
     costo_dia: parseFloat(body.costo_dia) || 0,
-    subtotal, aplica_iva: aplica_iva ? 1 : 0, iva_monto, total, total_mxn,
+    ...totals, aplica_iva: aplica_iva ? 1 : 0,
     modo_calculo,
     tiene_vigencia,
     identificador: body.identificador || 'Administrativo',
@@ -276,21 +286,19 @@ router.put('/detalle/:id', requireRoles('super_admin', 'agente_soporte', 'admini
   } else {
     subtotal = dias * costo
   }
-  const aplica = body.aplica_iva !== undefined ? (body.aplica_iva !== false && body.aplica_iva !== 0) : !!item.aplica_iva
-  const iva_monto = aplica ? subtotal * 0.16 : 0
-  const totalCalc = subtotal + iva_monto
+  const aplica = resolveIvaFlag(body.aplica_iva, resolveIvaFlag(item.aplica_iva, false))
   const tcUpd = parseFloat(body.tipo_cambio ?? item.tipo_cambio) || 1
   const monedaUpd = body.moneda ?? item.moneda ?? 'MXN'
-  const total_mxn = monedaUpd === 'USD' ? parseFloat((totalCalc * tcUpd).toFixed(2)) : totalCalc
+  const totals = calcDetalleTotals(subtotal, aplica, monedaUpd, tcUpd)
   const updates = {
     ...body,
     dias_facturados: dias,
     costo_dia: costo,
-    subtotal,
+    subtotal: totals.subtotal,
     aplica_iva: aplica ? 1 : 0,
-    iva_monto,
-    total: totalCalc,
-    total_mxn,
+    iva_monto: totals.iva_monto,
+    total: totals.total,
+    total_mxn: totals.total_mxn,
     modo_calculo: modo,
     tiene_vigencia: body.tiene_vigencia !== undefined ? (body.tiene_vigencia ? 1 : 0) : item.tiene_vigencia,
     updated_at: new Date().toISOString()

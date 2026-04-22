@@ -5,7 +5,7 @@ import {
 import {
   CurrencyDollarIcon, ChartBarIcon, Cog6ToothIcon, PlusIcon,
   PencilSquareIcon, TrashIcon, ArrowPathIcon, MagnifyingGlassIcon,
-  CheckCircleIcon, ExclamationTriangleIcon, DocumentDuplicateIcon,
+  ExclamationTriangleIcon, DocumentDuplicateIcon,
   FunnelIcon, ArrowsUpDownIcon, DocumentArrowDownIcon, XMarkIcon,
   ChevronDownIcon, ChevronRightIcon, Square2StackIcon
 } from '@heroicons/react/24/outline'
@@ -167,13 +167,28 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 const EMPRESAS = ['Previta','EHT','Medclub']
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0)
 const fmtDec = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0)
+const IVA_RATE = 0.16
+const roundMoney = (n) => Math.round(((parseFloat(n) || 0) + Number.EPSILON) * 100) / 100
+const isIvaApplied = (d) => d?.aplica_iva === true || d?.aplica_iva === 1 || d?.aplica_iva === '1'
+const calcIvaBreakdown = (subtotalValue, aplicaIva) => {
+  const subtotal = roundMoney(subtotalValue)
+  const total = aplicaIva ? roundMoney(subtotal * (1 + IVA_RATE)) : subtotal
+  const iva_monto = aplicaIva ? roundMoney(total - subtotal) : 0
+  return { subtotal, iva_monto, total }
+}
+const calcIvaMonto = (d) => {
+  if (!isIvaApplied(d)) return 0
+  const stored = parseFloat(d?.iva_monto)
+  if (Number.isFinite(stored)) return roundMoney(stored)
+  return calcIvaBreakdown(d?.subtotal, true).iva_monto
+}
 
 // Calcula el total en MXN de un registro de detalle (usa total_mxn si ya está calculado)
 const calcTotalMXN = (d) => {
-  if (d.total_mxn != null) return parseFloat(d.total_mxn) || 0
+  if (d.total_mxn != null) return roundMoney(d.total_mxn)
   const total = parseFloat(d.total) || 0
-  if (d.moneda === 'USD') return total * (parseFloat(d.tipo_cambio) || 1)
-  return total
+  if (d.moneda === 'USD') return roundMoney(total * (parseFloat(d.tipo_cambio) || 1))
+  return roundMoney(total)
 }
 
 // ── Gauge (medidor semicircular) ──────────────────────────────────────────────
@@ -724,11 +739,11 @@ function TabDesgloce() {
         }
       }
       grupos[key].lines.push(d)
-      grupos[key].subtotal  += parseFloat(d.subtotal)  || 0
-      grupos[key].iva_monto += parseFloat(d.iva_monto) || 0
-      grupos[key].total     += parseFloat(d.total)     || 0
+      grupos[key].subtotal  += roundMoney(d.subtotal)
+      grupos[key].iva_monto += calcIvaMonto(d)
+      grupos[key].total     += roundMoney(d.total)
       grupos[key].total_mxn += calcTotalMXN(d)
-      if (d.aplica_iva) grupos[key].aplica_iva = true
+      if (isIvaApplied(d)) grupos[key].aplica_iva = true
     })
     return Object.values(grupos).sort((a, b) => a.proveedor.localeCompare(b.proveedor))
   }, [detalleFiltrado])
@@ -742,9 +757,9 @@ function TabDesgloce() {
     'Factura':              d.factura_folio || '',
     'Días':                 d.dias_facturados || 0,
     'Costo/Día':            d.costo_dia || 0,
-    'Subtotal':             d.subtotal || 0,
-    'IVA':                  d.iva_monto || 0,
-    'Total':                d.total || 0,
+    'Subtotal':             roundMoney(d.subtotal),
+    'IVA':                  calcIvaMonto(d),
+    'Total':                roundMoney(d.total),
     'Total MXN':            calcTotalMXN(d),
     'Moneda':               d.moneda || 'MXN',
     'Centro Costo':         d.centro_costo_codigo || '',
@@ -914,10 +929,10 @@ function TabDesgloce() {
   // Convierte el total de una línea guardada a MXN (para comparativas de presupuesto)
   const toMXN = (d) => {
     // Preferir total_mxn si ya está calculado (líneas nuevas/editadas)
-    if (d.total_mxn != null) return parseFloat(d.total_mxn) || 0
+    if (d.total_mxn != null) return roundMoney(d.total_mxn)
     const total = parseFloat(d.total) || 0
     const tc    = parseFloat(d.tipo_cambio) || 1
-    return d.moneda === 'USD' ? total * tc : total
+    return d.moneda === 'USD' ? roundMoney(total * tc) : roundMoney(total)
   }
 
   const calcTotals = (f) => {
@@ -927,13 +942,11 @@ function TabDesgloce() {
     } else {
       subtotal = (parseFloat(f.dias_facturados) || 0) * (parseFloat(f.costo_dia) || 0)
     }
-    const aplica = f.aplica_iva === true || f.aplica_iva === 1
-    const iva    = aplica ? subtotal * 0.16 : 0
-    const total  = subtotal + iva
+    const { subtotal: subtotalCalc, iva_monto, total } = calcIvaBreakdown(subtotal, f.aplica_iva === true || f.aplica_iva === 1 || f.aplica_iva === '1')
     // Equivalente en MXN para comparativa vs presupuesto (partida siempre es MXN)
     const tc       = parseFloat(f.tipo_cambio) || 1
-    const totalMXN = f.moneda === 'USD' ? parseFloat((total * tc).toFixed(2)) : total
-    return { subtotal, iva_monto: iva, total, totalMXN }
+    const totalMXN = f.moneda === 'USD' ? roundMoney(total * tc) : total
+    return { subtotal: subtotalCalc, iva_monto, total, totalMXN }
   }
 
   const handleSave = async () => {
@@ -1048,8 +1061,8 @@ function TabDesgloce() {
     const tc  = parseFloat(d.tipo_cambio) || 1
     const mxnFactor = d.moneda === 'USD' ? tc : 1
     return {
-      subtotal: acc.subtotal + (parseFloat(d.subtotal) || 0) * mxnFactor,
-      iva:      acc.iva      + (parseFloat(d.iva_monto) || 0) * mxnFactor,
+      subtotal: acc.subtotal + roundMoney(roundMoney(d.subtotal) * mxnFactor),
+      iva:      acc.iva      + roundMoney(calcIvaMonto(d) * mxnFactor),
       total:    acc.total    + toMXN(d),
     }
   }, { subtotal: 0, iva: 0, total: 0 })
@@ -1372,7 +1385,7 @@ function TabDesgloce() {
                           <td className="px-3 py-1.5 text-right font-mono text-xs">{fmtDec(d.costo_dia)}</td>
                           <td className="px-3 py-1.5 text-right font-mono text-gray-600 text-xs">{fmtDec(d.subtotal)}</td>
                           <td className="px-3 py-1.5 text-center">
-                            {d.aplica_iva ? <CheckCircleIcon className="h-3.5 w-3.5 text-primary-400 mx-auto" /> : <span className="text-gray-200">—</span>}
+                            {isIvaApplied(d) ? <span className="font-mono text-amber-700 text-xs">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-200">—</span>}
                           </td>
                           <td className="px-3 py-1.5 text-right font-mono font-semibold text-primary-600 text-xs">
                             <div>{fmtDec(d.total)}</div>
@@ -1461,7 +1474,7 @@ function TabDesgloce() {
                     <td className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>
                     <td className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>
                     <td className="px-3 py-2 text-center">
-                      {d.aplica_iva ? <CheckCircleIcon className="h-4 w-4 text-primary-500 mx-auto" /> : <span className="text-gray-300">—</span>}
+                      {isIvaApplied(d) ? <span className="font-mono text-amber-700 text-xs">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-300">—</span>}
                     </td>
                     <td className="px-3 py-2 text-right font-mono font-semibold text-primary-700">
                       <div>{fmtDec(d.total)}</div>
