@@ -5,6 +5,11 @@ const path = require('path')
 const db = require('../data/db')
 const { authMiddleware, requireRoles } = require('../middleware/auth.middleware')
 const { auditLog } = require('../middleware/audit.middleware')
+const {
+  SERIE_ESTADOS,
+  nextGeneratedSerial,
+  normalizeSerieEstado,
+} = require('../utils/deviceSerials')
 
 // SharePoint — carga condicional
 let sp = null
@@ -25,6 +30,38 @@ router.use(authMiddleware)
 
 const uploadsDir = path.join(__dirname, '../../uploads/firmas')
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
+
+function resolveCostoDia(tipo, costoDiaBody) {
+  if (costoDiaBody !== undefined && costoDiaBody !== '') {
+    const parsed = parseFloat(costoDiaBody)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  const tarifa = db.get('tarifas_equipo').find({ tipo, activo: true }).value()
+  return tarifa ? parseFloat(tarifa.costo_dia) : 0
+}
+
+function resolveReceivedSerial({ tipo, serie, serie_estado, reserved }) {
+  const estado = normalizeSerieEstado(serie_estado)
+  if (estado === SERIE_ESTADOS.CAPTURADA) {
+    const normalizedSerie = String(serie || '').trim()
+    if (!normalizedSerie) throw Object.assign(new Error('El número de serie es requerido para dispositivos con serie capturada'), { status: 400 })
+
+    const duplicate = db.get('dispositivos').value().find(d =>
+      d.activo &&
+      String(d.serie || '').trim().toLowerCase() === normalizedSerie.toLowerCase()
+    )
+    if (duplicate || reserved.has(normalizedSerie.toUpperCase())) {
+      throw Object.assign(new Error(`Ya existe un dispositivo con la serie ${normalizedSerie}`), { status: 409 })
+    }
+    reserved.add(normalizedSerie.toUpperCase())
+    return { serie: normalizedSerie, serie_estado: SERIE_ESTADOS.CAPTURADA }
+  }
+
+  return {
+    serie: nextGeneratedSerial(tipo, db.get('dispositivos').value(), reserved),
+    serie_estado: estado,
+  }
+}
 
 function writeSignatureFile(dataUrl, filePath) {
   if (!dataUrl) return false
@@ -61,49 +98,151 @@ router.get('/:id', (req, res) => {
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'documento'), (req, res) => {
-  const { tipo, plantilla_id, entidad_tipo, entidad_id, dispositivos, observaciones, motivo_salida, receptor_id, desde_asignacion } = req.body
-  if (!tipo || !entidad_tipo || !entidad_id || !dispositivos?.length) {
-    const missing = { tipo: !tipo, entidad_tipo: !entidad_tipo, entidad_id: !entidad_id, dispositivos: !dispositivos?.length }
+  const {
+    tipo,
+    plantilla_id,
+    entidad_tipo,
+    entidad_id,
+    dispositivos,
+    observaciones,
+    motivo_salida,
+    receptor_id,
+    desde_asignacion,
+    entrada_origen_tipo,
+    entrada_referencia,
+    recibido_por_id,
+    dispositivos_recibidos,
+  } = req.body
+  const origenTipo = tipo === 'entrada' ? (entrada_origen_tipo || entidad_tipo) : entidad_tipo
+  const isEntradaProveedor = tipo === 'entrada' && origenTipo === 'proveedor'
+  const hasDevices = isEntradaProveedor ? dispositivos_recibidos?.length : dispositivos?.length
+  if (!tipo || !origenTipo || !entidad_id || !hasDevices) {
+    const missing = { tipo: !tipo, entidad_tipo: !origenTipo, entidad_id: !entidad_id, dispositivos: !hasDevices }
     console.log('[documento.routes] Validación fallida. Body recibido:', JSON.stringify(req.body), 'Campos faltantes:', JSON.stringify(missing))
     return res.status(400).json({ message: 'Tipo, entidad y dispositivos son requeridos', missing })
   }
 
   let entidad = null
-  if (entidad_tipo === 'empleado') {
+  if (origenTipo === 'empleado') {
     entidad = db.get('empleados').filter(e => e.id === entidad_id && e.activo).value()[0]
-  } else {
+  } else if (origenTipo === 'sucursal') {
     entidad = db.get('sucursales').filter(s => s.id === entidad_id && s.activo).value()[0]
+  } else if (origenTipo === 'proveedor') {
+    entidad = db.get('proveedores').filter(p => p.id === entidad_id && p.activo).value()[0]
   }
   if (!entidad) return res.status(404).json({ message: 'Entidad no encontrada' })
 
-  // dispositivos is array of {id, costo}
-  const dispositivosEnriquecidos = dispositivos.map(({ id, costo }) => {
-    const dev = db.get('dispositivos').find({ id }).value()
-    if (!dev) return null
-    return { id: dev.id, tipo: dev.tipo, marca: dev.marca, serie: dev.serie, modelo: dev.modelo, caracteristicas: dev.caracteristicas, costo: parseFloat(costo) || 0 }
-  }).filter(Boolean)
+  const total = db.get('documentos').size().value()
+  const folio = `${tipo.toUpperCase()}-${String(total + 1).padStart(6, '0')}`
+  const now = new Date().toISOString()
 
   let receptor = null
   if (receptor_id) {
     receptor = db.get('empleados').filter(e => e.id === receptor_id && e.activo).value()[0]
   }
 
-  const total = db.get('documentos').size().value()
-  const folio = `${tipo.toUpperCase()}-${String(total + 1).padStart(6, '0')}`
-  const now = new Date().toISOString()
+  const agenteRecibe = recibido_por_id
+    ? db.get('usuarios_sistema').find({ id: recibido_por_id, activo: true }).value()
+    : null
+
+  let dispositivosEnriquecidos = []
+
+  if (isEntradaProveedor) {
+    const proveedor = entidad
+    const reserved = new Set()
+    const createdDevices = []
+
+    for (const line of dispositivos_recibidos || []) {
+      const cantidad = Math.max(1, parseInt(line.cantidad || 1, 10) || 1)
+      const tipoDispositivo = String(line.tipo || '').trim()
+      const marca = String(line.marca || '').trim()
+      if (!tipoDispositivo || !marca) {
+        return res.status(400).json({ message: 'Cada línea recibida requiere tipo y marca' })
+      }
+
+      const estadoSerie = normalizeSerieEstado(line.serie_estado)
+      if (estadoSerie === SERIE_ESTADOS.CAPTURADA && cantidad > 1) {
+        return res.status(400).json({ message: 'Cuando capturas número de serie, registra una línea por dispositivo' })
+      }
+
+      for (let i = 0; i < cantidad; i += 1) {
+        const serialInfo = resolveReceivedSerial({
+          tipo: tipoDispositivo,
+          serie: line.serie,
+          serie_estado: line.serie_estado,
+          reserved,
+        })
+        const item = {
+          id: uuidv4(),
+          tipo: tipoDispositivo,
+          marca,
+          serie: serialInfo.serie,
+          serie_estado: serialInfo.serie_estado,
+          modelo: line.modelo || '',
+          cantidad: 1,
+          proveedor_id: proveedor.id,
+          proveedor_nombre: proveedor.nombre,
+          caracteristicas: line.caracteristicas || '',
+          campos_extra: line.campos_extra || {},
+          costo_tipo: line.costo_tipo || 'mensual',
+          costo_dia: resolveCostoDia(tipoDispositivo, line.costo_dia),
+          estado: 'stock',
+          ubicacion_tipo: 'almacen',
+          ubicacion_id: null,
+          ubicacion_nombre: 'Almacén Central',
+          lat: null,
+          lng: null,
+          activo: true,
+          creado_por: req.user.id,
+          creado_por_nombre: req.user.nombre,
+          actualizado_por: req.user.id,
+          actualizado_por_nombre: req.user.nombre,
+          created_at: now,
+          updated_at: now,
+        }
+        db.get('dispositivos').push(item).write()
+        createdDevices.push(item)
+      }
+    }
+
+    dispositivosEnriquecidos = createdDevices.map(dev => ({
+      id: dev.id,
+      tipo: dev.tipo,
+      marca: dev.marca,
+      serie: dev.serie,
+      serie_estado: dev.serie_estado,
+      modelo: dev.modelo,
+      caracteristicas: dev.caracteristicas,
+      costo: 0,
+      proveedor_id: dev.proveedor_id,
+      proveedor_nombre: dev.proveedor_nombre,
+    }))
+  } else {
+    // dispositivos is array of {id, costo}
+    dispositivosEnriquecidos = (dispositivos || []).map(({ id, costo }) => {
+      const dev = db.get('dispositivos').find({ id }).value()
+      if (!dev) return null
+      return { id: dev.id, tipo: dev.tipo, marca: dev.marca, serie: dev.serie, modelo: dev.modelo, caracteristicas: dev.caracteristicas, costo: parseFloat(costo) || 0 }
+    }).filter(Boolean)
+  }
 
   const doc = {
     id: uuidv4(), folio, tipo,
     plantilla_id: plantilla_id || null,
-    entidad_tipo, entidad_id,
-    entidad_nombre: entidad_tipo === 'empleado' ? entidad.nombre_completo : entidad.nombre,
+    entidad_tipo: origenTipo, entidad_id,
+    entidad_nombre: origenTipo === 'empleado' ? entidad.nombre_completo : entidad.nombre,
+    entrada_origen_tipo: tipo === 'entrada' ? origenTipo : null,
+    entrada_referencia: tipo === 'entrada' ? String(entrada_referencia || '').trim() : '',
+    recibido_por_id: tipo === 'entrada' ? (agenteRecibe?.id || req.user.id) : null,
+    recibido_por_nombre: tipo === 'entrada' ? (agenteRecibe?.nombre || req.user.nombre) : null,
     // Datos adicionales del empleado/sucursal para reemplazar tags en plantilla
-    entidad_num_empleado: entidad_tipo === 'empleado' ? (entidad.num_empleado || entidad.numero_empleado || '') : '',
-    entidad_area:         entidad_tipo === 'empleado' ? (entidad.area || entidad.departamento || '') : '',
-    entidad_puesto:       entidad_tipo === 'empleado' ? (entidad.puesto || '') : '',
-    entidad_email:        entidad_tipo === 'empleado' ? (entidad.email || '') : '',
+    entidad_num_empleado: origenTipo === 'empleado' ? (entidad.num_empleado || entidad.numero_empleado || '') : '',
+    entidad_area:         origenTipo === 'empleado' ? (entidad.area || entidad.departamento || '') : '',
+    entidad_puesto:       origenTipo === 'empleado' ? (entidad.puesto || '') : '',
+    entidad_email:        origenTipo === 'empleado' ? (entidad.email || '') : '',
     dispositivos: dispositivosEnriquecidos,
-    agente_id: req.user.id, agente_nombre: req.user.nombre,
+    agente_id: tipo === 'entrada' ? (agenteRecibe?.id || req.user.id) : req.user.id,
+    agente_nombre: tipo === 'entrada' ? (agenteRecibe?.nombre || req.user.nombre) : req.user.nombre,
     firma_agente: null, firma_agente_path: null,
     logistica_nombre: null, logistica_area: null,
     firma_logistica: null, firma_logistica_path: null,

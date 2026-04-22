@@ -49,6 +49,10 @@ function getPlantillaTexto(doc) {
     .replaceAll('{{sucursal_estado}}', doc.entidad_estado || '')
     .replaceAll('{{sucursal_tipo}}', doc.entidad_tipo === 'sucursal' ? 'Sucursal' : 'Corporativo')
     .replaceAll('{{agente_nombre}}', doc.agente_nombre || '')
+    .replaceAll('{{origen_entrada}}', doc.entidad_nombre || '')
+    .replaceAll('{{tipo_origen_entrada}}', doc.entrada_origen_tipo || doc.entidad_tipo || '')
+    .replaceAll('{{referencia_entrada}}', doc.entrada_referencia || '')
+    .replaceAll('{{recibido_por_nombre}}', doc.recibido_por_nombre || doc.agente_nombre || '')
     .replaceAll('{{fecha_documento}}', fechaDoc)
     .replaceAll('{{folio}}', doc.folio || '')
     .replaceAll('{{motivo_salida}}', doc.motivo_salida || doc.observaciones || '')
@@ -166,10 +170,16 @@ export async function generateDocumentPDF(doc, options = {}) {
   pdf.text(`Fecha: ${dateStr}`, ml + cw - 2, y + 5.4, { align: 'right' })
   y += 13
 
-  const infoRows = [
-    ['Entidad / Receptor', doc.entidad_nombre || '-', 'Tipo', doc.entidad_tipo === 'empleado' ? 'Empleado' : 'Sucursal'],
-    ['Agente TI', doc.agente_nombre || '-', doc.receptor_nombre ? 'Recibe' : '', doc.receptor_nombre || ''],
-  ]
+  const tipoEntidad = doc.entidad_tipo === 'empleado' ? 'Empleado' : doc.entidad_tipo === 'proveedor' ? 'Proveedor' : 'Sucursal'
+  const infoRows = doc.tipo === 'entrada'
+    ? [
+        ['Origen', doc.entidad_nombre || '-', 'Tipo', tipoEntidad],
+        ['Recibido por', doc.recibido_por_nombre || doc.agente_nombre || '-', doc.entrada_referencia ? 'Referencia' : '', doc.entrada_referencia || ''],
+      ]
+    : [
+        ['Entidad / Receptor', doc.entidad_nombre || '-', 'Tipo', tipoEntidad],
+        ['Agente TI', doc.agente_nombre || '-', doc.receptor_nombre ? 'Recibe' : '', doc.receptor_nombre || ''],
+      ]
   const infoH = infoRows.length * 8 + 5
   pdf.setFillColor(241, 245, 249)
   pdf.setDrawColor(203, 213, 225)

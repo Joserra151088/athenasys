@@ -495,6 +495,10 @@ const DDL = [
     \`entidad_tipo\` VARCHAR(50),
     \`entidad_id\` VARCHAR(36),
     \`entidad_nombre\` VARCHAR(200),
+    \`entrada_origen_tipo\` VARCHAR(50),
+    \`entrada_referencia\` VARCHAR(200),
+    \`recibido_por_id\` VARCHAR(36),
+    \`recibido_por_nombre\` VARCHAR(200),
     \`dispositivos\` LONGTEXT,
     \`agente_id\` VARCHAR(36),
     \`agente_nombre\` VARCHAR(200),
@@ -1095,6 +1099,10 @@ async function initDB() {
   await alterIfNotExists('usuarios_sistema', 'firma_base64', 'MEDIUMTEXT')
   await alterIfNotExists('usuarios_sistema', 'firma_path',   'VARCHAR(500)')
   await alterIfNotExists('documentos',   'firma_agente_path',  'VARCHAR(500)')
+  await alterIfNotExists('documentos',   'entrada_origen_tipo','VARCHAR(50)')
+  await alterIfNotExists('documentos',   'entrada_referencia', 'VARCHAR(200)')
+  await alterIfNotExists('documentos',   'recibido_por_id',    'VARCHAR(36)')
+  await alterIfNotExists('documentos',   'recibido_por_nombre','VARCHAR(200)')
   await alterIfNotExists('asignaciones', 'dispositivo_marca',  'VARCHAR(200)')
   await alterIfNotExists('asignaciones', 'ajustado_por_id',    'VARCHAR(36)')
   await alterIfNotExists('asignaciones', 'ajustado_por_nombre','VARCHAR(200)')

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { documentoAPI, plantillaAPI, empleadoAPI, sucursalAPI, deviceAPI, usuarioSistemaAPI, configAPI, firmaOnlineAPI } from '../utils/api'
-import { DOCUMENT_TYPES } from '../utils/constants'
+import { documentoAPI, plantillaAPI, empleadoAPI, sucursalAPI, deviceAPI, usuarioSistemaAPI, configAPI, firmaOnlineAPI, proveedorAPI } from '../utils/api'
+import { DOCUMENT_TYPES, DEVICE_TYPES } from '../utils/constants'
 import { useAuth } from '../context/AuthContext'
 import Modal from '../components/Modal'
 import Badge from '../components/Badge'
@@ -25,6 +25,23 @@ const COL_LABELS = {
   fecha: 'Fecha'
 }
 const DOC_TITLES = { responsiva: 'CARTA RESPONSIVA', entrada: 'FORMATO DE ENTRADA DE EQUIPO', salida: 'FORMATO DE SALIDA DE EQUIPO' }
+
+const SERIE_OPTIONS = {
+  capturada: 'capturada',
+  sin_numero: 'sin_numero',
+  no_visible: 'no_visible',
+}
+
+const EMPTY_RECEIVED_DEVICE = {
+  tipo: '',
+  marca: '',
+  modelo: '',
+  serie_estado: SERIE_OPTIONS.sin_numero,
+  serie: '',
+  cantidad: 1,
+  costo_dia: '',
+  caracteristicas: '',
+}
 
 const normalizeText = (value = '') =>
   String(value)
@@ -298,11 +315,14 @@ export default function Documentos() {
   const firmaLinkVigencia = firmaLink?.expires_label || (firmaLink?.doc?.tipo === 'salida' ? '45 días' : '72 horas')
 
   // Create form
-  const [form, setForm] = useState({ tipo: 'responsiva', plantilla_id: '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', observaciones: '' })
+  const [form, setForm] = useState({ tipo: 'responsiva', plantilla_id: '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', entrada_referencia: '', recibido_por_id: '', dispositivos_recibidos: [], observaciones: '' })
   const [plantillas, setPlantillas] = useState([])
   const [entidades, setEntidades] = useState([])
   const [empleados, setEmpleados] = useState([])
+  const [proveedores, setProveedores] = useState([])
+  const [usuariosSistema, setUsuariosSistema] = useState([])
   const [dispositivos, setDispositivos] = useState([])
+  const [receivedDevices, setReceivedDevices] = useState([{ ...EMPTY_RECEIVED_DEVICE }])
   const [entidadSearch, setEntidadSearch] = useState('')
   const [showEntidadDrop, setShowEntidadDrop] = useState(false)
   const [receptorSearch, setReceptorSearch] = useState('')
@@ -326,30 +346,43 @@ export default function Documentos() {
   useEffect(() => { load(1) }, [load])
 
   const openCreate = async () => {
-    const [pl, emp, devs] = await Promise.all([
+    const [pl, emp, devs, provs] = await Promise.all([
       plantillaAPI.getAll(),
       fetchAllPaginated(empleadoAPI.getAll),
-      deviceAPI.getAll({ limit: 1000 })
+      deviceAPI.getAll({ limit: 1000 }),
+      proveedorAPI.getAll(),
     ])
+    let users = []
+    try {
+      users = await usuarioSistemaAPI.getAll()
+    } catch (_) {
+      users = user ? [user] : []
+    }
     const empSorted = [...emp].sort((a, b) => (a.nombre_completo || '').localeCompare(b.nombre_completo || '', 'es'))
+    const proveedorSorted = [...provs].filter(p => p.activo !== false).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es'))
     setPlantillas(pl)
     setEmpleados(empSorted)
+    setProveedores(proveedorSorted)
+    setUsuariosSistema(users.filter(u => u.activo !== false && ['super_admin', 'agente_soporte'].includes(u.rol)))
     setEntidades(empSorted)
     setEntidadSearch('')
     setDispositivos(devs.data)
+    setReceivedDevices([{ ...EMPTY_RECEIVED_DEVICE }])
     setDeviceSearch('')
     setDeviceTypeFilter('')
     setDeviceAssignFilter('todos')
-    setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', observaciones: '' })
+    setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', entrada_referencia: '', recibido_por_id: user?.id || '', dispositivos_recibidos: [], observaciones: '' })
     setModal('create')
   }
 
   const handleEntidadTipo = async (tipo) => {
     if (tipo === 'empleado') {
       setEntidades(empleados)
-    } else {
+    } else if (tipo === 'sucursal') {
       const res = await fetchAllPaginated(sucursalAPI.getAll)
       setEntidades(res.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')))
+    } else {
+      setEntidades(proveedores)
     }
     setForm(f => ({ ...f, entidad_tipo: tipo, entidad_id: '' }))
     setEntidadSearch('')
@@ -360,7 +393,23 @@ export default function Documentos() {
     e.preventDefault()
     setSaving(true)
     try {
-      await documentoAPI.create(form)
+      const payload = { ...form }
+      if (payload.tipo === 'entrada') {
+        payload.entrada_origen_tipo = payload.entidad_tipo
+      }
+      if (payload.tipo === 'entrada' && payload.entidad_tipo === 'proveedor') {
+        payload.dispositivos = []
+        payload.dispositivos_recibidos = receivedDevices
+          .map(line => ({
+            ...line,
+            cantidad: line.serie_estado === SERIE_OPTIONS.capturada ? 1 : Math.max(1, parseInt(line.cantidad || 1, 10) || 1),
+            serie: line.serie_estado === SERIE_OPTIONS.capturada ? String(line.serie || '').trim() : '',
+          }))
+          .filter(line => line.tipo && line.marca)
+      } else {
+        payload.dispositivos_recibidos = []
+      }
+      await documentoAPI.create(payload)
       setModal(null)
       load(1)
     } catch (err) { showError(err?.message || 'Error') }
@@ -481,6 +530,30 @@ export default function Documentos() {
     ].some(value => String(value || '').toLowerCase().includes(q))
   })
 
+  const isEntradaProveedor = form.tipo === 'entrada' && form.entidad_tipo === 'proveedor'
+  const receivedDeviceCount = receivedDevices.reduce((sum, line) => {
+    if (!line.tipo || !line.marca) return sum
+    return sum + (line.serie_estado === SERIE_OPTIONS.capturada ? 1 : Math.max(1, parseInt(line.cantidad || 1, 10) || 1))
+  }, 0)
+
+  const updateReceivedDevice = (index, changes) => {
+    setReceivedDevices(lines => lines.map((line, i) => {
+      if (i !== index) return line
+      const next = { ...line, ...changes }
+      if (changes.serie_estado === SERIE_OPTIONS.capturada) next.cantidad = 1
+      if (changes.serie_estado && changes.serie_estado !== SERIE_OPTIONS.capturada) next.serie = ''
+      return next
+    }))
+  }
+
+  const addReceivedDeviceLine = () => {
+    setReceivedDevices(lines => [...lines, { ...EMPTY_RECEIVED_DEVICE }])
+  }
+
+  const removeReceivedDeviceLine = (index) => {
+    setReceivedDevices(lines => lines.length === 1 ? [{ ...EMPTY_RECEIVED_DEVICE }] : lines.filter((_, i) => i !== index))
+  }
+
   const getPlantillaTexto = (doc) => {
     if (!doc?.plantilla?.texto_legal) return ''
 
@@ -522,6 +595,10 @@ export default function Documentos() {
       .replaceAll('{{sucursal_tipo}}',         doc.entidad_tipo === 'sucursal' ? 'Sucursal' : 'Corporativo')
       // Agente TI
       .replaceAll('{{agente_nombre}}',         doc.agente_nombre || '')
+      .replaceAll('{{origen_entrada}}',        doc.entidad_nombre || '')
+      .replaceAll('{{tipo_origen_entrada}}',   doc.entrada_origen_tipo || doc.entidad_tipo || '')
+      .replaceAll('{{referencia_entrada}}',    doc.entrada_referencia || '')
+      .replaceAll('{{recibido_por_nombre}}',   doc.recibido_por_nombre || doc.agente_nombre || '')
       // Documento
       .replaceAll('{{fecha_documento}}',       fechaDoc)
       .replaceAll('{{folio}}',                 doc.folio || '')
@@ -759,7 +836,20 @@ export default function Documentos() {
               <label className="label">Tipo de documento *</label>
               <select className="input" required value={form.tipo} onChange={e => {
                 const t = e.target.value
-                setForm(f => ({ ...f, tipo: t, plantilla_id: plantillas.find(p => p.tipo === t)?.id || '', motivo_salida: t === 'salida' ? f.motivo_salida : '' }))
+                setForm(f => {
+                  const nextEntidadTipo = t === 'entrada' ? f.entidad_tipo : (f.entidad_tipo === 'proveedor' ? 'empleado' : f.entidad_tipo)
+                  if (nextEntidadTipo === 'empleado') setEntidades(empleados)
+                  return {
+                    ...f,
+                    tipo: t,
+                    plantilla_id: plantillas.find(p => p.tipo === t)?.id || '',
+                    entidad_tipo: nextEntidadTipo,
+                    entidad_id: nextEntidadTipo === f.entidad_tipo ? f.entidad_id : '',
+                    dispositivos: [],
+                    motivo_salida: t === 'salida' ? f.motivo_salida : '',
+                    entrada_referencia: t === 'entrada' ? f.entrada_referencia : '',
+                  }
+                })
               }}>
                 {Object.entries(DOCUMENT_TYPES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
@@ -772,18 +862,18 @@ export default function Documentos() {
               </select>
             </div>
             <div>
-              <label className="label">Asignar a</label>
+              <label className="label">{form.tipo === 'entrada' ? 'Origen de entrada' : 'Asignar a'}</label>
               <div className="flex gap-2">
-                {['empleado', 'sucursal'].map(t => (
+                {(form.tipo === 'entrada' ? ['empleado', 'sucursal', 'proveedor'] : ['empleado', 'sucursal']).map(t => (
                   <button key={t} type="button" onClick={() => handleEntidadTipo(t)}
                     className={`flex-1 py-2 rounded-lg border-2 text-sm capitalize transition-colors ${form.entidad_tipo === t ? 'border-primary-500 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600'}`}>
-                    {t === 'empleado' ? 'Empleado' : 'Sucursal'}
+                    {t === 'empleado' ? 'Empleado' : t === 'sucursal' ? 'Sucursal' : 'Proveedor'}
                   </button>
                 ))}
               </div>
             </div>
             <div className="relative">
-              <label className="label">{form.entidad_tipo === 'empleado' ? 'Empleado' : 'Sucursal'} *</label>
+              <label className="label">{form.entidad_tipo === 'empleado' ? 'Empleado' : form.entidad_tipo === 'sucursal' ? 'Sucursal' : 'Proveedor'} *</label>
               {/* Campo oculto para validación HTML required */}
               <input type="hidden" required value={form.entidad_id} onChange={() => {}} />
               {(() => {
@@ -808,7 +898,7 @@ export default function Documentos() {
                     <input
                       type="text"
                       className={`input pr-8 ${!form.entidad_id ? '' : 'border-primary-400 bg-primary-50'}`}
-                      placeholder={`Buscar ${form.entidad_tipo === 'empleado' ? 'empleado por nombre o número' : 'sucursal'}...`}
+                      placeholder={`Buscar ${form.entidad_tipo === 'empleado' ? 'empleado por nombre o número' : form.entidad_tipo === 'sucursal' ? 'sucursal' : 'proveedor'}...`}
                       value={entidadSearch || (selectedE ? (selectedE.nombre_completo || selectedE.nombre) : '')}
                       onChange={e => {
                         setEntidadSearch(e.target.value)
@@ -905,15 +995,118 @@ export default function Documentos() {
                 </div>
               )
             })()}
+            {form.tipo === 'entrada' && (
+              <>
+                <div>
+                  <label className="label">Agente que recibe</label>
+                  <select
+                    className="input"
+                    value={form.recibido_por_id || user?.id || ''}
+                    onChange={e => setForm(f => ({ ...f, recibido_por_id: e.target.value }))}
+                  >
+                    {(usuariosSistema.length ? usuariosSistema : [user]).filter(Boolean).map(u => (
+                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Referencia</label>
+                  <input
+                    className="input"
+                    value={form.entrada_referencia}
+                    onChange={e => setForm(f => ({ ...f, entrada_referencia: e.target.value }))}
+                    placeholder="Factura, remisión, guía u orden de compra..."
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1">
-              <label className="label mb-0">Dispositivos a incluir *</label>
-              {form.dispositivos.length > 0 && (
+              <label className="label mb-0">{isEntradaProveedor ? 'Dispositivos recibidos del proveedor *' : 'Dispositivos a incluir *'}</label>
+              {isEntradaProveedor && receivedDeviceCount > 0 && (
+                <span className="text-xs text-primary-600 font-medium">{receivedDeviceCount} dispositivo(s) por crear</span>
+              )}
+              {!isEntradaProveedor && form.dispositivos.length > 0 && (
                 <span className="text-xs text-primary-600 font-medium">{form.dispositivos.length} seleccionado(s)</span>
               )}
             </div>
+            {isEntradaProveedor ? (
+              <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/40 p-3">
+                <div className="rounded-lg border border-emerald-200 bg-white px-3 py-2 text-xs text-emerald-700">
+                  Cada línea crea dispositivos nuevos en inventario con ubicación <strong>Almacén Central</strong>. Si capturas serie, registra una línea por dispositivo; si seleccionas “sin número” o “serie no visible”, puedes capturar cantidad y se generarán folios consecutivos.
+                </div>
+                {receivedDevices.map((line, index) => (
+                  <div key={index} className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">Línea {index + 1}</span>
+                      <button type="button" className="text-xs text-red-500 hover:text-red-700" onClick={() => removeReceivedDeviceLine(index)}>
+                        Quitar
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                      <div>
+                        <label className="label">Tipo *</label>
+                        <select className="input" value={line.tipo} onChange={e => updateReceivedDevice(index, { tipo: e.target.value })}>
+                          <option value="">Seleccionar...</option>
+                          {DEVICE_TYPES.map(tipo => <option key={tipo} value={tipo}>{tipo}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Marca *</label>
+                        <input className="input" value={line.marca} onChange={e => updateReceivedDevice(index, { marca: e.target.value })} placeholder="Logitech, Dell..." />
+                      </div>
+                      <div>
+                        <label className="label">Modelo</label>
+                        <input className="input" value={line.modelo} onChange={e => updateReceivedDevice(index, { modelo: e.target.value })} placeholder="H390, OptiPlex..." />
+                      </div>
+                      <div>
+                        <label className="label">Costo/día</label>
+                        <input type="number" min="0" step="0.01" className="input" value={line.costo_dia} onChange={e => updateReceivedDevice(index, { costo_dia: e.target.value })} placeholder="0.00" />
+                      </div>
+                      <div>
+                        <label className="label">Número de serie *</label>
+                        <select className="input" value={line.serie_estado} onChange={e => updateReceivedDevice(index, { serie_estado: e.target.value })}>
+                          <option value={SERIE_OPTIONS.capturada}>Capturar número de serie</option>
+                          <option value={SERIE_OPTIONS.sin_numero}>Sin número de serie</option>
+                          <option value={SERIE_OPTIONS.no_visible}>Serie no visible</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Serie</label>
+                        <input
+                          className="input"
+                          disabled={line.serie_estado !== SERIE_OPTIONS.capturada}
+                          value={line.serie}
+                          onChange={e => updateReceivedDevice(index, { serie: e.target.value })}
+                          placeholder={line.serie_estado === SERIE_OPTIONS.capturada ? 'SN-XXXXX' : 'Se genera automáticamente'}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Cantidad *</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="input"
+                          disabled={line.serie_estado === SERIE_OPTIONS.capturada}
+                          value={line.serie_estado === SERIE_OPTIONS.capturada ? 1 : line.cantidad}
+                          onChange={e => updateReceivedDevice(index, { cantidad: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Características</label>
+                        <input className="input" value={line.caracteristicas} onChange={e => updateReceivedDevice(index, { caracteristicas: e.target.value })} placeholder="Color, condición, accesorios..." />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <button type="button" className="btn-secondary w-full justify-center" onClick={addReceivedDeviceLine}>
+                  <PlusIcon className="h-4 w-4" /> Agregar línea de dispositivos
+                </button>
+              </div>
+            ) : (
+            <>
             <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-[1.4fr_1fr_1fr]">
               <div className="relative">
                 <MagnifyingGlassIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1003,6 +1196,8 @@ export default function Documentos() {
                 )
               })}
             </div>
+            </>
+            )}
           </div>
 
           {form.tipo === 'salida' && (
@@ -1025,7 +1220,7 @@ export default function Documentos() {
 
           <div className="flex justify-end gap-3">
             <button type="button" className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
-            <button type="submit" className="btn-primary" disabled={saving || !form.entidad_id || !form.dispositivos.length}>
+            <button type="submit" className="btn-primary" disabled={saving || !form.entidad_id || (isEntradaProveedor ? receivedDeviceCount === 0 : !form.dispositivos.length)}>
               {saving ? 'Creando...' : 'Crear Documento'}
             </button>
           </div>
