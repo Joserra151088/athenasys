@@ -12,6 +12,34 @@ export const DOC_TITLES = {
   salida: 'FORMATO DE SALIDA DE EQUIPO',
 }
 
+function normalizeCamposExtra(camposExtra) {
+  if (!camposExtra) return {}
+  if (typeof camposExtra === 'string') {
+    try {
+      const parsed = JSON.parse(camposExtra)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch (_) {
+      return {}
+    }
+  }
+  return typeof camposExtra === 'object' && !Array.isArray(camposExtra) ? camposExtra : {}
+}
+
+function formatCampoLabel(key = '') {
+  return String(key)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+export function getDeviceCharacteristicsText(device = {}) {
+  const base = String(device.caracteristicas || '').trim()
+  const extras = Object.entries(normalizeCamposExtra(device.campos_extra))
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => `${formatCampoLabel(key)}: ${String(value).trim()}`)
+
+  return [base, ...extras].filter(Boolean).join(' | ')
+}
+
 function getPlantillaTexto(doc) {
   const plantillaTexto = doc?.plantilla?.texto_legal || doc?.plantilla_texto || ''
   if (!plantillaTexto) return ''
@@ -33,7 +61,7 @@ function getPlantillaTexto(doc) {
             <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.tipo || ''}</td>
             <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.marca || ''} ${d.modelo || ''}</td>
             <td style="padding:4px 8px;border:1px solid #e5e7eb;font-family:monospace">${d.serie || ''}</td>
-            <td style="padding:4px 8px;border:1px solid #e5e7eb;color:#6b7280">${d.caracteristicas || ''}</td>
+            <td style="padding:4px 8px;border:1px solid #e5e7eb;color:#6b7280">${getDeviceCharacteristicsText(d)}</td>
           </tr>`
         ).join('')}</tbody>
       </table>`
@@ -267,14 +295,14 @@ export async function generateDocumentPDF(doc, options = {}) {
           device.tipo,
           `${device.marca || ''} ${device.modelo || ''}`.trim(),
           device.serie || '-',
-          device.caracteristicas || '',
+          getDeviceCharacteristicsText(device),
           device.costo != null ? `$${Number(device.costo).toFixed(2)}` : '-',
         ]
       : [
           device.tipo,
           `${device.marca || ''} ${device.modelo || ''}`.trim(),
           device.serie || '-',
-          device.caracteristicas || '',
+          getDeviceCharacteristicsText(device),
         ]
 
     const cellLines = cells.map((cell, colIndex) => {

@@ -71,6 +71,49 @@ function writeSignatureFile(dataUrl, filePath) {
   return true
 }
 
+function normalizeCamposExtra(camposExtra) {
+  if (!camposExtra) return {}
+  if (typeof camposExtra === 'string') {
+    try {
+      const parsed = JSON.parse(camposExtra)
+      return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+    } catch (_) {
+      return {}
+    }
+  }
+  return typeof camposExtra === 'object' && !Array.isArray(camposExtra) ? camposExtra : {}
+}
+
+function formatCampoLabel(key = '') {
+  return String(key)
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function buildDeviceCharacteristics(device = {}) {
+  const base = String(device.caracteristicas || '').trim()
+  const extras = Object.entries(normalizeCamposExtra(device.campos_extra))
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .map(([key, value]) => `${formatCampoLabel(key)}: ${String(value).trim()}`)
+
+  return [base, ...extras].filter(Boolean).join(' | ')
+}
+
+function enrichDocumentoDispositivos(dispositivos = []) {
+  return (Array.isArray(dispositivos) ? dispositivos : []).map(device => {
+    const source = device?.id ? db.get('dispositivos').find({ id: device.id }).value() : null
+    const merged = {
+      ...source,
+      ...device,
+      campos_extra: normalizeCamposExtra(device?.campos_extra || source?.campos_extra),
+    }
+    return {
+      ...merged,
+      caracteristicas: buildDeviceCharacteristics(merged),
+    }
+  })
+}
+
 router.get('/', (req, res) => {
   const { tipo, page = 1, limit = 20, search, entidad_tipo } = req.query
   let items = db.get('documentos').value()
@@ -96,7 +139,7 @@ router.get('/:id', (req, res) => {
   const item = db.get('documentos').find({ id: req.params.id }).value()
   if (!item) return res.status(404).json({ message: 'Documento no encontrado' })
   const plantilla = item.plantilla_id ? db.get('plantillas').find({ id: item.plantilla_id }).value() : null
-  res.json({ ...item, plantilla })
+  res.json({ ...item, dispositivos: enrichDocumentoDispositivos(item.dispositivos), plantilla })
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'documento'), (req, res) => {
@@ -214,7 +257,8 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
       serie: dev.serie,
       serie_estado: dev.serie_estado,
       modelo: dev.modelo,
-      caracteristicas: dev.caracteristicas,
+      caracteristicas: buildDeviceCharacteristics(dev),
+      campos_extra: normalizeCamposExtra(dev.campos_extra),
       costo: 0,
       proveedor_id: dev.proveedor_id,
       proveedor_nombre: dev.proveedor_nombre,
@@ -224,7 +268,16 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     dispositivosEnriquecidos = (dispositivos || []).map(({ id, costo }) => {
       const dev = db.get('dispositivos').find({ id }).value()
       if (!dev) return null
-      return { id: dev.id, tipo: dev.tipo, marca: dev.marca, serie: dev.serie, modelo: dev.modelo, caracteristicas: dev.caracteristicas, costo: parseFloat(costo) || 0 }
+      return {
+        id: dev.id,
+        tipo: dev.tipo,
+        marca: dev.marca,
+        serie: dev.serie,
+        modelo: dev.modelo,
+        caracteristicas: buildDeviceCharacteristics(dev),
+        campos_extra: normalizeCamposExtra(dev.campos_extra),
+        costo: parseFloat(costo) || 0,
+      }
     }).filter(Boolean)
   }
 

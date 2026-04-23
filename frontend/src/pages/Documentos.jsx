@@ -12,7 +12,7 @@ import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
 import { QRCodeSVG } from 'qrcode.react'
-import { generateDocumentPDF as generateSharedDocumentPDF } from '../utils/documentPdf'
+import { generateDocumentPDF as generateSharedDocumentPDF, getDeviceCharacteristicsText } from '../utils/documentPdf'
 
 const DOC_CODES = { responsiva: 'F-TI-39-V2', entrada: 'F-TI-84-V1', salida: 'F-TI-85-V1' }
 
@@ -579,7 +579,7 @@ export default function Documentos() {
               <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.tipo || ''}</td>
               <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.marca || ''} ${d.modelo || ''}</td>
               <td style="padding:4px 8px;border:1px solid #e5e7eb;font-family:monospace">${d.serie || ''}</td>
-              <td style="padding:4px 8px;border:1px solid #e5e7eb;color:#6b7280">${d.caracteristicas || ''}</td>
+              <td style="padding:4px 8px;border:1px solid #e5e7eb;color:#6b7280">${getDeviceCharacteristicsText(d)}</td>
             </tr>`
           ).join('')}</tbody>
         </table>`
@@ -1548,7 +1548,7 @@ export default function Documentos() {
                         <td className="px-3 py-1.5">{d.tipo}</td>
                         <td className="px-3 py-1.5">{d.marca} {d.modelo}</td>
                         <td className="px-3 py-1.5 font-mono">{d.serie}</td>
-                        <td className="px-3 py-1.5 text-gray-500">{d.caracteristicas}</td>
+                        <td className="px-3 py-1.5 text-gray-500">{getDeviceCharacteristicsText(d) || '—'}</td>
                         {selected.tipo === 'responsiva' && (
                           <td className="px-3 py-1.5 text-right font-mono">{d.costo != null ? `$${Number(d.costo).toFixed(2)}` : '—'}</td>
                         )}
