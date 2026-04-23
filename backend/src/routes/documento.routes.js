@@ -90,13 +90,32 @@ function formatCampoLabel(key = '') {
     .replace(/\b\w/g, char => char.toUpperCase())
 }
 
+function normalizeCharacteristicSegment(value = '') {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
 function buildDeviceCharacteristics(device = {}) {
-  const base = String(device.caracteristicas || '').trim()
+  const baseSegments = String(device.caracteristicas || '')
+    .split('|')
+    .map(segment => String(segment || '').trim())
+    .filter(Boolean)
   const extras = Object.entries(normalizeCamposExtra(device.campos_extra))
     .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
     .map(([key, value]) => `${formatCampoLabel(key)}: ${String(value).trim()}`)
+  const unique = []
+  const seen = new Set()
 
-  return [base, ...extras].filter(Boolean).join(' | ')
+  for (const segment of [...baseSegments, ...extras]) {
+    const normalized = normalizeCharacteristicSegment(segment)
+    if (!normalized || seen.has(normalized)) continue
+    seen.add(normalized)
+    unique.push(segment)
+  }
+
+  return unique.join(' | ')
 }
 
 function enrichDocumentoDispositivos(dispositivos = []) {
