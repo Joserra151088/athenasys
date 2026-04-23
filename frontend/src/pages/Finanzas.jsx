@@ -171,6 +171,7 @@ const cx = (...classes) => classes.filter(Boolean).join(' ')
 const IVA_RATE = 0.16
 const roundMoney = (n) => Math.round(((parseFloat(n) || 0) + Number.EPSILON) * 100) / 100
 const isIvaApplied = (d) => d?.aplica_iva === true || d?.aplica_iva === 1 || d?.aplica_iva === '1'
+const getMonthsRange = (count) => Array.from({ length: Math.max(0, count) }, (_, index) => index + 1)
 const calcIvaBreakdown = (subtotalValue, aplicaIva) => {
   const subtotal = roundMoney(subtotalValue)
   const total = aplicaIva ? roundMoney(subtotal * (1 + IVA_RATE)) : subtotal
@@ -344,10 +345,32 @@ function KpiCard({ label, value, sub, color = 'green' }) {
 
 // ── Selector de período ───────────────────────────────────────────────────────
 function PeriodSelector({ value, onChange }) {
-  const [modo, setModo] = useState('mes') // 'mes' | 'q' | 'anual'
-  const [meses, setMeses] = useState([1,2,3]) // selected months
-  const [q, setQ] = useState(1)
-  const [anio, setAnio] = useState(new Date().getFullYear())
+  const currentDate = new Date()
+  const fallbackAnio = value?.anio || currentDate.getFullYear()
+  const fallbackMeses = Array.isArray(value?.meses) && value.meses.length ? value.meses : getMonthsRange(currentDate.getMonth() + 1)
+  const resolveInitialMode = () => {
+    if (fallbackMeses.length === 12) return 'anual'
+    if (fallbackMeses.length === 3 && fallbackMeses[0] % 3 === 1 && fallbackMeses[2] - fallbackMeses[0] === 2) return 'q'
+    return 'mes'
+  }
+
+  const [modo, setModo] = useState(resolveInitialMode) // 'mes' | 'q' | 'anual'
+  const [meses, setMeses] = useState(fallbackMeses) // selected months
+  const [q, setQ] = useState(Math.max(1, Math.ceil((fallbackMeses[0] || 1) / 3)))
+  const [anio, setAnio] = useState(fallbackAnio)
+
+  useEffect(() => {
+    if (!value?.anio || !Array.isArray(value?.meses) || !value.meses.length) return
+    setAnio(value.anio)
+    setMeses(value.meses)
+    if (value.meses.length === 12) setModo('anual')
+    else if (value.meses.length === 3 && value.meses[0] % 3 === 1 && value.meses[2] - value.meses[0] === 2) {
+      setModo('q')
+      setQ(Math.max(1, Math.ceil((value.meses[0] || 1) / 3)))
+    } else {
+      setModo('mes')
+    }
+  }, [value?.anio, JSON.stringify(value?.meses || [])])
 
   useEffect(() => {
     if (modo === 'mes') onChange({ meses, anio })
@@ -434,6 +457,11 @@ function PeriodSelector({ value, onChange }) {
 // ── Custom tooltip ────────────────────────────────────────────────────────────
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
+  const budget = payload.find(p => p.dataKey === 'presupuesto')?.value || 0
+  const spend = payload.find(p => p.dataKey === 'gasto_real')?.value || 0
+  const ahorro = payload.find(p => p.dataKey === 'ahorro_soporte')?.value || 0
+  const restante = payload.find(p => p.dataKey === 'no_ejercido')?.value || 0
+  const pct = budget > 0 ? (spend / budget) * 100 : 0
   return (
     <div className="rounded-2xl border border-white/70 bg-slate-950/95 p-3 text-xs text-white shadow-[0_30px_60px_-40px_rgba(15,23,42,0.85)] backdrop-blur">
       <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">{MESES[(label||1)-1]}</div>
@@ -444,6 +472,20 @@ function CustomTooltip({ active, payload, label }) {
           <span className="font-semibold text-white">{fmt(p.value)}</span>
         </div>
       ))}
+      <div className="mt-3 border-t border-white/10 pt-2 text-[11px] text-slate-300">
+        <div className="flex items-center justify-between">
+          <span>Ejercido del mes</span>
+          <span className="font-semibold text-white">{pct.toFixed(1)}%</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span>Balance neto</span>
+          <span className="font-semibold text-white">{fmt(budget - spend - ahorro)}</span>
+        </div>
+        <div className="mt-1 flex items-center justify-between">
+          <span>No ejercido</span>
+          <span className="font-semibold text-white">{fmt(restante)}</span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -462,12 +504,21 @@ const COL_DEFS = [
 
 function TabPresupuesto() {
   const { showError } = useNotification()
+  const today = new Date()
+  const currentYear = today.getFullYear()
+  const currentMonth = today.getMonth() + 1
   const [dashboard, setDashboard] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [filtros, setFiltros] = useState({ anio: new Date().getFullYear(), empresa: '', agrupador: '', proveedor: '' })
+  const [filtros, setFiltros] = useState({ anio: currentYear, empresa: '', agrupador: '', proveedor: '' })
   const [proveedorInput, setProveedorInput] = useState('')
-  const [periodo, setPeriodo] = useState({ meses: [1,2,3], anio: new Date().getFullYear() })
+  const [periodo, setPeriodo] = useState({ meses: getMonthsRange(currentMonth), anio: currentYear })
   const [agrupadores, setAgrupadores] = useState([])
+  const [visibleSeries, setVisibleSeries] = useState({
+    presupuesto: true,
+    gasto_real: true,
+    ahorro_soporte: true,
+    no_ejercido: true,
+  })
   // Partidas table controls
   const [tablaBusq, setTablaBusq] = useState('')
   const [tablaPageSize, setTablaPageSize] = useState(20)
@@ -485,12 +536,11 @@ function TabPresupuesto() {
 
   const load = useCallback(() => {
     setLoading(true)
-    const nowY = new Date().getFullYear(), nowM = new Date().getMonth() + 1
-    const mesEfectivo = periodo.anio < nowY ? 12 : (periodo.anio > nowY ? 0 : nowM)
+    const mesEfectivo = periodo.anio < currentYear ? 12 : (periodo.anio > currentYear ? 0 : currentMonth)
     presupuestoAPI.getDashboard({ anio: periodo.anio, empresa: filtros.empresa, agrupador: filtros.agrupador, proveedor: filtros.proveedor, mes_actual: mesEfectivo })
       .then(setDashboard).finally(() => setLoading(false))
     presupuestoAPI.getAgrupadores().then(setAgrupadores)
-  }, [filtros, periodo.anio])
+  }, [currentMonth, currentYear, filtros, periodo.anio])
 
   useEffect(() => { load() }, [load])
 
@@ -525,7 +575,7 @@ function TabPresupuesto() {
   // ── KPIs dinámicos según período seleccionado ────────────────────────────────
   // Presupuesto = refleja el período seleccionado (cambia con el selector)
   // Gasto Real / Ahorro / No Ejercido = solo hasta el mes corriente
-  const nowMonth = new Date().getMonth() + 1
+  const nowMonth = currentMonth
   const mesesData = dashboard?.meses || []
   const selectedElapsed = periodo.meses.filter(m => m <= nowMonth) // meses del período que ya pasaron
 
@@ -559,6 +609,16 @@ function TabPresupuesto() {
     filtros.agrupador && `Agrupador · ${filtros.agrupador}`,
     filtros.proveedor && `Proveedor · ${filtros.proveedor}`,
   ].filter(Boolean)
+  const chartSeries = [
+    { key: 'presupuesto', name: 'Presupuesto', color: '#5DB847', badge: 'bg-emerald-100 text-emerald-700' },
+    { key: 'gasto_real', name: 'Gasto Real', color: '#1d4ed8', badge: 'bg-blue-100 text-blue-800' },
+    { key: 'ahorro_soporte', name: 'Ahorrado por Soporte', color: '#d97706', badge: 'bg-amber-100 text-amber-700' },
+    { key: 'no_ejercido', name: 'No Ejercido', color: '#cbd5e1', badge: 'bg-slate-100 text-slate-600' },
+  ]
+  const currentMonthLabel = periodo.anio === currentYear ? MESES[currentMonth - 1] : null
+  const chartInsight = kpiPresupuesto > 0
+    ? `Se ha ejercido ${kpiPct.toFixed(1)}% del presupuesto del período seleccionado.`
+    : 'Aún no hay presupuesto asignado para el período seleccionado.'
 
   return (
     <div className="space-y-5">
@@ -648,25 +708,71 @@ function TabPresupuesto() {
           <div>
             <h3 className="text-base font-bold text-slate-800">Análisis de Presupuesto por Período</h3>
             <p className="mt-1 text-sm text-slate-500">Compara presupuesto, gasto, ahorro y no ejercido dentro del período activo.</p>
+            <p className="mt-2 text-xs font-medium text-slate-400">{chartInsight}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {currentMonthLabel && (
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+                Corte actual: {currentMonthLabel}
+              </span>
+            )}
             <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Presupuesto {fmt(kpiPresupuesto)}</span>
             <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">Gasto {fmt(kpiGasto)}</span>
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={chartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }} barCategoryGap="25%" barGap={3}>
-            <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" vertical={false} />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip />} />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="presupuesto" name="Presupuesto" fill="#5DB847" radius={[8,8,0,0]} />
-            <Bar dataKey="gasto_real" name="Gasto Real" fill="#1d4ed8" radius={[8,8,0,0]} />
-            <Bar dataKey="ahorro_soporte" name="Ahorrado por Soporte" fill="#d97706" radius={[8,8,0,0]} />
-            <Bar dataKey="no_ejercido" name="No Ejercido" fill="#cbd5e1" radius={[8,8,0,0]} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="mb-4 flex flex-wrap gap-2">
+          {chartSeries.map(series => (
+            <button
+              key={series.key}
+              type="button"
+              onClick={() => setVisibleSeries(prev => ({ ...prev, [series.key]: !prev[series.key] }))}
+              className={cx(
+                'rounded-full border px-3 py-1 text-xs font-semibold transition-all',
+                visibleSeries[series.key]
+                  ? `${series.badge} border-transparent`
+                  : 'border-slate-200 bg-white text-slate-400'
+              )}
+            >
+              {series.name}
+            </button>
+          ))}
+        </div>
+        <div className="rounded-[24px] border border-slate-100 bg-white/70 p-3">
+          <ResponsiveContainer width="100%" height={320}>
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }} barCategoryGap="18%" barGap={4}>
+              <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" vertical={false} />
+              <XAxis
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                tick={({ x, y, payload }) => {
+                  const isCurrent = periodo.anio === currentYear && payload?.value === MESES[currentMonth - 1]?.slice(0, 3)
+                  return (
+                    <g transform={`translate(${x},${y})`}>
+                      <text
+                        x={0}
+                        y={0}
+                        dy={16}
+                        textAnchor="middle"
+                        fontSize={11}
+                        fill={isCurrent ? '#0f172a' : '#64748b'}
+                        fontWeight={isCurrent ? 700 : 500}
+                      >
+                        {payload?.value}
+                      </text>
+                    </g>
+                  )
+                }}
+              />
+              <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="presupuesto" name="Presupuesto" fill="#5DB847" radius={[8,8,0,0]} hide={!visibleSeries.presupuesto} />
+              <Bar dataKey="gasto_real" name="Gasto Real" fill="#1d4ed8" radius={[8,8,0,0]} hide={!visibleSeries.gasto_real} />
+              <Bar dataKey="ahorro_soporte" name="Ahorrado por Soporte" fill="#d97706" radius={[8,8,0,0]} hide={!visibleSeries.ahorro_soporte} />
+              <Bar dataKey="no_ejercido" name="No Ejercido" fill="#cbd5e1" radius={[8,8,0,0]} hide={!visibleSeries.no_ejercido} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Partidas table */}
@@ -746,7 +852,7 @@ function TabPresupuesto() {
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50/80">
+            <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur">
               <tr>
                 {orderedVisibleCols.map(c => (
                   <th key={c.key} className={`px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 ${['presupuesto','gasto_real','ahorro','variacion'].includes(c.key) ? 'text-right' : 'text-left'}`}>
@@ -770,17 +876,25 @@ function TabPresupuesto() {
                 const gastoPeriodo = mesesElapsed.reduce((s, m) => s + (gastosArr[m-1] || 0), 0)
                 const ahoorroPeriodo = mesesElapsed.reduce((s, m) => s + (ahorroArr[m-1] || 0), 0)
                 const variacion = presupuestoPeriodo - gastoPeriodo
+                const pctConsumed = presupuestoPeriodo > 0 ? Math.min(100, (gastoPeriodo / presupuestoPeriodo) * 100) : 0
                 const colMap = {
-                  empresa:     <td key="empresa" className="px-4 py-2.5"><span className="text-xs bg-navy-100 text-navy-700 px-2 py-0.5 rounded-full">{p.empresa}</span></td>,
-                  agrupador:   <td key="agrupador" className="px-4 py-2.5 text-gray-600 text-xs">{p.agrupador}</td>,
-                  proveedor:   <td key="proveedor" className="px-4 py-2.5 text-gray-500 text-xs">{p.proveedor || '—'}</td>,
-                  concepto:    <td key="concepto" className="px-4 py-2.5 font-medium text-gray-800 max-w-xs">{p.concepto}</td>,
-                  presupuesto: <td key="presupuesto" className="px-4 py-2.5 text-right font-mono text-gray-700">{fmt(presupuestoPeriodo)}</td>,
-                  gasto_real:  <td key="gasto_real" className="px-4 py-2.5 text-right font-mono text-navy-700">{fmt(gastoPeriodo)}</td>,
-                  ahorro:      <td key="ahorro" className="px-4 py-2.5 text-right font-mono text-gold-600">{fmt(ahoorroPeriodo)}</td>,
-                  variacion:   <td key="variacion" className={`px-4 py-2.5 text-right font-mono font-semibold ${variacion >= 0 ? 'text-primary-600' : 'text-red-500'}`}>{variacion >= 0 ? '+' : ''}{fmt(variacion)}</td>,
+                  empresa:     <td key="empresa" className="px-4 py-3"><span className="rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 px-2.5 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">{p.empresa}</span></td>,
+                  agrupador:   <td key="agrupador" className="px-4 py-3"><span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{p.agrupador}</span></td>,
+                  proveedor:   <td key="proveedor" className="px-4 py-3 text-gray-500 text-xs">{p.proveedor || '—'}</td>,
+                  concepto:    <td key="concepto" className="px-4 py-3">
+                    <div className="max-w-xl">
+                      <p className="font-semibold leading-5 text-slate-800">{p.concepto}</p>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500" style={{ width: `${pctConsumed}%` }} />
+                      </div>
+                    </div>
+                  </td>,
+                  presupuesto: <td key="presupuesto" className="px-4 py-3 text-right font-mono font-semibold text-slate-700">{fmt(presupuestoPeriodo)}</td>,
+                  gasto_real:  <td key="gasto_real" className="px-4 py-3 text-right font-mono font-semibold text-blue-800">{fmt(gastoPeriodo)}</td>,
+                  ahorro:      <td key="ahorro" className="px-4 py-3 text-right font-mono font-semibold text-amber-700">{fmt(ahoorroPeriodo)}</td>,
+                  variacion:   <td key="variacion" className="px-4 py-3 text-right"><span className={cx('inline-flex rounded-full px-2.5 py-1 font-mono text-xs font-semibold', variacion >= 0 ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-red-50 text-red-600 ring-1 ring-red-100')}>{variacion >= 0 ? '+' : ''}{fmt(variacion)}</span></td>,
                 }
-                return <tr key={p.id} className="transition-colors hover:bg-slate-50/80">{orderedVisibleCols.map(c => colMap[c.key])}</tr>
+                return <tr key={p.id} className="border-b border-slate-100/80 transition-colors odd:bg-white even:bg-slate-50/35 hover:bg-slate-50/80">{orderedVisibleCols.map(c => colMap[c.key])}</tr>
               })}
             </tbody>
           </table>
