@@ -991,8 +991,10 @@ function TabDesgloce() {
   const [sortConfig, setSortConfig] = useState({ campo: '', dir: 'asc' })
   const [showExportMenu, setShowExportMenu] = useState(false)
   const exportMenuRef = useRef(null)
+  const detailColMenuRef = useRef(null)
   const resizingRef = useRef(null)
   const [detalleColWidths, setDetalleColWidths] = useState({})
+  const [showDetailColMenu, setShowDetailColMenu] = useState(false)
   // ── Vista agrupada ──────────────────────────────────────────────────────────
   const [agrupar, setAgrupar] = useState(false)
   const [expandedGroups, setExpandedGroups] = useState(new Set())
@@ -1010,6 +1012,9 @@ function TabDesgloce() {
     const handleClickOutside = (event) => {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
         setShowExportMenu(false)
+      }
+      if (detailColMenuRef.current && !detailColMenuRef.current.contains(event.target)) {
+        setShowDetailColMenu(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -1058,6 +1063,25 @@ function TabDesgloce() {
     { key: 'centro_costo_codigo', label: 'Centro de Costos', campo: 'centro_costo_codigo', align: 'left', minWidth: 168 },
     { key: 'identificador', label: 'Tipo', campo: 'identificador', align: 'left', minWidth: 92 },
   ]
+
+  const [detalleColsVisible, setDetalleColsVisible] = useState(() =>
+    detailColumns.reduce((acc, col) => ({ ...acc, [col.key]: true }), {})
+  )
+
+  const visibleDetailColumns = useMemo(
+    () => detailColumns.filter(col => detalleColsVisible[col.key] !== false),
+    [detalleColsVisible]
+  )
+
+  const detailLeadKeys = ['nombre', 'telefono_serie', 'tipo_servicio', 'proveedor', 'factura_folio']
+  const detailSummaryKeys = ['dias_facturados', 'costo_dia', 'subtotal', 'iva', 'total', 'total_mxn']
+  const detailFirstLeadKey = visibleDetailColumns.find(col => detailLeadKeys.includes(col.key))?.key || null
+  const detailLeadSpan = visibleDetailColumns.filter(col => detailLeadKeys.includes(col.key)).length
+  const detailFirstSubtotalLeadKey = visibleDetailColumns.find(col => !detailSummaryKeys.includes(col.key))?.key || null
+  const detailSubtotalLeadSpan = visibleDetailColumns.filter(col => !detailSummaryKeys.includes(col.key)).length
+  const detailVisibleCount = visibleDetailColumns.length
+  const detailTableColSpan = detailVisibleCount + 2
+  const isDetailColumnVisible = (key) => detalleColsVisible[key] !== false
 
   const getColumnStyle = (col) => {
     const width = detalleColWidths[col.key]
@@ -1671,23 +1695,73 @@ function TabDesgloce() {
             <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
               {detalleFiltrado.length} línea{detalleFiltrado.length !== 1 ? 's' : ''}
             </span>
+            <span className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">
+              Acciones siempre visibles
+            </span>
+            <div className="relative" ref={detailColMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowDetailColMenu(v => !v)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                <Cog6ToothIcon className="h-3.5 w-3.5" />
+                Columnas
+                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">{detailVisibleCount}/{detailColumns.length}</span>
+              </button>
+              {showDetailColMenu && (
+                <div className="absolute right-0 top-full z-40 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                  <div className="border-b border-slate-100 bg-slate-50 px-4 py-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Columnas visibles</div>
+                    <div className="mt-1 text-xs text-slate-400">Personaliza la tabla sin perder la columna de acciones.</div>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto px-4 py-3">
+                    <div className="mb-3 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setDetalleColsVisible(detailColumns.reduce((acc, col) => ({ ...acc, [col.key]: true }), {}))}
+                        className="text-xs font-semibold text-primary-600 transition-colors hover:text-primary-700"
+                      >
+                        Mostrar todas
+                      </button>
+                      <span className="text-[11px] text-slate-400">{detailVisibleCount} activas</span>
+                    </div>
+                    <div className="space-y-2">
+                      {detailColumns.map(col => (
+                        <label key={col.key} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2 text-sm text-slate-700 transition-colors hover:border-slate-200 hover:bg-slate-50">
+                          <span className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              checked={detalleColsVisible[col.key] !== false}
+                              onChange={() => setDetalleColsVisible(prev => ({ ...prev, [col.key]: !prev[col.key] }))}
+                              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            {col.label}
+                          </span>
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-slate-400">{col.align === 'right' ? 'Métrica' : 'Dato'}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-max w-full text-xs">
-            <thead className="bg-slate-50/80">
+            <thead className="sticky top-0 z-20 bg-white/90 backdrop-blur-xl">
               <tr>
-                <th className="px-3 py-2.5 w-10">
+                <th className="sticky left-0 z-30 w-10 border-b border-slate-200 bg-slate-50/95 px-3 py-3 shadow-[8px_0_18px_-16px_rgba(15,23,42,0.25)]">
                   <input type="checkbox"
                     className="rounded border-gray-300"
                     checked={selected.size === detalleFiltrado.length && detalleFiltrado.length > 0}
                     onChange={e => setSelected(e.target.checked ? new Set(detalleFiltrado.map(d => d.id)) : new Set())}
                   />
                 </th>
-                {detailColumns.map(col => (
+                {visibleDetailColumns.map(col => (
                   <th key={col.label}
                     style={getColumnStyle(col)}
-                    className={`relative px-3 py-3 text-${col.align} text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 ${col.campo ? 'cursor-pointer select-none hover:text-primary-600' : ''}`}
+                    className={`relative border-b border-slate-200 px-3 py-3 text-${col.align} text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 ${col.campo ? 'cursor-pointer select-none hover:text-primary-600' : ''}`}
                     onClick={() => col.campo && toggleSort(col.campo)}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -1710,14 +1784,16 @@ function TabDesgloce() {
                     </button>
                   </th>
                 ))}
-                <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Acciones</th>
+                <th className="sticky right-0 z-30 border-b border-slate-200 bg-slate-50/95 px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 shadow-[-12px_0_20px_-18px_rgba(15,23,42,0.3)]">
+                  Acciones
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={15} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
+                <tr><td colSpan={detailTableColSpan} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
               ) : detalleFiltrado.length === 0 ? (
-                <tr><td colSpan={15} className="py-10 text-center text-gray-400">
+                <tr><td colSpan={detailTableColSpan} className="py-10 text-center text-gray-400">
                   {filtrosActivos ? 'Ningún registro coincide con los filtros aplicados.' : 'No hay registros para este período. Agrega líneas o clona el mes anterior.'}
                 </td></tr>
 
@@ -1730,62 +1806,56 @@ function TabDesgloce() {
                     <Fragment key={grupo.key}>
                       {/* Fila resumen del grupo */}
                       <tr
-                        className="bg-slate-50 hover:bg-slate-100 cursor-pointer select-none border-l-4 border-indigo-400"
+                        className="cursor-pointer select-none border-l-4 border-indigo-400 bg-gradient-to-r from-indigo-50 via-white to-slate-50 transition-colors hover:from-indigo-100 hover:to-slate-100"
                         onClick={() => toggleGroup(grupo.key)}
                       >
-                        <td className="px-3 py-2.5 w-10">
+                        <td className="sticky left-0 z-10 w-10 bg-inherit px-3 py-2.5 shadow-[8px_0_18px_-16px_rgba(15,23,42,0.25)]">
                           {isOpen
                             ? <ChevronDownIcon className="h-4 w-4 text-indigo-500" />
                             : <ChevronRightIcon className="h-4 w-4 text-gray-400" />}
                         </td>
-                        {/* colSpan=5 cubre: Nombre + Serie/Tel + Servicio + Proveedor + Factura */}
-                        <td className="px-3 py-2.5 font-semibold text-gray-900 max-w-[220px]" colSpan={5}>
-                          <div className="flex items-center gap-2">
-                            <div className="truncate text-indigo-800">{grupo.proveedor}</div>
-                            <button
-                              type="button"
-                              onClick={e => {
-                                e.stopPropagation()
-                                openFacturaBulk(grupo.lines, `grupo ${grupo.proveedor}`)
-                              }}
-                              className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
-                              title="Actualizar el folio de factura para todas las líneas de este grupo"
-                            >
-                              Actualizar factura
-                            </button>
-                          </div>
-                          <div className="text-xs font-normal text-indigo-500 mt-0.5">
-                            {count} {count === 1 ? 'línea' : 'líneas'} · expandir para ver detalle
-                          </div>
-                        </td>
-                        {/* Días */}
-                        <td className="px-3 py-2.5 text-right font-mono text-gray-400 text-xs">×{count}</td>
-                        {/* $/día */}
-                        <td className="px-3 py-2.5 text-center text-gray-300">—</td>
-                        {/* Subtotal */}
-                        <td className="px-3 py-2.5 text-right font-mono font-semibold text-gray-700">{fmtDec(grupo.subtotal)}</td>
-                        {/* IVA — monto acumulado */}
-                        <td className="px-3 py-2.5 text-right font-mono text-xs">
-                          {grupo.iva_monto > 0
-                            ? <span className="font-semibold text-amber-600">{fmtDec(grupo.iva_monto)}</span>
-                            : <span className="text-gray-300">—</span>}
-                        </td>
-                        {/* Total (en moneda original) */}
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-indigo-700 text-sm">{fmtDec(grupo.total)}</td>
-                        {/* Total MXN (conversión) */}
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-700 text-sm">{fmtDec(grupo.total_mxn)}</td>
-                        {/* Centro Costos, Tipo, Acciones */}
-                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
-                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
-                        <td className="px-3 py-2.5 text-xs text-gray-300">—</td>
+                        {visibleDetailColumns.map(col => {
+                          if (detailLeadKeys.includes(col.key) && col.key !== detailFirstLeadKey) return null
+                          if (col.key === detailFirstLeadKey) {
+                            return (
+                              <td key={col.key} className="max-w-[220px] px-3 py-2.5 font-semibold text-gray-900" colSpan={detailLeadSpan}>
+                                <div className="flex items-center gap-2">
+                                  <div className="truncate text-indigo-800">{grupo.proveedor}</div>
+                                  <button
+                                    type="button"
+                                    onClick={e => {
+                                      e.stopPropagation()
+                                      openFacturaBulk(grupo.lines, `grupo ${grupo.proveedor}`)
+                                    }}
+                                    className="rounded-lg border border-indigo-200 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 transition-colors hover:bg-indigo-50"
+                                    title="Actualizar el folio de factura para todas las líneas de este grupo"
+                                  >
+                                    Actualizar factura
+                                  </button>
+                                </div>
+                                <div className="mt-0.5 text-xs font-normal text-indigo-500">
+                                  {count} {count === 1 ? 'línea' : 'líneas'} · expandir para ver detalle
+                                </div>
+                              </td>
+                            )
+                          }
+                          if (col.key === 'dias_facturados') return <td key={col.key} className="px-3 py-2.5 text-right font-mono text-xs text-gray-400">×{count}</td>
+                          if (col.key === 'costo_dia') return <td key={col.key} className="px-3 py-2.5 text-center text-gray-300">—</td>
+                          if (col.key === 'subtotal') return <td key={col.key} className="px-3 py-2.5 text-right font-mono font-semibold text-gray-700">{fmtDec(grupo.subtotal)}</td>
+                          if (col.key === 'iva') return <td key={col.key} className="px-3 py-2.5 text-right font-mono text-xs">{grupo.iva_monto > 0 ? <span className="font-semibold text-amber-600">{fmtDec(grupo.iva_monto)}</span> : <span className="text-gray-300">—</span>}</td>
+                          if (col.key === 'total') return <td key={col.key} className="px-3 py-2.5 text-right font-mono text-sm font-bold text-indigo-700">{fmtDec(grupo.total)}</td>
+                          if (col.key === 'total_mxn') return <td key={col.key} className="px-3 py-2.5 text-right font-mono text-sm font-bold text-emerald-700">{fmtDec(grupo.total_mxn)}</td>
+                          return <td key={col.key} className="px-3 py-2.5 text-xs text-gray-300">—</td>
+                        })}
+                        <td className="sticky right-0 z-10 bg-inherit px-3 py-2.5 text-xs text-gray-300 shadow-[-12px_0_20px_-18px_rgba(15,23,42,0.3)]">—</td>
                       </tr>
 
                       {/* Filas de detalle del grupo (visibles solo si expandido) */}
                       {isOpen && grupo.lines.map((d, li) => (
-                        <tr key={d.id} className="hover:bg-blue-50 bg-white">
-                          <td className="px-3 py-1.5 w-10">
+                        <tr key={d.id} className={cx('transition-colors hover:bg-indigo-50/70', li % 2 === 0 ? 'bg-white' : 'bg-slate-50/55')}>
+                          <td className="sticky left-0 z-10 w-10 bg-inherit px-3 py-1.5 shadow-[8px_0_18px_-16px_rgba(15,23,42,0.25)]">
                             <input type="checkbox"
-                              className="rounded border-gray-300 ml-3"
+                              className="ml-3 rounded border-gray-300"
                               checked={selected.has(d.id)}
                               onChange={e => setSelected(prev => {
                                 const next = new Set(prev)
@@ -1795,42 +1865,44 @@ function TabDesgloce() {
                               onClick={e => e.stopPropagation()}
                             />
                           </td>
-                          <td style={getColumnStyle(detailColumns[0])} className="px-3 py-1.5 pl-8 text-gray-600 text-xs">
-                            <div className="truncate"><span className="text-gray-300 mr-1">{li + 1}.</span>{d.nombre}</div>
-                            {d.empleado_nombre && (
-                              <div className="text-xs text-blue-500 mt-0.5 truncate">👤 {d.empleado_nombre}</div>
-                            )}
-                            {d.sucursal_nombre && (
-                              <div className="text-xs text-emerald-600 mt-0.5 truncate">🏢 {d.sucursal_nombre}</div>
-                            )}
-                          </td>
-                          <td style={getColumnStyle(detailColumns[1])} className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.telefono_serie || '—'}</td>
-                          <td style={getColumnStyle(detailColumns[2])} className="px-3 py-1.5 text-gray-500 text-xs">{d.tipo_servicio || '—'}</td>
-                          <td style={getColumnStyle(detailColumns[3])} className="px-3 py-1.5 text-gray-400 text-xs">{d.proveedor || '—'}</td>
-                          <td style={getColumnStyle(detailColumns[4])} className="px-3 py-1.5 font-mono text-gray-500 text-xs">{d.factura_folio || '—'}</td>
-                          <td style={getColumnStyle(detailColumns[5])} className="px-3 py-1.5 text-right font-mono text-xs">{d.dias_facturados}</td>
-                          <td style={getColumnStyle(detailColumns[6])} className="px-3 py-1.5 text-right font-mono text-xs">{fmtDec(d.costo_dia)}</td>
-                          <td style={getColumnStyle(detailColumns[7])} className="px-3 py-1.5 text-right font-mono text-gray-600 text-xs">{fmtDec(d.subtotal)}</td>
-                          <td style={getColumnStyle(detailColumns[8])} className="px-3 py-1.5 text-center">
-                            {isIvaApplied(d) ? <span className="font-mono text-amber-700 text-xs">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-200">—</span>}
-                          </td>
-                          <td style={getColumnStyle(detailColumns[9])} className="px-3 py-1.5 text-right font-mono font-semibold text-primary-600 text-xs">
-                            <div>{fmtDec(d.total)}</div>
-                            {d.moneda === 'USD' && <div className="text-[10px] text-gray-400 font-normal">USD</div>}
-                          </td>
-                          <td style={getColumnStyle(detailColumns[10])} className="px-3 py-1.5 text-right font-mono font-semibold text-emerald-700 text-xs">
-                            {fmtDec(calcTotalMXN(d))}
-                          </td>
-                          <td style={getColumnStyle(detailColumns[11])} className="px-3 py-1.5 text-xs">
-                            {d.centro_costo_codigo ? (
-                              <div>
-                                <span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs font-mono">{d.centro_costo_codigo}</span>
-                                {d.centro_costo_nombre && <div className="text-xs text-gray-400 mt-0.5 max-w-[130px] truncate">{d.centro_costo_nombre}</div>}
-                              </div>
-                            ) : <span className="text-gray-300">—</span>}
-                          </td>
-                          <td style={getColumnStyle(detailColumns[12])} className="px-3 py-1.5 text-xs"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
-                          <td className="px-3 py-1.5">
+                          {isDetailColumnVisible('nombre') && (
+                            <td style={getColumnStyle(detailColumns[0])} className="px-3 py-1.5 pl-8 text-xs text-gray-600">
+                              <div className="truncate"><span className="mr-1 text-gray-300">{li + 1}.</span>{d.nombre}</div>
+                              {d.empleado_nombre && <div className="mt-0.5 truncate text-xs text-blue-500">👤 {d.empleado_nombre}</div>}
+                              {d.sucursal_nombre && <div className="mt-0.5 truncate text-xs text-emerald-600">🏢 {d.sucursal_nombre}</div>}
+                            </td>
+                          )}
+                          {isDetailColumnVisible('telefono_serie') && <td style={getColumnStyle(detailColumns[1])} className="px-3 py-1.5 font-mono text-xs text-gray-500">{d.telefono_serie || '—'}</td>}
+                          {isDetailColumnVisible('tipo_servicio') && <td style={getColumnStyle(detailColumns[2])} className="px-3 py-1.5 text-xs text-gray-500">{d.tipo_servicio || '—'}</td>}
+                          {isDetailColumnVisible('proveedor') && <td style={getColumnStyle(detailColumns[3])} className="px-3 py-1.5 text-xs text-gray-400">{d.proveedor || '—'}</td>}
+                          {isDetailColumnVisible('factura_folio') && <td style={getColumnStyle(detailColumns[4])} className="px-3 py-1.5 font-mono text-xs text-gray-500">{d.factura_folio || '—'}</td>}
+                          {isDetailColumnVisible('dias_facturados') && <td style={getColumnStyle(detailColumns[5])} className="px-3 py-1.5 text-right font-mono text-xs">{d.dias_facturados}</td>}
+                          {isDetailColumnVisible('costo_dia') && <td style={getColumnStyle(detailColumns[6])} className="px-3 py-1.5 text-right font-mono text-xs">{fmtDec(d.costo_dia)}</td>}
+                          {isDetailColumnVisible('subtotal') && <td style={getColumnStyle(detailColumns[7])} className="px-3 py-1.5 text-right font-mono text-xs text-gray-600">{fmtDec(d.subtotal)}</td>}
+                          {isDetailColumnVisible('iva') && (
+                            <td style={getColumnStyle(detailColumns[8])} className="px-3 py-1.5 text-center">
+                              {isIvaApplied(d) ? <span className="font-mono text-xs text-amber-700">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-200">—</span>}
+                            </td>
+                          )}
+                          {isDetailColumnVisible('total') && (
+                            <td style={getColumnStyle(detailColumns[9])} className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-primary-600">
+                              <div>{fmtDec(d.total)}</div>
+                              {d.moneda === 'USD' && <div className="text-[10px] font-normal text-gray-400">USD</div>}
+                            </td>
+                          )}
+                          {isDetailColumnVisible('total_mxn') && <td style={getColumnStyle(detailColumns[10])} className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-emerald-700">{fmtDec(calcTotalMXN(d))}</td>}
+                          {isDetailColumnVisible('centro_costo_codigo') && (
+                            <td style={getColumnStyle(detailColumns[11])} className="px-3 py-1.5 text-xs">
+                              {d.centro_costo_codigo ? (
+                                <div>
+                                  <span className="rounded bg-navy-50 px-1.5 py-0.5 text-xs font-mono text-navy-700">{d.centro_costo_codigo}</span>
+                                  {d.centro_costo_nombre && <div className="mt-0.5 max-w-[130px] truncate text-xs text-gray-400">{d.centro_costo_nombre}</div>}
+                                </div>
+                              ) : <span className="text-gray-300">—</span>}
+                            </td>
+                          )}
+                          {isDetailColumnVisible('identificador') && <td style={getColumnStyle(detailColumns[12])} className="px-3 py-1.5 text-xs"><span className={`rounded px-1.5 py-0.5 text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>}
+                          <td className="sticky right-0 z-10 bg-inherit px-3 py-1.5 shadow-[-12px_0_20px_-18px_rgba(15,23,42,0.3)]">
                             <div className="flex justify-center gap-1">
                               <button onClick={() => openEdit(d)} className="p-1 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600"><PencilSquareIcon className="h-3 w-3"/></button>
                               <button onClick={() => handleDelete(d.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon className="h-3 w-3"/></button>
@@ -1841,23 +1913,24 @@ function TabDesgloce() {
 
                       {/* Fila subtotal del grupo (solo si tiene más de 1 línea y está expandido) */}
                       {isOpen && count > 1 && (
-                        <tr key={`sub-${grupo.key}`} className="bg-indigo-50 border-b-2 border-indigo-200">
-                          <td colSpan={8} className="px-3 py-1.5 pl-8 text-xs text-indigo-600 font-semibold">
-                            Subtotal — {grupo.proveedor} ({count} líneas)
-                          </td>
-                          {/* Subtotal */}
-                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-indigo-700 text-xs">{fmtDec(grupo.subtotal)}</td>
-                          {/* IVA acumulado */}
-                          <td className="px-3 py-1.5 text-right font-mono text-xs">
-                            {grupo.iva_monto > 0
-                              ? <span className="font-semibold text-amber-700">{fmtDec(grupo.iva_monto)}</span>
-                              : <span className="text-indigo-300">—</span>}
-                          </td>
-                          {/* Total */}
-                          <td className="px-3 py-1.5 text-right font-mono font-bold text-indigo-800 text-sm">{fmtDec(grupo.total)}</td>
-                          {/* Total MXN */}
-                          <td className="px-3 py-1.5 text-right font-mono font-bold text-emerald-700 text-sm">{fmtDec(grupo.total_mxn)}</td>
-                          <td colSpan={3} />
+                        <tr key={`sub-${grupo.key}`} className="border-b-2 border-indigo-200 bg-indigo-50">
+                          <td className="sticky left-0 z-10 bg-indigo-50 px-3 py-1.5 shadow-[8px_0_18px_-16px_rgba(15,23,42,0.25)]" />
+                          {visibleDetailColumns.map(col => {
+                            if (!detailSummaryKeys.includes(col.key) && col.key !== detailFirstSubtotalLeadKey) return null
+                            if (col.key === detailFirstSubtotalLeadKey) {
+                              return (
+                                <td key={col.key} colSpan={detailSubtotalLeadSpan} className="px-3 py-1.5 pl-8 text-xs font-semibold text-indigo-600">
+                                  Subtotal — {grupo.proveedor} ({count} líneas)
+                                </td>
+                              )
+                            }
+                            if (col.key === 'subtotal') return <td key={col.key} className="px-3 py-1.5 text-right font-mono text-xs font-semibold text-indigo-700">{fmtDec(grupo.subtotal)}</td>
+                            if (col.key === 'iva') return <td key={col.key} className="px-3 py-1.5 text-right font-mono text-xs">{grupo.iva_monto > 0 ? <span className="font-semibold text-amber-700">{fmtDec(grupo.iva_monto)}</span> : <span className="text-indigo-300">—</span>}</td>
+                            if (col.key === 'total') return <td key={col.key} className="px-3 py-1.5 text-right font-mono text-sm font-bold text-indigo-800">{fmtDec(grupo.total)}</td>
+                            if (col.key === 'total_mxn') return <td key={col.key} className="px-3 py-1.5 text-right font-mono text-sm font-bold text-emerald-700">{fmtDec(grupo.total_mxn)}</td>
+                            return <td key={col.key} className="px-3 py-1.5" />
+                          })}
+                          <td className="sticky right-0 z-10 bg-indigo-50 px-3 py-1.5 shadow-[-12px_0_20px_-18px_rgba(15,23,42,0.3)]" />
                         </tr>
                       )}
                     </Fragment>
@@ -1866,9 +1939,9 @@ function TabDesgloce() {
 
               ) : (
                 // ── Vista detallada normal (una fila por línea) ──────────────────
-                detalleFiltrado.map(d => (
-                  <tr key={d.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 w-10">
+                detalleFiltrado.map((d, index) => (
+                  <tr key={d.id} className={cx('transition-colors hover:bg-indigo-50/70', index % 2 === 0 ? 'bg-white' : 'bg-slate-50/55')}>
+                    <td className="sticky left-0 z-10 w-10 bg-inherit px-3 py-2 shadow-[8px_0_18px_-16px_rgba(15,23,42,0.25)]">
                       <input type="checkbox"
                         className="rounded border-gray-300"
                         checked={selected.has(d.id)}
@@ -1880,46 +1953,52 @@ function TabDesgloce() {
                         })}
                       />
                     </td>
-                    <td style={getColumnStyle(detailColumns[0])} className="px-3 py-2 font-medium text-gray-800">
-                      <div className="truncate">{d.nombre}</div>
-                      {d.empleado_nombre && (
-                        <div className="text-xs text-blue-600 mt-0.5 flex items-center gap-1 truncate">
-                          <span>👤</span> {d.empleado_nombre}
-                        </div>
-                      )}
-                      {d.sucursal_nombre && (
-                        <div className="text-xs text-emerald-600 mt-0.5 flex items-center gap-1 truncate">
-                          <span>🏢</span> {d.sucursal_nombre}
-                        </div>
-                      )}
-                    </td>
-                    <td style={getColumnStyle(detailColumns[1])} className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>
-                    <td style={getColumnStyle(detailColumns[2])} className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>
-                    <td style={getColumnStyle(detailColumns[3])} className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>
-                    <td style={getColumnStyle(detailColumns[4])} className="px-3 py-2 font-mono text-gray-500">{d.factura_folio || '—'}</td>
-                    <td style={getColumnStyle(detailColumns[5])} className="px-3 py-2 text-right font-mono">{d.dias_facturados}</td>
-                    <td style={getColumnStyle(detailColumns[6])} className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>
-                    <td style={getColumnStyle(detailColumns[7])} className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>
-                    <td style={getColumnStyle(detailColumns[8])} className="px-3 py-2 text-center">
-                      {isIvaApplied(d) ? <span className="font-mono text-amber-700 text-xs">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-300">—</span>}
-                    </td>
-                    <td style={getColumnStyle(detailColumns[9])} className="px-3 py-2 text-right font-mono font-semibold text-primary-700">
-                      <div>{fmtDec(d.total)}</div>
-                      {d.moneda === 'USD' && <div className="text-[10px] text-gray-400 font-normal">USD</div>}
-                    </td>
-                    <td style={getColumnStyle(detailColumns[10])} className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">
-                      {fmtDec(calcTotalMXN(d))}
-                    </td>
-                    <td style={getColumnStyle(detailColumns[11])} className="px-3 py-2">
-                      {d.centro_costo_codigo ? (
-                        <div>
-                          <span className="bg-navy-50 text-navy-700 px-1.5 py-0.5 rounded text-xs font-mono">{d.centro_costo_codigo}</span>
-                          {d.centro_costo_nombre && <div className="text-xs text-gray-500 mt-0.5 max-w-[140px] truncate">{d.centro_costo_nombre}</div>}
-                        </div>
-                      ) : <span className="text-gray-300 text-xs">—</span>}
-                    </td>
-                    <td style={getColumnStyle(detailColumns[12])} className="px-3 py-2"><span className={`px-1.5 py-0.5 rounded text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>
-                    <td className="px-3 py-2">
+                    {isDetailColumnVisible('nombre') && (
+                      <td style={getColumnStyle(detailColumns[0])} className="px-3 py-2 font-medium text-gray-800">
+                        <div className="truncate">{d.nombre}</div>
+                        {d.empleado_nombre && (
+                          <div className="mt-0.5 flex items-center gap-1 truncate text-xs text-blue-600">
+                            <span>👤</span> {d.empleado_nombre}
+                          </div>
+                        )}
+                        {d.sucursal_nombre && (
+                          <div className="mt-0.5 flex items-center gap-1 truncate text-xs text-emerald-600">
+                            <span>🏢</span> {d.sucursal_nombre}
+                          </div>
+                        )}
+                      </td>
+                    )}
+                    {isDetailColumnVisible('telefono_serie') && <td style={getColumnStyle(detailColumns[1])} className="px-3 py-2 font-mono text-gray-500">{d.telefono_serie || '—'}</td>}
+                    {isDetailColumnVisible('tipo_servicio') && <td style={getColumnStyle(detailColumns[2])} className="px-3 py-2 text-gray-600">{d.tipo_servicio || '—'}</td>}
+                    {isDetailColumnVisible('proveedor') && <td style={getColumnStyle(detailColumns[3])} className="px-3 py-2 text-gray-500">{d.proveedor || '—'}</td>}
+                    {isDetailColumnVisible('factura_folio') && <td style={getColumnStyle(detailColumns[4])} className="px-3 py-2 font-mono text-gray-500">{d.factura_folio || '—'}</td>}
+                    {isDetailColumnVisible('dias_facturados') && <td style={getColumnStyle(detailColumns[5])} className="px-3 py-2 text-right font-mono">{d.dias_facturados}</td>}
+                    {isDetailColumnVisible('costo_dia') && <td style={getColumnStyle(detailColumns[6])} className="px-3 py-2 text-right font-mono">{fmtDec(d.costo_dia)}</td>}
+                    {isDetailColumnVisible('subtotal') && <td style={getColumnStyle(detailColumns[7])} className="px-3 py-2 text-right font-mono text-gray-700">{fmtDec(d.subtotal)}</td>}
+                    {isDetailColumnVisible('iva') && (
+                      <td style={getColumnStyle(detailColumns[8])} className="px-3 py-2 text-center">
+                        {isIvaApplied(d) ? <span className="font-mono text-xs text-amber-700">{fmtDec(calcIvaMonto(d))}</span> : <span className="text-gray-300">—</span>}
+                      </td>
+                    )}
+                    {isDetailColumnVisible('total') && (
+                      <td style={getColumnStyle(detailColumns[9])} className="px-3 py-2 text-right font-mono font-semibold text-primary-700">
+                        <div>{fmtDec(d.total)}</div>
+                        {d.moneda === 'USD' && <div className="text-[10px] font-normal text-gray-400">USD</div>}
+                      </td>
+                    )}
+                    {isDetailColumnVisible('total_mxn') && <td style={getColumnStyle(detailColumns[10])} className="px-3 py-2 text-right font-mono font-semibold text-emerald-700">{fmtDec(calcTotalMXN(d))}</td>}
+                    {isDetailColumnVisible('centro_costo_codigo') && (
+                      <td style={getColumnStyle(detailColumns[11])} className="px-3 py-2">
+                        {d.centro_costo_codigo ? (
+                          <div>
+                            <span className="rounded bg-navy-50 px-1.5 py-0.5 text-xs font-mono text-navy-700">{d.centro_costo_codigo}</span>
+                            {d.centro_costo_nombre && <div className="mt-0.5 max-w-[140px] truncate text-xs text-gray-500">{d.centro_costo_nombre}</div>}
+                          </div>
+                        ) : <span className="text-xs text-gray-300">—</span>}
+                      </td>
+                    )}
+                    {isDetailColumnVisible('identificador') && <td style={getColumnStyle(detailColumns[12])} className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-xs ${d.identificador === 'CAF' ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-600'}`}>{d.identificador}</span></td>}
+                    <td className="sticky right-0 z-10 bg-inherit px-3 py-2 shadow-[-12px_0_20px_-18px_rgba(15,23,42,0.3)]">
                       <div className="flex justify-center gap-1">
                         <button onClick={() => openEdit(d)} className="p-1 rounded hover:bg-primary-50 text-gray-400 hover:text-primary-600"><PencilSquareIcon className="h-3.5 w-3.5"/></button>
                         <button onClick={() => handleDelete(d.id)} className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500"><TrashIcon className="h-3.5 w-3.5"/></button>
