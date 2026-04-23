@@ -167,6 +167,7 @@ const MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto'
 const EMPRESAS = ['Previta','EHT','Medclub']
 const fmt = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(n || 0)
 const fmtDec = (n) => new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(n || 0)
+const cx = (...classes) => classes.filter(Boolean).join(' ')
 const IVA_RATE = 0.16
 const roundMoney = (n) => Math.round(((parseFloat(n) || 0) + Number.EPSILON) * 100) / 100
 const isIvaApplied = (d) => d?.aplica_iva === true || d?.aplica_iva === 1 || d?.aplica_iva === '1'
@@ -235,27 +236,40 @@ function GaugeMeter({ porcentaje = 0 }) {
   const rad = (angle - 180) * Math.PI / 180
   const arcX = cx + r * Math.cos(rad)
   const arcY = cy + r * Math.sin(rad)
-  const color = pct <= 60 ? '#5DB847' : pct <= 85 ? '#e8a820' : '#ef4444'
+  const color = pct <= 60 ? '#5DB847' : pct <= 85 ? '#d97706' : '#dc2626'
+  const glow = pct <= 60 ? 'rgba(93,184,71,0.22)' : pct <= 85 ? 'rgba(217,119,6,0.22)' : 'rgba(220,38,38,0.2)'
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width="220" height="120" viewBox="0 0 220 120">
-        {/* Background arc */}
-        <path d={`M ${startX} ${cy} A ${r} ${r} 0 0 1 ${endX} ${cy}`} fill="none" stroke="#e5e7eb" strokeWidth="14" strokeLinecap="round"/>
-        {/* Progress arc */}
+    <div className="flex flex-col items-center rounded-[28px] border border-white/70 bg-white/90 px-5 py-5 shadow-[0_24px_70px_-48px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div className="mb-2 inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+        Uso del presupuesto
+      </div>
+      <svg width="220" height="124" viewBox="0 0 220 124">
+        <defs>
+          <filter id="financeGaugeGlow">
+            <feGaussianBlur stdDeviation="6" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        <path d={`M ${startX} ${cy} A ${r} ${r} 0 0 1 ${endX} ${cy}`} fill="none" stroke="#e2e8f0" strokeWidth="14" strokeLinecap="round" />
+        <path d={`M ${startX} ${cy} A ${r - 18} ${r - 18} 0 0 1 ${endX} ${cy}`} fill="none" stroke="#f8fafc" strokeWidth="22" strokeLinecap="round" />
         {pct > 0 && (
-          <path d={`M ${startX} ${cy} A ${r} ${r} 0 ${angle > 180 ? 1 : 0} 1 ${arcX} ${arcY}`} fill="none" stroke={color} strokeWidth="14" strokeLinecap="round"/>
+          <>
+            <path d={`M ${startX} ${cy} A ${r} ${r} 0 ${angle > 180 ? 1 : 0} 1 ${arcX} ${arcY}`} fill="none" stroke={glow} strokeWidth="20" strokeLinecap="round" filter="url(#financeGaugeGlow)" />
+            <path d={`M ${startX} ${cy} A ${r} ${r} 0 ${angle > 180 ? 1 : 0} 1 ${arcX} ${arcY}`} fill="none" stroke={color} strokeWidth="14" strokeLinecap="round" />
+          </>
         )}
-        {/* Center text */}
-        <text x={cx} y={cy - 4} textAnchor="middle" fontSize="22" fontWeight="bold" fill={color}>{pct.toFixed(1)}%</text>
-        <text x={cx} y={cy + 14} textAnchor="middle" fontSize="10" fill="#6b7280">Ejercido</text>
-        {/* Labels */}
-        <text x={startX - 2} y={cy + 18} textAnchor="middle" fontSize="9" fill="#9ca3af">0%</text>
-        <text x={endX + 2} y={cy + 18} textAnchor="end" fontSize="9" fill="#9ca3af">100%</text>
+        <text x={cx} y={cy - 10} textAnchor="middle" fontSize="23" fontWeight="bold" fill={color}>{pct.toFixed(1)}%</text>
+        <text x={cx} y={cy + 12} textAnchor="middle" fontSize="10" fill="#64748b">del presupuesto ejercido</text>
+        <text x={startX - 2} y={cy + 18} textAnchor="middle" fontSize="9" fill="#94a3b8">0%</text>
+        <text x={endX + 2} y={cy + 18} textAnchor="end" fontSize="9" fill="#94a3b8">100%</text>
       </svg>
       <div className="text-center -mt-2">
-        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${pct <= 60 ? 'bg-green-100 text-green-700' : pct <= 85 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
-          {pct <= 60 ? '✓ Bajo control' : pct <= 85 ? '⚠ Vigilar' : '✗ Excedido'}
+        <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${pct <= 60 ? 'bg-emerald-100 text-emerald-700' : pct <= 85 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+          {pct <= 60 ? 'Bajo control' : pct <= 85 ? 'Vigilar' : 'Excedido'}
         </span>
       </div>
     </div>
@@ -265,17 +279,65 @@ function GaugeMeter({ porcentaje = 0 }) {
 // ── KPI Card ──────────────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, color = 'green' }) {
   const colors = {
-    green: 'border-l-4 border-primary-500',
-    navy: 'border-l-4 border-navy-600',
-    gold: 'border-l-4 border-gold-500',
-    gray: 'border-l-4 border-gray-400',
+    green: {
+      shell: 'from-emerald-50 via-white to-emerald-50/50 border-emerald-200/80',
+      glow: 'shadow-[0_28px_80px_-60px_rgba(16,185,129,0.55)]',
+      text: 'text-emerald-700',
+      accent: 'bg-emerald-500',
+      chip: 'bg-emerald-100 text-emerald-700',
+    },
+    navy: {
+      shell: 'from-blue-50 via-white to-slate-50 border-blue-200/80',
+      glow: 'shadow-[0_28px_80px_-60px_rgba(30,64,175,0.55)]',
+      text: 'text-blue-900',
+      accent: 'bg-blue-800',
+      chip: 'bg-blue-100 text-blue-800',
+    },
+    gold: {
+      shell: 'from-amber-50 via-white to-orange-50 border-amber-200/80',
+      glow: 'shadow-[0_28px_80px_-60px_rgba(217,119,6,0.5)]',
+      text: 'text-amber-700',
+      accent: 'bg-amber-500',
+      chip: 'bg-amber-100 text-amber-700',
+    },
+    gray: {
+      shell: 'from-slate-50 via-white to-slate-100/70 border-slate-200/90',
+      glow: 'shadow-[0_28px_80px_-60px_rgba(100,116,139,0.35)]',
+      text: 'text-slate-700',
+      accent: 'bg-slate-500',
+      chip: 'bg-slate-100 text-slate-600',
+    },
   }
-  const valColors = { green: 'text-primary-600', navy: 'text-navy-700', gold: 'text-gold-600', gray: 'text-gray-600' }
+  const theme = colors[color] || colors.green
+  const bars = [42, 68, 54, 78, 60]
   return (
-    <div className={`bg-white rounded-xl p-4 shadow-sm ${colors[color]}`}>
-      <div className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">{label}</div>
-      <div className={`text-2xl font-bold ${valColors[color]}`}>{value}</div>
-      {sub && <div className="text-xs text-gray-400 mt-0.5">{sub}</div>}
+    <div className={cx(
+      'group relative overflow-hidden rounded-[26px] border bg-gradient-to-br p-5 transition-all duration-300 hover:-translate-y-0.5',
+      theme.shell,
+      theme.glow,
+    )}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.95),transparent_48%)] opacity-90" />
+      <div className="relative">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</div>
+            {sub && <div className="mt-1 text-xs text-slate-400">{sub}</div>}
+          </div>
+          <span className={cx('rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]', theme.chip)}>
+            Resumen
+          </span>
+        </div>
+        <div className={cx('text-[2rem] font-black tracking-tight', theme.text)}>{value}</div>
+        <div className="mt-4 flex items-end gap-1.5">
+          {bars.map((h, index) => (
+            <div
+              key={`${label}-${index}`}
+              className={cx('w-2 rounded-full opacity-85 transition-transform duration-300 group-hover:-translate-y-0.5', theme.accent)}
+              style={{ height: `${h * 0.46}px` }}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -298,23 +360,50 @@ function PeriodSelector({ value, onChange }) {
   }, [modo, meses, q, anio])
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-3 flex flex-wrap items-center gap-3">
+    <div className="rounded-[28px] border border-white/80 bg-gradient-to-br from-white via-slate-50 to-white p-4 shadow-[0_24px_70px_-54px_rgba(15,23,42,0.35)]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Horizonte de análisis</div>
+          <div className="mt-1 text-sm text-slate-600">Selecciona el ritmo y los meses que quieres comparar.</div>
+        </div>
+        <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-500">
+          {anio}
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
       {/* Modo */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+      <div className="flex gap-1 rounded-2xl bg-slate-100 p-1">
         {[['mes','Mensual'],['q','Trimestral'],['anual','Anual']].map(([k,l]) => (
-          <button key={k} onClick={() => setModo(k)} className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${modo===k ? 'bg-white shadow text-primary-700' : 'text-gray-500 hover:text-gray-700'}`}>{l}</button>
+          <button
+            key={k}
+            onClick={() => setModo(k)}
+            className={cx(
+              'rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all duration-200',
+              modo===k ? 'bg-white text-primary-700 shadow-sm shadow-primary-100' : 'text-slate-500 hover:text-slate-700'
+            )}
+          >
+            {l}
+          </button>
         ))}
       </div>
       {/* Año */}
-      <select className="border border-gray-200 rounded-lg px-2 py-1 text-xs" value={anio} onChange={e => setAnio(parseInt(e.target.value))}>
+      <select className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600" value={anio} onChange={e => setAnio(parseInt(e.target.value))}>
         {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
       </select>
       {/* Meses (modo mes) */}
       {modo === 'mes' && (
         <div className="flex gap-1 flex-wrap">
           {MESES.map((m, i) => (
-            <button key={i} onClick={() => setMeses(prev => prev.includes(i+1) ? prev.filter(x=>x!==i+1) : [...prev,i+1].sort((a,b)=>a-b))}
-              className={`px-2 py-0.5 rounded-full text-xs border transition-all ${meses.includes(i+1) ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-200 text-gray-500 hover:border-primary-300'}`}>
+            <button
+              key={i}
+              onClick={() => setMeses(prev => prev.includes(i+1) ? prev.filter(x=>x!==i+1) : [...prev,i+1].sort((a,b)=>a-b))}
+              className={cx(
+                'rounded-full border px-2.5 py-1 text-xs font-medium transition-all duration-200',
+                meses.includes(i+1)
+                  ? 'border-primary-500 bg-primary-500 text-white shadow-sm shadow-primary-200'
+                  : 'border-slate-200 bg-white text-slate-500 hover:border-primary-300 hover:text-primary-700'
+              )}
+            >
               {m.slice(0,3)}
             </button>
           ))}
@@ -324,10 +413,20 @@ function PeriodSelector({ value, onChange }) {
       {modo === 'q' && (
         <div className="flex gap-1">
           {[1,2,3,4].map(n => (
-            <button key={n} onClick={() => setQ(n)} className={`px-3 py-1 rounded-lg text-xs font-medium border transition-all ${q===n ? 'bg-primary-500 text-white border-primary-500' : 'border-gray-200 text-gray-500'}`}>Q{n}</button>
+            <button
+              key={n}
+              onClick={() => setQ(n)}
+              className={cx(
+                'rounded-xl border px-3.5 py-1.5 text-xs font-semibold transition-all duration-200',
+                q===n ? 'border-primary-500 bg-primary-500 text-white shadow-sm shadow-primary-200' : 'border-slate-200 bg-white text-slate-500 hover:border-primary-300 hover:text-primary-700'
+              )}
+            >
+              Q{n}
+            </button>
           ))}
         </div>
       )}
+      </div>
     </div>
   )
 }
@@ -336,13 +435,13 @@ function PeriodSelector({ value, onChange }) {
 function CustomTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null
   return (
-    <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs">
-      <div className="font-semibold text-gray-700 mb-2">{MESES[(label||1)-1]}</div>
+    <div className="rounded-2xl border border-white/70 bg-slate-950/95 p-3 text-xs text-white shadow-[0_30px_60px_-40px_rgba(15,23,42,0.85)] backdrop-blur">
+      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-300">{MESES[(label||1)-1]}</div>
       {payload.map((p, i) => (
         <div key={i} className="flex items-center gap-2 mb-1">
           <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{background: p.fill}} />
-          <span className="text-gray-600">{p.name}:</span>
-          <span className="font-semibold text-gray-800">{fmt(p.value)}</span>
+          <span className="text-slate-300">{p.name}:</span>
+          <span className="font-semibold text-white">{fmt(p.value)}</span>
         </div>
       ))}
     </div>
@@ -450,28 +549,72 @@ function TabPresupuesto() {
   })
   const totalPages = Math.ceil(filteredPartidas.length / tablaPageSize)
   const pagedPartidas = filteredPartidas.slice(tablaPage * tablaPageSize, (tablaPage + 1) * tablaPageSize)
+  const periodLabel = periodo.meses.length === 12
+    ? `Cobertura anual ${periodo.anio}`
+    : periodo.meses.length === 1
+      ? `${MESES[periodo.meses[0] - 1]} ${periodo.anio}`
+      : `${MESES[periodo.meses[0] - 1]} – ${MESES[periodo.meses[periodo.meses.length - 1] - 1]} ${periodo.anio}`
+  const activeFilterChips = [
+    filtros.empresa && `Empresa · ${filtros.empresa}`,
+    filtros.agrupador && `Agrupador · ${filtros.agrupador}`,
+    filtros.proveedor && `Proveedor · ${filtros.proveedor}`,
+  ].filter(Boolean)
 
   return (
     <div className="space-y-5">
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={filtros.empresa} onChange={e => setFiltros(f => ({...f, empresa: e.target.value}))}>
-          <option value="">Todas las empresas</option>
-          {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
-        </select>
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={filtros.agrupador} onChange={e => setFiltros(f => ({...f, agrupador: e.target.value}))}>
-          <option value="">Todos los agrupadores</option>
-          {agrupadores.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
-        </select>
-        <input className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm w-44" placeholder="Filtrar proveedor..." value={proveedorInput} onChange={e => setProveedorInput(e.target.value)} />
-        <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-50 text-primary-700 border border-primary-200 rounded-lg text-sm hover:bg-primary-100">
-          <ArrowPathIcon className="h-4 w-4" /> Actualizar
-        </button>
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(135deg,rgba(16,185,129,0.08),rgba(37,99,235,0.06),rgba(255,255,255,0.98))] shadow-[0_36px_90px_-60px_rgba(15,23,42,0.45)]">
+        <div className="grid gap-5 px-5 py-5 lg:grid-cols-[1.35fr_0.9fr] lg:px-6">
+          <div className="space-y-4">
+            <div>
+              <div className="inline-flex items-center rounded-full border border-white/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Panel financiero
+              </div>
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Presupuesto con contexto operativo real</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                Visualiza presupuesto, gasto, ahorro y desviaciones en una sola superficie para detectar riesgos y decidir más rápido.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{periodLabel}</span>
+              {activeFilterChips.length > 0 ? activeFilterChips.map(chip => (
+                <span key={chip} className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600">{chip}</span>
+              )) : (
+                <span className="rounded-full border border-dashed border-slate-300 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500">Sin filtros adicionales</span>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_24px_80px_-60px_rgba(15,23,42,0.4)] backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Filtros rápidos</div>
+                <div className="mt-1 text-sm text-slate-600">Ajusta el tablero sin salir de la vista.</div>
+              </div>
+              <button onClick={load} className="inline-flex items-center gap-1.5 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition-colors hover:bg-primary-100">
+                <ArrowPathIcon className="h-3.5 w-3.5" /> Actualizar
+              </button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm shadow-slate-100/60" value={filtros.empresa} onChange={e => setFiltros(f => ({...f, empresa: e.target.value}))}>
+                <option value="">Todas las empresas</option>
+                {EMPRESAS.map(e => <option key={e} value={e}>{e}</option>)}
+              </select>
+              <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm shadow-slate-100/60" value={filtros.agrupador} onChange={e => setFiltros(f => ({...f, agrupador: e.target.value}))}>
+                <option value="">Todos los agrupadores</option>
+                {agrupadores.map(a => <option key={a.id} value={a.nombre}>{a.nombre}</option>)}
+              </select>
+              <div className="relative">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-700 shadow-sm shadow-slate-100/60" placeholder="Filtrar proveedor..." value={proveedorInput} onChange={e => setProveedorInput(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* KPIs + Gauge */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        <div className="lg:col-span-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.65fr_0.75fr]">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
           <KpiCard label="Presupuesto" value={fmt(kpiPresupuesto)}
             sub={periodo.meses.length === 12 ? 'Anual' : `${periodo.meses.length} mes${periodo.meses.length > 1 ? 'es' : ''} seleccionado${periodo.meses.length > 1 ? 's' : ''}`}
             color="green" />
@@ -482,8 +625,16 @@ function TabPresupuesto() {
           <KpiCard label="No Ejercido" value={fmt(kpiNoEjercido)}
             sub={`Hasta ${MESES[nowMonth-1]}`} color="gray" />
         </div>
-        <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-col items-center justify-center">
-          <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Objetivo</div>
+        <div className="rounded-[30px] border border-white/80 bg-gradient-to-br from-slate-100 via-white to-emerald-50/60 p-4 shadow-[0_30px_90px_-65px_rgba(15,23,42,0.5)]">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Objetivo financiero</div>
+              <div className="mt-1 text-sm text-slate-600">Qué tanto del presupuesto vigente ya fue ejercido.</div>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+              Hasta {MESES[nowMonth-1]}
+            </span>
+          </div>
           <GaugeMeter porcentaje={kpiPct} />
         </div>
       </div>
@@ -492,31 +643,43 @@ function TabPresupuesto() {
       <PeriodSelector value={periodo} onChange={p => setPeriodo(prev => ({...prev, meses: p.meses, anio: p.anio || prev.anio}))} />
 
       {/* Bar Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Análisis de Presupuesto por Período</h3>
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-gradient-to-br from-white via-slate-50 to-white p-5 shadow-[0_30px_100px_-70px_rgba(15,23,42,0.45)]">
+        <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">Análisis de Presupuesto por Período</h3>
+            <p className="mt-1 text-sm text-slate-500">Compara presupuesto, gasto, ahorro y no ejercido dentro del período activo.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Presupuesto {fmt(kpiPresupuesto)}</span>
+            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">Gasto {fmt(kpiGasto)}</span>
+          </div>
+        </div>
         <ResponsiveContainer width="100%" height={320}>
           <BarChart data={chartData} margin={{ top: 10, right: 10, left: 20, bottom: 5 }} barCategoryGap="25%" barGap={3}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b7280' }} />
-            <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} />
+            <CartesianGrid strokeDasharray="4 4" stroke="#e2e8f0" vertical={false} />
+            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: '#64748b' }} tickFormatter={v => `$${(v/1000).toFixed(0)}k`} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey="presupuesto" name="Presupuesto" fill="#5DB847" radius={[3,3,0,0]} />
-            <Bar dataKey="gasto_real" name="Gasto Real" fill="#1a3471" radius={[3,3,0,0]} />
-            <Bar dataKey="ahorro_soporte" name="Ahorrado por Soporte" fill="#e8a820" radius={[3,3,0,0]} />
-            <Bar dataKey="no_ejercido" name="No Ejercido" fill="#d1d5db" radius={[3,3,0,0]} />
+            <Bar dataKey="presupuesto" name="Presupuesto" fill="#5DB847" radius={[8,8,0,0]} />
+            <Bar dataKey="gasto_real" name="Gasto Real" fill="#1d4ed8" radius={[8,8,0,0]} />
+            <Bar dataKey="ahorro_soporte" name="Ahorrado por Soporte" fill="#d97706" radius={[8,8,0,0]} />
+            <Bar dataKey="no_ejercido" name="No Ejercido" fill="#cbd5e1" radius={[8,8,0,0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
       {/* Partidas table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_30px_100px_-72px_rgba(15,23,42,0.45)]">
         {/* Table toolbar */}
-        <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap items-center gap-3">
-          <h3 className="text-sm font-semibold text-gray-700 flex-shrink-0">Detalle por Partida</h3>
-          <span className="text-xs text-gray-400">{filteredPartidas.length} de {dashboard?.partidas?.length || 0} partidas</span>
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-white px-5 py-4">
+          <div className="flex flex-wrap items-center gap-3">
+          <div>
+            <h3 className="text-base font-bold text-slate-800">Detalle por Partida</h3>
+            <p className="mt-1 text-xs text-slate-400">{filteredPartidas.length} de {dashboard?.partidas?.length || 0} partidas visibles</p>
+          </div>
           {periodo.meses.length > 0 && (
-            <span className="text-xs bg-primary-50 text-primary-700 px-2 py-0.5 rounded-full">
+            <span className="rounded-full bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
               {periodo.meses.length === 12
                 ? 'Anual'
                 : periodo.meses.length === 1
@@ -578,20 +741,21 @@ function TabPresupuesto() {
             onChange={e => { setTablaPageSize(parseInt(e.target.value)); setTablaPage(0) }}>
             {[10,20,50].map(n => <option key={n} value={n}>{n} / pág</option>)}
           </select>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-slate-50/80">
               <tr>
                 {orderedVisibleCols.map(c => (
-                  <th key={c.key} className={`px-4 py-2.5 text-xs font-medium text-gray-500 uppercase ${['presupuesto','gasto_real','ahorro','variacion'].includes(c.key) ? 'text-right' : 'text-left'}`}>
+                  <th key={c.key} className={`px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 ${['presupuesto','gasto_real','ahorro','variacion'].includes(c.key) ? 'text-right' : 'text-left'}`}>
                     {c.label}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-slate-100">
               {pagedPartidas.length === 0 ? (
                 <tr><td colSpan={orderedVisibleCols.length || 1} className="py-10 text-center text-gray-400 text-sm">
                   {tablaBusq ? 'Sin resultados para la búsqueda.' : 'No hay partidas. Agrega partidas en Configuración.'}
@@ -616,7 +780,7 @@ function TabPresupuesto() {
                   ahorro:      <td key="ahorro" className="px-4 py-2.5 text-right font-mono text-gold-600">{fmt(ahoorroPeriodo)}</td>,
                   variacion:   <td key="variacion" className={`px-4 py-2.5 text-right font-mono font-semibold ${variacion >= 0 ? 'text-primary-600' : 'text-red-500'}`}>{variacion >= 0 ? '+' : ''}{fmt(variacion)}</td>,
                 }
-                return <tr key={p.id} className="hover:bg-gray-50">{orderedVisibleCols.map(c => colMap[c.key])}</tr>
+                return <tr key={p.id} className="transition-colors hover:bg-slate-50/80">{orderedVisibleCols.map(c => colMap[c.key])}</tr>
               })}
             </tbody>
           </table>
@@ -1094,102 +1258,141 @@ function TabDesgloce() {
     iva: aggregateGlobal.iva_monto,
     total: aggregateGlobal.total_mxn,
   }
+  const periodLabel = `${MESES[mes - 1]} ${anio}`
+  const activeFilterCount = Object.values(filtros).filter(v => v.trim() !== '').length
 
   return (
-    <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex flex-wrap items-center gap-3">
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={mes} onChange={e => setMes(parseInt(e.target.value))}>
-          {MESES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
-        </select>
-        <select className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm" value={anio} onChange={e => setAnio(parseInt(e.target.value))}>
-          {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-        </select>
+    <div className="space-y-5">
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-[linear-gradient(135deg,rgba(29,78,216,0.08),rgba(16,185,129,0.06),rgba(255,255,255,0.98))] shadow-[0_36px_90px_-60px_rgba(15,23,42,0.45)]">
+        <div className="grid gap-5 px-5 py-5 lg:grid-cols-[1.28fr_1fr] lg:px-6">
+          <div className="space-y-4">
+            <div>
+              <div className="inline-flex items-center rounded-full border border-white/80 bg-white/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Operación financiera
+              </div>
+              <h2 className="mt-3 text-2xl font-black tracking-tight text-slate-900">Desglose vivo de gastos y facturación</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                Revisa líneas, agrupa por proveedor, actualiza facturas y exporta el detalle mensual desde una sola superficie.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{periodLabel}</span>
+              <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-medium text-slate-600">
+                {detalleFiltrado.length} registro{detalleFiltrado.length !== 1 ? 's' : ''} visible{detalleFiltrado.length !== 1 ? 's' : ''}
+              </span>
+              {filtrosActivos ? (
+                <span className="rounded-full border border-primary-200 bg-primary-50 px-3 py-1 text-xs font-semibold text-primary-700">
+                  {activeFilterCount} filtro{activeFilterCount !== 1 ? 's' : ''} activo{activeFilterCount !== 1 ? 's' : ''}
+                </span>
+              ) : (
+                <span className="rounded-full border border-dashed border-slate-300 bg-white/70 px-3 py-1 text-xs font-medium text-slate-500">
+                  Sin filtros avanzados
+                </span>
+              )}
+            </div>
+          </div>
 
-        {/* Búsqueda rápida */}
-        <div className="relative">
-          <MagnifyingGlassIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-          <input
-            className="border border-gray-200 rounded-lg pl-8 pr-3 py-1.5 text-sm w-48"
-            placeholder="Búsqueda rápida…"
-            value={filtros.texto}
-            onChange={e => setFiltro('texto', e.target.value)}
-          />
-          {filtros.texto && (
-            <button onClick={() => setFiltro('texto', '')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-              <XMarkIcon className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
+          <div className="rounded-[24px] border border-white/70 bg-white/85 p-4 shadow-[0_24px_80px_-60px_rgba(15,23,42,0.4)] backdrop-blur">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Acciones rápidas</div>
+                <div className="mt-1 text-sm text-slate-600">Controla período, búsqueda y modo de análisis.</div>
+              </div>
+              <button
+                onClick={() => { setAgrupar(v => !v); setExpandedGroups(new Set()) }}
+                className={cx(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  agrupar ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                )}
+                title="Agrupar líneas por partida y sumar totales"
+              >
+                <Square2StackIcon className="h-3.5 w-3.5" />
+                {agrupar ? 'Vista agrupada' : 'Vista detallada'}
+              </button>
+            </div>
 
-        {/* Filtros avanzados toggle */}
-        <button
-          onClick={() => setShowFilters(v => !v)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm transition-colors ${showFilters || filtrosActivos ? 'border-primary-400 bg-primary-50 text-primary-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-        >
-          <FunnelIcon className="h-4 w-4" />
-          Filtros
-          {filtrosActivos && <span className="ml-1 bg-primary-600 text-white text-xs rounded-full px-1.5 py-0.5">
-            {Object.values(filtros).filter(v => v.trim() !== '').length}
-          </span>}
-        </button>
+            <div className="grid gap-3 md:grid-cols-2">
+              <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm shadow-slate-100/60" value={mes} onChange={e => setMes(parseInt(e.target.value))}>
+                {MESES.map((m, i) => <option key={i+1} value={i+1}>{m}</option>)}
+              </select>
+              <select className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm shadow-slate-100/60" value={anio} onChange={e => setAnio(parseInt(e.target.value))}>
+                {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+              <div className="relative md:col-span-2">
+                <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-9 pr-10 text-sm text-slate-700 shadow-sm shadow-slate-100/60"
+                  placeholder="Búsqueda rápida por línea, proveedor, centro de costos..."
+                  value={filtros.texto}
+                  onChange={e => setFiltro('texto', e.target.value)}
+                />
+                {filtros.texto && (
+                  <button onClick={() => setFiltro('texto', '')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition-colors hover:text-slate-600">
+                    <XMarkIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </div>
 
-        {/* Agrupar por partida */}
-        <button
-          onClick={() => { setAgrupar(v => !v); setExpandedGroups(new Set()) }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-sm transition-colors ${agrupar ? 'border-indigo-400 bg-indigo-50 text-indigo-700 font-medium' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-          title="Agrupar líneas por partida y sumar totales"
-        >
-          <Square2StackIcon className="h-4 w-4" />
-          {agrupar ? 'Vista agrupada' : 'Agrupar'}
-        </button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className={cx(
+                  'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors',
+                  showFilters || filtrosActivos ? 'border-primary-300 bg-primary-50 text-primary-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                )}
+              >
+                <FunnelIcon className="h-3.5 w-3.5" />
+                Filtros avanzados
+                {filtrosActivos && <span className="rounded-full bg-primary-600 px-1.5 py-0.5 text-[10px] text-white">{activeFilterCount}</span>}
+              </button>
 
-        <div className="flex-1" />
+              <div className="relative group">
+                <button className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50">
+                  <DocumentArrowDownIcon className="h-3.5 w-3.5" /> Exportar
+                </button>
+                <div className="absolute right-0 top-full z-30 mt-2 hidden w-40 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl group-hover:block">
+                  <button onClick={exportExcel} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-50">
+                    <span>📊</span> Excel (.xlsx)
+                  </button>
+                  <button onClick={exportCSV} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50">
+                    <span>📄</span> CSV
+                  </button>
+                  <button onClick={exportPDF} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-700 transition-colors hover:bg-red-50">
+                    <span>📑</span> PDF
+                  </button>
+                </div>
+              </div>
 
-        {/* Exportar */}
-        <div className="relative group">
-          <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-            <DocumentArrowDownIcon className="h-4 w-4" /> Exportar ▾
-          </button>
-          <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-200 rounded-xl shadow-xl z-30 hidden group-hover:block">
-            <button onClick={exportExcel} className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 text-green-700 font-medium rounded-t-xl flex items-center gap-2">
-              <span>📊</span> Excel (.xlsx)
-            </button>
-            <button onClick={exportCSV} className="w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 text-blue-700 font-medium flex items-center gap-2">
-              <span>📄</span> CSV
-            </button>
-            <button onClick={exportPDF} className="w-full text-left px-4 py-2.5 text-sm hover:bg-red-50 text-red-700 font-medium rounded-b-xl flex items-center gap-2">
-              <span>📑</span> PDF
-            </button>
+              <button onClick={() => setModal('clonar')} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50">
+                <DocumentDuplicateIcon className="h-3.5 w-3.5" /> Clonar mes anterior
+              </button>
+              <button onClick={openNew} className="inline-flex items-center gap-1.5 rounded-full bg-primary-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm shadow-primary-200 transition-colors hover:bg-primary-700">
+                <PlusIcon className="h-3.5 w-3.5" /> Nueva línea
+              </button>
+            </div>
           </div>
         </div>
-
-        <button onClick={() => setModal('clonar')} className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
-          <DocumentDuplicateIcon className="h-4 w-4" /> Clonar mes anterior
-        </button>
-        <button onClick={openNew} className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700">
-          <PlusIcon className="h-4 w-4" /> Nueva línea
-        </button>
       </div>
 
       {/* Panel de filtros avanzados */}
       {showFilters && (
-        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
+        <div className="rounded-[26px] border border-white/80 bg-gradient-to-br from-slate-50 via-white to-slate-50 p-4 shadow-[0_24px_70px_-55px_rgba(15,23,42,0.35)]">
+          <div className="mb-3 flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
               <FunnelIcon className="h-4 w-4 text-slate-500" /> Filtros avanzados
             </span>
             {filtrosActivos && (
-              <button onClick={limpiarFiltros} className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1">
+              <button onClick={limpiarFiltros} className="flex items-center gap-1 text-xs font-medium text-red-500 transition-colors hover:text-red-700">
                 <XMarkIcon className="h-3.5 w-3.5" /> Limpiar filtros
               </button>
             )}
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div>
               <label className="block text-xs text-slate-500 mb-1">Proveedor</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm shadow-slate-100/70"
                 placeholder="Filtrar por proveedor…"
                 value={filtros.proveedor}
                 onChange={e => setFiltro('proveedor', e.target.value)}
@@ -1198,7 +1401,7 @@ function TabDesgloce() {
             <div>
               <label className="block text-xs text-slate-500 mb-1">Partida / Servicio</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm shadow-slate-100/70"
                 placeholder="Tipo servicio o concepto…"
                 value={filtros.partida}
                 onChange={e => setFiltro('partida', e.target.value)}
@@ -1207,7 +1410,7 @@ function TabDesgloce() {
             <div>
               <label className="block text-xs text-slate-500 mb-1">Factura / Folio</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm shadow-slate-100/70"
                 placeholder="Número de factura…"
                 value={filtros.factura}
                 onChange={e => setFiltro('factura', e.target.value)}
@@ -1216,7 +1419,7 @@ function TabDesgloce() {
             <div>
               <label className="block text-xs text-slate-500 mb-1">Centro de Costos</label>
               <input
-                className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm shadow-slate-100/70"
                 placeholder="Código o nombre CC…"
                 value={filtros.centroCosto}
                 onChange={e => setFiltro('centroCosto', e.target.value)}
@@ -1233,46 +1436,63 @@ function TabDesgloce() {
 
       {/* Totals banner */}
       {detalleFiltrado.length > 0 && (
-        <div className="grid grid-cols-3 gap-3">
-          <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
-            <div className="text-xs text-gray-500">Subtotal</div>
-            <div className="text-lg font-bold text-gray-800">{fmtDec(totalesGlobal.subtotal)}</div>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div className="rounded-[24px] border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-slate-100/70 p-4 text-center shadow-[0_24px_70px_-58px_rgba(15,23,42,0.38)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Subtotal</div>
+            <div className="mt-2 text-[1.7rem] font-black tracking-tight text-slate-800">{fmtDec(totalesGlobal.subtotal)}</div>
+            <div className="mt-1 text-xs text-slate-400">Base acumulada del período</div>
           </div>
-          <div className="bg-amber-50 rounded-xl p-3 text-center border border-amber-200">
-            <div className="text-xs text-amber-600">IVA 16%</div>
-            <div className="text-lg font-bold text-amber-700">{fmtDec(totalesGlobal.iva)}</div>
+          <div className="rounded-[24px] border border-amber-200/80 bg-gradient-to-br from-amber-50 via-white to-orange-50/60 p-4 text-center shadow-[0_24px_70px_-58px_rgba(217,119,6,0.35)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-600">IVA 16%</div>
+            <div className="mt-2 text-[1.7rem] font-black tracking-tight text-amber-700">{fmtDec(totalesGlobal.iva)}</div>
+            <div className="mt-1 text-xs text-amber-500">Impuesto acumulado calculado</div>
           </div>
-          <div className="bg-primary-50 rounded-xl p-3 text-center border border-primary-200">
-            <div className="text-xs text-primary-600">Total MXN</div>
-            <div className="text-lg font-bold text-primary-700">{fmtDec(totalesGlobal.total)}</div>
-            <div className="text-[10px] text-primary-400 mt-0.5">Conversión incluida</div>
+          <div className="rounded-[24px] border border-primary-200/80 bg-gradient-to-br from-primary-50 via-white to-emerald-50/60 p-4 text-center shadow-[0_24px_70px_-58px_rgba(34,197,94,0.35)]">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-primary-600">Total MXN</div>
+            <div className="mt-2 text-[1.7rem] font-black tracking-tight text-primary-700">{fmtDec(totalesGlobal.total)}</div>
+            <div className="mt-1 text-xs text-primary-500">Conversión y consolidación incluidas</div>
           </div>
         </div>
       )}
 
       {selected.size > 0 && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl">
+        <div className="flex flex-wrap items-center gap-3 rounded-[22px] border border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-slate-50 px-4 py-3 shadow-[0_20px_60px_-48px_rgba(79,70,229,0.35)]">
           <span className="text-sm font-semibold text-slate-700">{selected.size} registro{selected.size !== 1 ? 's' : ''} seleccionado{selected.size !== 1 ? 's' : ''}</span>
           <div className="flex-1" />
-          <button onClick={() => setSelected(new Set())} className="text-sm text-gray-500 hover:text-gray-700">Deseleccionar</button>
+          <button onClick={() => setSelected(new Set())} className="text-sm font-medium text-slate-500 transition-colors hover:text-slate-700">Deseleccionar</button>
           <button
             onClick={() => openFacturaBulk(detalle.filter(d => selected.has(d.id)), 'líneas seleccionadas')}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            className="flex items-center gap-1.5 rounded-full bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-indigo-700"
           >
             <PencilSquareIcon className="h-4 w-4" /> Cambiar folio
           </button>
           <button onClick={() => setShowBulkConfirm(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700">
+            className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-red-700">
             <TrashIcon className="h-4 w-4" /> Eliminar {selected.size} registro{selected.size !== 1 ? 's' : ''}
           </button>
         </div>
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <div className="overflow-hidden rounded-[30px] border border-white/80 bg-white shadow-[0_30px_100px_-72px_rgba(15,23,42,0.45)]">
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 via-white to-white px-5 py-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <h3 className="text-base font-bold text-slate-800">Detalle del gasto mensual</h3>
+              <p className="mt-1 text-xs text-slate-400">
+                {agrupar ? 'Vista agrupada por proveedor para revisar folios y totales consolidados.' : 'Vista detallada línea por línea para revisar importes, IVA y centro de costos.'}
+              </p>
+            </div>
+            <div className="flex-1" />
+            <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-white">{periodLabel}</span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-500">
+              {detalleFiltrado.length} línea{detalleFiltrado.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-gray-50">
+            <thead className="bg-slate-50/80">
               <tr>
                 <th className="px-3 py-2.5 w-10">
                   <input type="checkbox"
@@ -1297,7 +1517,7 @@ function TabDesgloce() {
                   { label: 'Tipo', campo: 'identificador', align: 'left' },
                 ].map(col => (
                   <th key={col.label}
-                    className={`px-3 py-2.5 text-${col.align} text-gray-500 font-medium ${col.campo ? 'cursor-pointer select-none hover:text-primary-600' : ''}`}
+                    className={`px-3 py-3 text-${col.align} text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500 ${col.campo ? 'cursor-pointer select-none hover:text-primary-600' : ''}`}
                     onClick={() => col.campo && toggleSort(col.campo)}
                   >
                     <span className="inline-flex items-center gap-1">
@@ -1311,10 +1531,10 @@ function TabDesgloce() {
                     </span>
                   </th>
                 ))}
-                <th className="px-3 py-2.5 text-center text-gray-500 font-medium">Acciones</th>
+                <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={15} className="py-10 text-center"><div className="inline-block animate-spin rounded-full h-5 w-5 border-4 border-primary-500 border-t-transparent"/></td></tr>
               ) : detalleFiltrado.length === 0 ? (
@@ -2268,14 +2488,23 @@ export default function Finanzas() {
   return (
     <div className="space-y-5">
       <PageHeader title="Finanzas TI" subtitle="Presupuesto, gasto real y análisis financiero" />
-      {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab===t.key ? 'bg-white shadow text-primary-700' : 'text-gray-500 hover:text-gray-700'}`}>
-            <t.icon className="h-4 w-4" />{t.label}
-          </button>
-        ))}
+      <div className="rounded-[24px] border border-white/80 bg-gradient-to-r from-white via-slate-50 to-white p-2 shadow-[0_24px_60px_-50px_rgba(15,23,42,0.35)]">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setTab(t.key)}
+              className={cx(
+                'flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-semibold transition-all duration-200',
+                tab===t.key
+                  ? 'bg-slate-900 text-white shadow-[0_12px_28px_-18px_rgba(15,23,42,0.7)]'
+                  : 'text-slate-500 hover:bg-white hover:text-slate-700'
+              )}
+            >
+              <t.icon className="h-4 w-4" />{t.label}
+            </button>
+          ))}
+        </div>
       </div>
       {tab === 'presupuesto' && <TabPresupuesto />}
       {tab === 'detalle' && <TabDesgloce />}
