@@ -50,9 +50,15 @@ function getAbbreviation(label) {
   const words = label
     .split(' ')
     .filter(Boolean)
-    .slice(0, 2)
 
-  return words.map(word => word[0]?.toUpperCase() || '').join('')
+  if (words.length === 1) {
+    return words[0].slice(0, 2).toUpperCase()
+  }
+
+  return words
+    .slice(0, 2)
+    .map(word => word[0]?.toUpperCase() || '')
+    .join('')
 }
 
 function NavItem({ item, onClick, collapsed }) {
@@ -76,14 +82,19 @@ function NavItem({ item, onClick, collapsed }) {
           <button
             type="button"
             onClick={() => setOpen(!open)}
-            className={`mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border text-[11px] font-semibold uppercase tracking-[0.22em] transition-all duration-300 ${
+            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-[20px] border text-[11px] font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
               isChildActive
-                ? 'border-blue-300 bg-white text-blue-700 shadow-[0_14px_30px_rgba(37,99,235,0.16)]'
-                : 'border-transparent bg-white/70 text-slate-500 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:text-slate-900'
+                ? 'border-blue-300 bg-gradient-to-br from-white via-blue-50 to-indigo-100 text-blue-700 shadow-[0_16px_32px_rgba(37,99,235,0.2)] ring-1 ring-blue-100'
+                : 'border-white/70 bg-white/85 text-slate-600 shadow-[0_10px_24px_rgba(148,163,184,0.12)] hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_16px_28px_rgba(15,23,42,0.12)]'
             }`}
             title={label}
           >
-            {getAbbreviation(label)}
+            <span className="relative">
+              {getAbbreviation(label)}
+              {item.children?.length > 0 && (
+                <span className={`absolute -bottom-2 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${isChildActive ? 'bg-blue-500' : 'bg-slate-300'}`} />
+              )}
+            </span>
           </button>
 
           <div className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 hidden -translate-y-1/2 group-hover:block">
@@ -174,10 +185,10 @@ function NavItem({ item, onClick, collapsed }) {
           end={item.exact}
           onClick={onClick}
           className={({ isActive }) =>
-            `mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border text-[11px] font-semibold uppercase tracking-[0.22em] transition-all duration-300 ${
+            `mx-auto flex h-12 w-12 items-center justify-center rounded-[20px] border text-[11px] font-semibold uppercase tracking-[0.18em] transition-all duration-300 ${
               isActive
-                ? 'border-blue-300 bg-white text-blue-700 shadow-[0_14px_30px_rgba(37,99,235,0.16)]'
-                : 'border-transparent bg-white/70 text-slate-500 hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:text-slate-900'
+                ? 'border-blue-300 bg-gradient-to-br from-white via-blue-50 to-indigo-100 text-blue-700 shadow-[0_16px_32px_rgba(37,99,235,0.2)] ring-1 ring-blue-100'
+                : 'border-white/70 bg-white/85 text-slate-600 shadow-[0_10px_24px_rgba(148,163,184,0.12)] hover:-translate-y-0.5 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_16px_28px_rgba(15,23,42,0.12)]'
             }`
           }
         >
@@ -244,15 +255,18 @@ export default function Layout() {
       >
         <div
           className={`rounded-[28px] border border-white/70 bg-white/80 shadow-[0_20px_45px_rgba(148,163,184,0.18)] backdrop-blur-xl transition-all duration-300 ${
-            collapsed && !isMobile ? 'px-2 py-4 text-center' : 'px-4 py-4'
+            collapsed && !isMobile ? 'px-2.5 py-3 text-center' : 'px-4 py-4'
           }`}
         >
           {collapsed && !isMobile ? (
-            <div className="space-y-2">
-              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 text-xs font-semibold uppercase tracking-[0.28em] text-white">
+            <div className="space-y-2.5">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[22px] border border-slate-200/80 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-800 text-xs font-semibold uppercase tracking-[0.24em] text-white shadow-[0_16px_32px_rgba(15,23,42,0.2)]">
                 AS
               </div>
-              <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">Menu</p>
+              <div className="space-y-1">
+                <img src={previtaLogo} alt="Previta" className="mx-auto h-5 w-auto object-contain opacity-90" />
+                <p className="text-[10px] font-semibold tracking-[0.02em] text-slate-800">AthenaSys</p>
+              </div>
             </div>
           ) : (
             <div className="flex w-full flex-col items-center justify-center gap-4 text-center">
@@ -265,13 +279,16 @@ export default function Layout() {
 
       <nav
         className={`relative flex-1 space-y-2 overflow-y-auto py-6 transition-all duration-300 ${
-          collapsed && !isMobile ? 'px-2' : 'px-4'
+          collapsed && !isMobile ? 'px-3 [scrollbar-width:thin]' : 'px-4'
         }`}
       >
+        {collapsed && !isMobile && (
+          <div className="pointer-events-none absolute inset-y-6 left-1/2 w-px -translate-x-1/2 bg-gradient-to-b from-transparent via-slate-200/80 to-transparent" />
+        )}
         {navItems.map((item, index) => (
           <div
             key={item.path || item.label || index}
-            className="animate-fadeIn"
+            className={`animate-fadeIn ${collapsed && !isMobile ? 'relative py-0.5' : ''}`}
             style={{ animationDelay: `${index * 35}ms` }}
           >
             <NavItem item={item} onClick={() => setSidebarOpen(false)} collapsed={collapsed && !isMobile} />
@@ -285,14 +302,17 @@ export default function Layout() {
         }`}
       >
         {collapsed && !isMobile ? (
-          <div className="space-y-3 rounded-[24px] border border-white/70 bg-white/80 px-2 py-3 text-center shadow-[0_16px_40px_rgba(148,163,184,0.16)] backdrop-blur-xl">
-            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-900 via-slate-800 to-blue-700 text-sm font-semibold text-white shadow-lg">
+          <div className="space-y-3 rounded-[26px] border border-white/70 bg-white/85 px-2.5 py-3 text-center shadow-[0_16px_40px_rgba(148,163,184,0.16)] backdrop-blur-xl">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[22px] bg-gradient-to-br from-slate-900 via-slate-800 to-blue-700 text-sm font-semibold text-white shadow-lg">
               {userInitials}
+            </div>
+            <div className="rounded-full bg-slate-100/90 px-2 py-1 text-[10px] font-medium tracking-[0.04em] text-slate-500">
+              {USER_ROLES[user?.rol]?.label || 'Usuario'}
             </div>
             <button
               onClick={handleLogout}
               title="Cerrar sesion"
-              className="mx-auto flex h-9 w-9 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 transition-all duration-300 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+              className="mx-auto flex h-10 w-10 items-center justify-center rounded-[20px] border border-slate-200 bg-white text-slate-500 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
             >
               <ArrowRightOnRectangleIcon className="h-4 w-4" />
             </button>
@@ -327,7 +347,7 @@ export default function Layout() {
     <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(191,219,254,0.32),_transparent_32%),linear-gradient(180deg,#f8fafc_0%,#eef2ff_100%)]">
       <aside
         className={`relative hidden flex-shrink-0 border-r border-white/60 bg-slate-50/75 backdrop-blur-xl transition-all duration-300 xl:flex ${
-          collapsed ? 'w-[104px]' : 'w-[312px]'
+          collapsed ? 'w-[98px]' : 'w-[312px]'
         }`}
       >
         <div className="absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-white to-transparent" />
