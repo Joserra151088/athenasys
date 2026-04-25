@@ -322,11 +322,15 @@ export default function Dispositivos() {
     if (filterEstado) params.estado = filterEstado
     if (filterUbicacion) params.ubicacion_tipo = filterUbicacion
     if (filterProveedor) params.proveedor_id = filterProveedor
+    if (sortCol) {
+      params.sort_by = sortCol
+      params.sort_dir = sortDir
+    }
     deviceAPI.getAll(params).then(d => {
       setDispositivos(d.data)
       setPagination({ page: d.page, pages: d.pages, total: d.total, limit: d.limit })
     }).finally(() => setLoading(false))
-  }, [search, filterTipo, filterEstado, filterUbicacion, filterProveedor])
+  }, [search, filterTipo, filterEstado, filterUbicacion, filterProveedor, sortCol, sortDir])
 
   useEffect(() => { load(1) }, [load])
   useEffect(() => {
@@ -344,26 +348,7 @@ export default function Dispositivos() {
     setForm(prev => ({ ...prev, costo_dia: 0 }))
   }, [form.costo_dia, proveedorSeleccionadoSinCosto])
 
-  // Client-side sorting
-  const sorted = [...dispositivos].sort((a, b) => {
-    if (!sortCol) return 0
-    let va = '', vb = ''
-    if (sortCol === 'tipo') { va = (a.tipo || '').toLowerCase(); vb = (b.tipo || '').toLowerCase() }
-    else if (sortCol === 'marca') { va = (a.marca || '').toLowerCase(); vb = (b.marca || '').toLowerCase() }
-    else if (sortCol === 'serie') { va = (a.serie || '').toLowerCase(); vb = (b.serie || '').toLowerCase() }
-    else if (sortCol === 'estado') { va = (a.estado || '').toLowerCase(); vb = (b.estado || '').toLowerCase() }
-    else if (sortCol === 'ubicacion') { va = (a.ubicacion_tipo || '').toLowerCase(); vb = (b.ubicacion_tipo || '').toLowerCase() }
-    else if (sortCol === 'created_at' || sortCol === 'updated_at') {
-      va = new Date(a[sortCol] || 0).getTime()
-      vb = new Date(b[sortCol] || 0).getTime()
-      return sortDir === 'asc' ? va - vb : vb - va
-    }
-    else if (sortCol === 'actualizado_por') {
-      va = (a.actualizado_por_nombre || a.creado_por_nombre || '').toLowerCase()
-      vb = (b.actualizado_por_nombre || b.creado_por_nombre || '').toLowerCase()
-    }
-    return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
-  })
+  const sorted = dispositivos
 
   // Detecta qué campos extra mostrar según tipo y proveedor (para módem)
   const getCamposExtra = () => {

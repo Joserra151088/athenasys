@@ -135,7 +135,7 @@ router.get('/stats', (req, res) => {
 
 // Listar con filtros y paginación
 router.get('/', (req, res) => {
-  const { page = 1, limit = 20, tipo, estado, ubicacion_tipo, proveedor_id, search } = req.query
+  const { page = 1, limit = 20, tipo, estado, ubicacion_tipo, proveedor_id, search, sort_by, sort_dir = 'asc' } = req.query
   let items = db.get('dispositivos').filter({ activo: true }).value()
 
   if (tipo) items = items.filter(d => d.tipo === tipo)
@@ -154,6 +154,38 @@ router.get('/', (req, res) => {
       includesSearch(d.ubicacion_nombre, q) ||
       includesSearch(camposExtraSearchText(d.campos_extra), q)
     )
+  }
+
+  const sortDirection = String(sort_dir).toLowerCase() === 'desc' ? 'desc' : 'asc'
+  const compareStrings = (a, b) => {
+    const va = String(a || '').toLowerCase()
+    const vb = String(b || '').toLowerCase()
+    return sortDirection === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
+  }
+
+  if (sort_by) {
+    items = [...items].sort((a, b) => {
+      if (sort_by === 'tipo') return compareStrings(a.tipo, b.tipo)
+      if (sort_by === 'marca') {
+        const marcaCompare = compareStrings(a.marca, b.marca)
+        return marcaCompare !== 0 ? marcaCompare : compareStrings(a.modelo, b.modelo)
+      }
+      if (sort_by === 'serie') return compareStrings(a.serie, b.serie)
+      if (sort_by === 'estado') return compareStrings(a.estado, b.estado)
+      if (sort_by === 'ubicacion') {
+        const ubicacionCompare = compareStrings(a.ubicacion_tipo, b.ubicacion_tipo)
+        return ubicacionCompare !== 0 ? ubicacionCompare : compareStrings(a.ubicacion_nombre, b.ubicacion_nombre)
+      }
+      if (sort_by === 'created_at' || sort_by === 'updated_at') {
+        const va = new Date(a[sort_by] || 0).getTime()
+        const vb = new Date(b[sort_by] || 0).getTime()
+        return sortDirection === 'asc' ? va - vb : vb - va
+      }
+      if (sort_by === 'actualizado_por') {
+        return compareStrings(a.actualizado_por_nombre || a.creado_por_nombre, b.actualizado_por_nombre || b.creado_por_nombre)
+      }
+      return 0
+    })
   }
 
   const total = items.length
