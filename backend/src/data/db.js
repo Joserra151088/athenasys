@@ -81,7 +81,7 @@ function deserialize(table, row) {
       try { out[field] = JSON.parse(out[field]) } catch (_) { out[field] = [] }
     }
   }
-  const boolFields = ['activo','firmado','es_paquete','renovacion_auto']
+  const boolFields = ['activo','firmado','cancelado','es_paquete','renovacion_auto']
   for (const f of boolFields) {
     if (f in out) out[f] = out[f] === 1 || out[f] === true
   }
@@ -512,13 +512,19 @@ const DDL = [
     \`receptor_firmante_nombre\` VARCHAR(200),
     \`firma_receptor\` MEDIUMTEXT,
     \`firmado\` TINYINT(1) DEFAULT 0,
+    \`cancelado\` TINYINT(1) DEFAULT 0,
+    \`cancelado_motivo\` TEXT,
+    \`cancelado_at\` DATETIME,
+    \`cancelado_por_id\` VARCHAR(36),
+    \`cancelado_por_nombre\` VARCHAR(200),
     \`fecha_firma\` DATETIME,
     \`motivo_salida\` TEXT,
     \`observaciones\` TEXT,
     \`receptor_observaciones\` TEXT,
     \`pdf_path\` VARCHAR(500),
     \`created_by\` VARCHAR(36),
-    \`created_at\` DATETIME
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 
   `CREATE TABLE IF NOT EXISTS \`plantillas\` (
@@ -1163,6 +1169,11 @@ async function initDB() {
   await alterIfNotExists('documentos', 'receptor_observaciones', 'TEXT')
   await alterIfNotExists('documentos', 'receptor_firmante_nombre', 'VARCHAR(200)')
   await alterIfNotExists('documentos', 'motivo_salida', 'TEXT')
+  await alterIfNotExists('documentos', 'cancelado', 'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('documentos', 'cancelado_motivo', 'TEXT')
+  await alterIfNotExists('documentos', 'cancelado_at', 'DATETIME')
+  await alterIfNotExists('documentos', 'cancelado_por_id', 'VARCHAR(36)')
+  await alterIfNotExists('documentos', 'cancelado_por_nombre', 'VARCHAR(200)')
   // ── Firma online (envío de link al receptor) ──────────────────────────────
   await alterIfNotExists('documentos', 'firma_online_estado', "VARCHAR(20) DEFAULT NULL")
   await alterIfNotExists('documentos', 'firma_online_token',  'VARCHAR(64) DEFAULT NULL')

@@ -7,7 +7,7 @@ import Badge from '../components/Badge'
 import Pagination from '../components/Pagination'
 import FirmaCanvas from '../components/FirmaCanvas'
 import PageHeader from '../components/PageHeader'
-import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon, AdjustmentsHorizontalIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { PlusIcon, MagnifyingGlassIcon, EyeIcon, PencilSquareIcon, PencilIcon, PrinterIcon, DocumentIcon, ClockIcon, PaperAirplaneIcon, QrCodeIcon, AdjustmentsHorizontalIcon, XMarkIcon, NoSymbolIcon } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { useNotification } from '../context/NotificationContext'
@@ -115,9 +115,11 @@ export default function Documentos() {
   // Resize columnas
   const resizingRef = useRef(null)
   const [colWidths, setColWidths] = useState({})
-  const [modal, setModal] = useState(null) // 'create' | 'sign' | 'preview'
+  const [modal, setModal] = useState(null) // 'create' | 'edit' | 'sign' | 'preview' | 'cancel'
   const [selected, setSelected] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [editingDocId, setEditingDocId] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
   const previewRef = useRef(null)
   const firmaAgenteRef = useRef(null)
   const firmaLogisticaRef = useRef(null)
@@ -348,7 +350,7 @@ export default function Documentos() {
 
   useEffect(() => { load(1) }, [load])
 
-  const openCreate = async () => {
+  const loadFormDependencies = async () => {
     const [pl, emp, devs, provs] = await Promise.all([
       plantillaAPI.getAll(),
       fetchAllPaginated(empleadoAPI.getAll),
@@ -367,14 +369,20 @@ export default function Documentos() {
     setEmpleados(empSorted)
     setProveedores(proveedorSorted)
     setUsuariosSistema(users.filter(u => u.activo !== false && ['super_admin', 'agente_soporte'].includes(u.rol)))
-    setEntidades(empSorted)
-    setEntidadSearch('')
     setDispositivos(devs.data)
+    return { plantillas: pl, empleados: empSorted, proveedores: proveedorSorted }
+  }
+
+  const openCreate = async () => {
+    const deps = await loadFormDependencies()
+    setEntidades(deps.empleados)
+    setEntidadSearch('')
     setReceivedDevices([{ ...EMPTY_RECEIVED_DEVICE }])
     setDeviceSearch('')
     setDeviceTypeFilter('')
     setDeviceAssignFilter('todos')
-    setForm({ tipo: 'responsiva', plantilla_id: pl.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', entrada_referencia: '', recibido_por_id: user?.id || '', dispositivos_recibidos: [], observaciones: '' })
+    setForm({ tipo: 'responsiva', plantilla_id: deps.plantillas.find(p => p.tipo === 'responsiva')?.id || '', entidad_tipo: 'empleado', entidad_id: '', dispositivos: [], receptor_id: '', motivo_salida: '', entrada_referencia: '', recibido_por_id: user?.id || '', dispositivos_recibidos: [], observaciones: '' })
+    setEditingDocId(null)
     setModal('create')
   }
 
@@ -392,28 +400,94 @@ export default function Documentos() {
     setShowEntidadDrop(false)
   }
 
-  const handleCreate = async (e) => {
+  const openEdit = async (doc) => {
+    const deps = await loadFormDependencies()
+    const full = await documentoAPI.getById(doc.id)
+    const nextEntidadTipo = full.entrada_origen_tipo || full.entidad_tipo
+
+    if (nextEntidadTipo === 'empleado') {
+      setEntidades(deps.empleados)
+    } else if (nextEntidadTipo === 'sucursal') {
+      const sucursales = await fetchAllPaginated(sucursalAPI.getAll)
+      setEntidades(sucursales.sort((a, b) => (a.nombre || '').localeCompare(b.nombre || '', 'es')))
+    } else {
+      setEntidades(deps.proveedores)
+    }
+
+    setEntidadSearch('')
+    setReceptorSearch('')
+    setShowEntidadDrop(false)
+    setShowReceptorDrop(false)
+    setDeviceSearch('')
+    setDeviceTypeFilter('')
+    setDeviceAssignFilter('todos')
+    setSelected(full)
+    setEditingDocId(full.id)
+    setReceivedDevices(
+      full.tipo === 'entrada' && nextEntidadTipo === 'proveedor'
+        ? (full.dispositivos || []).map(device => ({
+            id: device.id,
+            tipo: device.tipo || '',
+            marca: device.marca || '',
+            modelo: device.modelo || '',
+            serie_estado: device.serie_estado || SERIE_OPTIONS.capturada,
+            serie: device.serie || '',
+            cantidad: 1,
+            costo_dia: device.costo_dia ?? '',
+            caracteristicas: device.caracteristicas || '',
+            campos_extra: device.campos_extra || {},
+          }))
+        : [{ ...EMPTY_RECEIVED_DEVICE }]
+    )
+    setForm({
+      tipo: full.tipo,
+      plantilla_id: full.plantilla_id || deps.plantillas.find(p => p.tipo === full.tipo)?.id || '',
+      entidad_tipo: nextEntidadTipo,
+      entidad_id: full.entidad_id || '',
+      dispositivos: (full.dispositivos || []).map(device => ({ id: device.id, costo: Number(device.costo || 0) })),
+      receptor_id: full.receptor_id || '',
+      motivo_salida: full.motivo_salida || '',
+      entrada_referencia: full.entrada_referencia || '',
+      recibido_por_id: full.recibido_por_id || user?.id || '',
+      dispositivos_recibidos: [],
+      observaciones: full.observaciones || '',
+    })
+    setModal('edit')
+  }
+
+  const buildDocumentPayload = () => {
+    const payload = { ...form }
+    if (payload.tipo === 'entrada') {
+      payload.entrada_origen_tipo = payload.entidad_tipo
+    }
+    if (payload.tipo === 'entrada' && payload.entidad_tipo === 'proveedor') {
+      payload.dispositivos = []
+      payload.dispositivos_recibidos = receivedDevices
+        .map(line => ({
+          ...line,
+          cantidad: line.serie_estado === SERIE_OPTIONS.capturada ? 1 : Math.max(1, parseInt(line.cantidad || 1, 10) || 1),
+          serie: line.serie_estado === SERIE_OPTIONS.capturada ? String(line.serie || '').trim() : String(line.serie || '').trim(),
+        }))
+        .filter(line => line.tipo && line.marca)
+    } else {
+      payload.dispositivos_recibidos = []
+    }
+    return payload
+  }
+
+  const handleSaveDocument = async (e) => {
     e.preventDefault()
     setSaving(true)
     try {
-      const payload = { ...form }
-      if (payload.tipo === 'entrada') {
-        payload.entrada_origen_tipo = payload.entidad_tipo
-      }
-      if (payload.tipo === 'entrada' && payload.entidad_tipo === 'proveedor') {
-        payload.dispositivos = []
-        payload.dispositivos_recibidos = receivedDevices
-          .map(line => ({
-            ...line,
-            cantidad: line.serie_estado === SERIE_OPTIONS.capturada ? 1 : Math.max(1, parseInt(line.cantidad || 1, 10) || 1),
-            serie: line.serie_estado === SERIE_OPTIONS.capturada ? String(line.serie || '').trim() : '',
-          }))
-          .filter(line => line.tipo && line.marca)
+      const payload = buildDocumentPayload()
+      if (editingDocId) {
+        await documentoAPI.update(editingDocId, payload)
       } else {
-        payload.dispositivos_recibidos = []
+        await documentoAPI.create(payload)
       }
-      await documentoAPI.create(payload)
       setModal(null)
+      setEditingDocId(null)
+      setSelected(null)
       load(1)
     } catch (err) { showError(err?.message || 'Error') }
     finally { setSaving(false) }
@@ -441,6 +515,34 @@ export default function Documentos() {
     const full = await documentoAPI.getById(doc.id)
     setSelected(full)
     setModal('preview')
+  }
+
+  const openCancel = async (doc) => {
+    const full = await documentoAPI.getById(doc.id)
+    setSelected(full)
+    setCancelReason('')
+    setModal('cancel')
+  }
+
+  const handleCancelDocument = async () => {
+    if (!selected) return
+    if (!cancelReason.trim()) {
+      showError('Debes capturar el motivo de cancelación.', 'Campo requerido')
+      return
+    }
+    setSaving(true)
+    try {
+      await documentoAPI.cancel(selected.id, { motivo_cancelacion: cancelReason.trim() })
+      setModal(null)
+      setSelected(null)
+      setCancelReason('')
+      load(1)
+      showToast('Documento cancelado correctamente.')
+    } catch (err) {
+      showError(err?.message || 'Error al cancelar el documento')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleSign = async () => {
@@ -654,6 +756,7 @@ export default function Documentos() {
             <option value="">Todos los estados</option>
             <option value="pendiente">Pendiente firma</option>
             <option value="firmado">Firmado</option>
+            <option value="cancelado">Cancelado</option>
           </select>
           <div ref={colsMenuRef} className="relative">
             <button className="btn-secondary" onClick={() => setColsMenuOpen(o => !o)}>
@@ -772,9 +875,9 @@ export default function Documentos() {
                 const vb = (b[sortCol] || '').toString().toLowerCase()
                 return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va)
               }).map(d => (
-                <tr key={d.id} className="hover:bg-gray-50">
+                <tr key={d.id} className={`${d.cancelado ? 'bg-gray-50/70 text-gray-500' : 'hover:bg-gray-50'}`}>
                   {visibleCols.folio && (
-                    <td className="table-cell font-mono text-xs font-semibold text-gray-700">{d.folio}</td>
+                    <td className={`table-cell font-mono text-xs font-semibold ${d.cancelado ? 'text-gray-400' : 'text-gray-700'}`}>{d.folio}</td>
                   )}
                   {visibleCols.tipo && (
                     <td className="table-cell">
@@ -807,7 +910,11 @@ export default function Documentos() {
                   )}
                   {visibleCols.estado && (
                     <td className="table-cell">
-                      {d.firmado ? <Badge label="Firmado" color="bg-emerald-100 text-emerald-700" /> : <Badge label="Pendiente" color="bg-yellow-100 text-yellow-700" />}
+                      {d.cancelado
+                        ? <Badge label="Cancelado" color="bg-gray-200 text-gray-600" />
+                        : d.firmado
+                          ? <Badge label="Firmado" color="bg-emerald-100 text-emerald-700" />
+                          : <Badge label="Pendiente" color="bg-yellow-100 text-yellow-700" />}
                     </td>
                   )}
                   {visibleCols.fecha && (
@@ -839,15 +946,25 @@ export default function Documentos() {
                       <button onClick={() => openPreview(d)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50" title="Vista previa">
                         <EyeIcon className="h-4 w-4" />
                       </button>
-                      {canEdit() && !d.firmado && (
+                      {canEdit() && !d.firmado && !d.cancelado && (
+                        <button onClick={() => openEdit(d)} className="p-1.5 rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50" title="Editar documento">
+                          <PencilIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canEdit() && !d.firmado && !d.cancelado && (
                         <button onClick={() => openSign(d)} className="p-1.5 rounded text-gray-400 hover:text-emerald-600 hover:bg-emerald-50" title="Firmar en plataforma">
                           <PencilSquareIcon className="h-4 w-4" />
                         </button>
                       )}
-                      {canEdit() && !d.firmado && (
+                      {canEdit() && !d.firmado && !d.cancelado && (
                         <button onClick={() => handleEnviarFirma(d)} disabled={enviandoLink}
                           className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Enviar link de firma al receptor">
                           <PaperAirplaneIcon className="h-4 w-4" />
+                        </button>
+                      )}
+                      {canEdit() && !d.cancelado && (
+                        <button onClick={() => openCancel(d)} className="p-1.5 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100" title="Cancelar documento">
+                          <NoSymbolIcon className="h-4 w-4" />
                         </button>
                       )}
                     </div>
@@ -861,12 +978,12 @@ export default function Documentos() {
       </div>
 
       {/* Modal crear documento */}
-      <Modal open={modal === 'create'} onClose={() => setModal(null)} title="Nuevo Documento" size="xl">
-        <form onSubmit={handleCreate} className="space-y-4">
+      <Modal open={modal === 'create' || modal === 'edit'} onClose={() => { setModal(null); setEditingDocId(null); setSelected(null) }} title={editingDocId ? `Editar Documento — ${selected?.folio || ''}` : 'Nuevo Documento'} size="xl">
+        <form onSubmit={handleSaveDocument} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="label">Tipo de documento *</label>
-              <select className="input" required value={form.tipo} onChange={e => {
+              <select className="input" required disabled={!!editingDocId} value={form.tipo} onChange={e => {
                 const t = e.target.value
                 setForm(f => {
                   const nextEntidadTipo = t === 'entrada' ? f.entidad_tipo : (f.entidad_tipo === 'proveedor' ? 'empleado' : f.entidad_tipo)
@@ -1251,12 +1368,42 @@ export default function Documentos() {
           </div>
 
           <div className="flex justify-end gap-3">
-            <button type="button" className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
+            <button type="button" className="btn-secondary" onClick={() => { setModal(null); setEditingDocId(null); setSelected(null) }}>Cancelar</button>
             <button type="submit" className="btn-primary" disabled={saving || !form.entidad_id || (isEntradaProveedor ? receivedDeviceCount === 0 : !form.dispositivos.length)}>
-              {saving ? 'Creando...' : 'Crear Documento'}
+              {saving ? (editingDocId ? 'Guardando...' : 'Creando...') : (editingDocId ? 'Guardar cambios' : 'Crear Documento')}
             </button>
           </div>
         </form>
+      </Modal>
+
+      <Modal open={modal === 'cancel'} onClose={() => { setModal(null); setCancelReason('') }} title={`Cancelar Documento — ${selected?.folio || ''}`} size="md">
+        {selected && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-600">
+              <div className="font-semibold text-gray-800">{selected.folio}</div>
+              <div className="mt-1">{DOCUMENT_TYPES[selected.tipo]?.label || selected.tipo} · {selected.entidad_nombre}</div>
+              <div className="mt-2 text-xs text-gray-500">
+                La cancelación conserva el folio y el historial del documento. Si el documento aún no está firmado, se liberarán las reservas pendientes asociadas.
+              </div>
+            </div>
+            <div>
+              <label className="label">Motivo de cancelación *</label>
+              <textarea
+                className="input"
+                rows={4}
+                value={cancelReason}
+                onChange={e => setCancelReason(e.target.value)}
+                placeholder="Explica por qué se cancela el documento..."
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button type="button" className="btn-secondary" onClick={() => { setModal(null); setCancelReason('') }}>Cerrar</button>
+              <button type="button" className="btn-primary bg-gray-700 hover:bg-gray-800 border-gray-700" onClick={handleCancelDocument} disabled={saving || !cancelReason.trim()}>
+                {saving ? 'Cancelando...' : 'Confirmar cancelación'}
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Modal firmar */}
@@ -1505,19 +1652,25 @@ export default function Documentos() {
             </div>
             {/* Vista previa del documento */}
             <div ref={previewRef} className="bg-white border border-gray-200 rounded-xl p-8 text-sm space-y-6 font-serif">
+              {selected.cancelado && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs text-gray-600">
+                  <div className="font-semibold uppercase tracking-wide text-gray-500">Documento cancelado</div>
+                  <div className="mt-1">{selected.cancelado_motivo || 'Sin motivo registrado'}</div>
+                </div>
+              )}
               {/* Encabezado institucional */}
               <DocumentHeader tipo={selected.tipo} logo={globalLogo} />
 
               {/* Folio y fecha */}
               <div className="flex justify-between text-xs text-gray-500 -mt-2">
-                <span>Folio: <span className="font-mono font-semibold text-gray-700">{selected.folio}</span></span>
+                <span>Folio: <span className={`font-mono font-semibold ${selected.cancelado ? 'text-gray-400' : 'text-gray-700'}`}>{selected.folio}</span></span>
                 <span>Fecha: {selected.created_at ? format(new Date(selected.created_at), "dd 'de' MMMM 'de' yyyy", { locale: es }) : '—'}</span>
               </div>
 
               {/* Datos */}
               <div className="grid grid-cols-2 gap-4 text-xs bg-gray-50 rounded-lg p-4">
                 <div><span className="font-semibold">Entidad:</span> {selected.entidad_nombre}</div>
-                <div><span className="font-semibold">Tipo:</span> {selected.entidad_tipo === 'empleado' ? 'Empleado' : 'Sucursal'}</div>
+                <div><span className="font-semibold">Tipo:</span> {selected.entidad_tipo === 'empleado' ? 'Empleado' : selected.entidad_tipo === 'proveedor' ? 'Proveedor' : 'Sucursal'}</div>
                 <div><span className="font-semibold">Agente TI:</span> {selected.agente_nombre}</div>
                 {selected.receptor_nombre && <div><span className="font-semibold">Receptor:</span> {selected.receptor_nombre}</div>}
                 {selected.receptor_firmante_nombre && <div><span className="font-semibold">Recibe y firma:</span> {selected.receptor_firmante_nombre}</div>}
@@ -1567,6 +1720,11 @@ export default function Documentos() {
               {selected.observaciones && (
                 <div className="text-xs text-gray-600">
                   <span className="font-semibold">Observaciones: </span>{selected.observaciones}
+                </div>
+              )}
+              {selected.cancelado_motivo && (
+                <div className="text-xs text-gray-600">
+                  <span className="font-semibold">Motivo de cancelación: </span>{selected.cancelado_motivo}
                 </div>
               )}
 

@@ -73,6 +73,7 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
 
     const doc = db.get('documentos').find({ id: documento_id }).value()
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+    if (doc.cancelado) return res.status(409).json({ message: 'El documento está cancelado y ya no puede enviarse a firma' })
     if (doc.firmado) return res.status(400).json({ message: 'El documento ya está completamente firmado' })
 
     // Verificar que el agente tiene firma registrada
@@ -185,6 +186,10 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
 router.get('/estado/:documento_id', authMiddleware, (req, res) => {
   try {
     const { documento_id } = req.params
+    const doc = db.get('documentos').find({ id: documento_id }).value()
+    if (doc?.cancelado) {
+      return res.json({ tiene_solicitud: false, estado: 'cancelado' })
+    }
     const tokens = db.get('firma_tokens').filter({ documento_id }).value()
     const ft = tokens.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
 
@@ -228,6 +233,10 @@ router.get('/:token', (req, res) => {
 
     const doc = db.get('documentos').find({ id: ft.documento_id }).value()
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+    if (doc.cancelado) {
+      db.get('firma_tokens').find({ id: ft.id }).assign({ estado: 'cancelado' }).write()
+      return res.status(410).json({ message: 'Este documento fue cancelado', estado: 'cancelado' })
+    }
     const plantilla = doc.plantilla_id ? db.get('plantillas').find({ id: doc.plantilla_id }).value() : null
     const logo = db.get('configuracion').find({ clave: 'logo_global' }).value()?.valor || null
 
@@ -290,6 +299,10 @@ router.post('/:token/firmar', async (req, res) => {
 
     const doc = db.get('documentos').find({ id: ft.documento_id }).value()
     if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+    if (doc.cancelado) {
+      db.get('firma_tokens').find({ id: ft.id }).assign({ estado: 'cancelado' }).write()
+      return res.status(410).json({ message: 'Este documento fue cancelado y ya no puede firmarse' })
+    }
     if (doc.tipo === 'salida' && (!doc.firma_logistica || !doc.logistica_nombre || !doc.logistica_area)) {
       return res.status(400).json({ message: 'La salida requiere firma, nombre y área de logística o almacén antes de la firma del receptor' })
     }

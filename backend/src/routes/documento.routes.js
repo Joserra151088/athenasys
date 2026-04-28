@@ -40,13 +40,14 @@ function resolveCostoDia(tipo, costoDiaBody) {
   return tarifa ? parseFloat(tarifa.costo_dia) : 0
 }
 
-function resolveReceivedSerial({ tipo, serie, serie_estado, reserved }) {
+function resolveReceivedSerial({ tipo, serie, serie_estado, reserved, ignoreIds = [] }) {
   const estado = normalizeSerieEstado(serie_estado)
   if (estado === SERIE_ESTADOS.CAPTURADA) {
     const normalizedSerie = String(serie || '').trim()
     if (!normalizedSerie) throw Object.assign(new Error('El número de serie es requerido para dispositivos con serie capturada'), { status: 400 })
 
     const duplicate = db.get('dispositivos').value().find(d =>
+      !ignoreIds.includes(d.id) &&
       d.activo &&
       String(d.serie || '').trim().toLowerCase() === normalizedSerie.toLowerCase()
     )
@@ -133,11 +134,79 @@ function enrichDocumentoDispositivos(dispositivos = []) {
   })
 }
 
+function findEntidadByTipo(tipo, entidadId) {
+  if (tipo === 'empleado') {
+    return db.get('empleados').filter(e => e.id === entidadId && e.activo).value()[0] || null
+  }
+  if (tipo === 'sucursal') {
+    return db.get('sucursales').filter(s => s.id === entidadId && s.activo).value()[0] || null
+  }
+  if (tipo === 'proveedor') {
+    return db.get('proveedores').filter(p => p.id === entidadId && p.activo).value()[0] || null
+  }
+  return null
+}
+
+function buildDocumentoDeviceSnapshot(device, costo = 0) {
+  if (!device) return null
+  return {
+    id: device.id,
+    tipo: device.tipo,
+    marca: device.marca,
+    serie: device.serie,
+    serie_estado: normalizeSerieEstado(device.serie_estado),
+    modelo: device.modelo,
+    caracteristicas: buildDeviceCharacteristics(device),
+    campos_extra: normalizeCamposExtra(device.campos_extra),
+    costo: Number.isFinite(parseFloat(costo)) ? parseFloat(costo) : 0,
+    proveedor_id: device.proveedor_id || null,
+    proveedor_nombre: device.proveedor_nombre || null,
+  }
+}
+
+function getDocumentPendingMode(docId) {
+  return db.get('dispositivos').value().some(device => device.doc_pendiente_id === docId)
+}
+
+function releasePendingReservation(device, doc, user, now) {
+  if (!device || device.doc_pendiente_id !== doc.id) return
+  db.get('dispositivos').find({ id: device.id }).assign({
+    estado: device.ubicacion_tipo && device.ubicacion_tipo !== 'almacen' ? 'activo' : 'stock',
+    doc_pendiente_id: null,
+    doc_pendiente_folio: null,
+    actualizado_por: user.id,
+    actualizado_por_nombre: user.nombre,
+    updated_at: now,
+  }).write()
+}
+
+function reservePendingReservation(device, doc, user, now) {
+  if (!device) return
+  db.get('dispositivos').find({ id: device.id }).assign({
+    estado: 'pendiente',
+    doc_pendiente_id: doc.id,
+    doc_pendiente_folio: doc.folio,
+    actualizado_por: user.id,
+    actualizado_por_nombre: user.nombre,
+    updated_at: now,
+  }).write()
+}
+
+function cancelPendingSignatureTokens(docId) {
+  const pendingTokens = db.get('firma_tokens').filter(token => token.documento_id === docId && token.estado === 'pendiente').value()
+  pendingTokens.forEach(token => {
+    db.get('firma_tokens').find({ id: token.id }).assign({ estado: 'cancelado' }).write()
+  })
+}
+
 router.get('/', (req, res) => {
-  const { tipo, page = 1, limit = 20, search, entidad_tipo } = req.query
+  const { tipo, page = 1, limit = 20, search, entidad_tipo, estado } = req.query
   let items = db.get('documentos').value()
   if (tipo) items = items.filter(d => d.tipo === tipo)
   if (entidad_tipo) items = items.filter(d => d.entidad_tipo === entidad_tipo)
+  if (estado === 'firmado') items = items.filter(d => d.firmado && !d.cancelado)
+  if (estado === 'pendiente') items = items.filter(d => !d.firmado && !d.cancelado)
+  if (estado === 'cancelado') items = items.filter(d => d.cancelado)
   if (search) {
     const q = search.toLowerCase()
     items = items.filter(d =>
@@ -145,7 +214,8 @@ router.get('/', (req, res) => {
       d.folio?.toLowerCase().includes(q) ||
       d.agente_nombre?.toLowerCase().includes(q) ||
       d.logistica_nombre?.toLowerCase().includes(q) ||
-      d.receptor_firmante_nombre?.toLowerCase().includes(q)
+      d.receptor_firmante_nombre?.toLowerCase().includes(q) ||
+      d.cancelado_motivo?.toLowerCase().includes(q)
     )
   }
   items = items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -186,14 +256,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     return res.status(400).json({ message: 'Tipo, entidad y dispositivos son requeridos', missing })
   }
 
-  let entidad = null
-  if (origenTipo === 'empleado') {
-    entidad = db.get('empleados').filter(e => e.id === entidad_id && e.activo).value()[0]
-  } else if (origenTipo === 'sucursal') {
-    entidad = db.get('sucursales').filter(s => s.id === entidad_id && s.activo).value()[0]
-  } else if (origenTipo === 'proveedor') {
-    entidad = db.get('proveedores').filter(p => p.id === entidad_id && p.activo).value()[0]
-  }
+  const entidad = findEntidadByTipo(origenTipo, entidad_id)
   if (!entidad) return res.status(404).json({ message: 'Entidad no encontrada' })
 
   const total = db.get('documentos').size().value()
@@ -287,16 +350,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     dispositivosEnriquecidos = (dispositivos || []).map(({ id, costo }) => {
       const dev = db.get('dispositivos').find({ id }).value()
       if (!dev) return null
-      return {
-        id: dev.id,
-        tipo: dev.tipo,
-        marca: dev.marca,
-        serie: dev.serie,
-        modelo: dev.modelo,
-        caracteristicas: buildDeviceCharacteristics(dev),
-        campos_extra: normalizeCamposExtra(dev.campos_extra),
-        costo: parseFloat(costo) || 0,
-      }
+      return buildDocumentoDeviceSnapshot(dev, costo)
     }).filter(Boolean)
   }
 
@@ -324,6 +378,11 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     receptor_nombre: receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null),
     receptor_firmante_nombre: req.body.receptor_firmante_nombre || null,
     firma_receptor: null, firma_receptor_path: null,
+    cancelado: false,
+    cancelado_motivo: null,
+    cancelado_at: null,
+    cancelado_por_id: null,
+    cancelado_por_nombre: null,
     firmado: false, fecha_firma: null,
     motivo_salida: tipo === 'salida' ? String(motivo_salida || '').trim() : '',
     observaciones: observaciones || '',
@@ -356,6 +415,7 @@ router.patch('/:id/logistica', requireRoles('super_admin', 'agente_soporte'), au
   const doc = db.get('documentos').find({ id: req.params.id }).value()
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
   if (doc.tipo !== 'salida') return res.status(400).json({ message: 'Solo los documentos de salida usan firma de logística o almacén' })
+  if (doc.cancelado) return res.status(409).json({ message: 'El documento está cancelado y ya no puede modificarse' })
   if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado y no puede modificarse' })
 
   const nombre = String(req.body.logistica_nombre || doc.logistica_nombre || '').trim()
@@ -396,10 +456,275 @@ router.patch('/:id/logistica', requireRoles('super_admin', 'agente_soporte'), au
   res.json({ ...doc, ...updated })
 })
 
+router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('editar', 'documento'), (req, res) => {
+  const doc = db.get('documentos').find({ id: req.params.id }).value()
+  if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+  if (doc.firmado) return res.status(409).json({ message: 'Los documentos firmados ya no se pueden editar' })
+  if (doc.cancelado) return res.status(409).json({ message: 'Los documentos cancelados ya no se pueden editar' })
+
+  const {
+    plantilla_id,
+    entidad_tipo,
+    entidad_id,
+    dispositivos,
+    observaciones,
+    motivo_salida,
+    receptor_id,
+    entrada_origen_tipo,
+    entrada_referencia,
+    recibido_por_id,
+    dispositivos_recibidos,
+  } = req.body
+
+  const origenTipo = doc.tipo === 'entrada' ? (entrada_origen_tipo || entidad_tipo || doc.entidad_tipo) : (entidad_tipo || doc.entidad_tipo)
+  const isEntradaProveedor = doc.tipo === 'entrada' && origenTipo === 'proveedor'
+  const payloadDevices = isEntradaProveedor ? dispositivos_recibidos : dispositivos
+
+  if (doc.tipo === 'entrada') {
+    const providerModeChanged = (doc.entidad_tipo === 'proveedor') !== (origenTipo === 'proveedor')
+    if (providerModeChanged) {
+      return res.status(400).json({ message: 'No es posible cambiar una entrada de proveedor a otro origen, ni viceversa. Cancela y crea un nuevo documento si necesitas ese cambio.' })
+    }
+  }
+
+  if (!origenTipo || !entidad_id || !Array.isArray(payloadDevices) || payloadDevices.length === 0) {
+    return res.status(400).json({ message: 'Entidad y dispositivos son requeridos para editar el documento' })
+  }
+
+  const entidad = findEntidadByTipo(origenTipo, entidad_id)
+  if (!entidad) return res.status(404).json({ message: 'Entidad no encontrada' })
+
+  const now = new Date().toISOString()
+  const receptor = receptor_id
+    ? db.get('empleados').filter(e => e.id === receptor_id && e.activo).value()[0]
+    : null
+  const agenteRecibe = recibido_por_id
+    ? db.get('usuarios_sistema').find({ id: recibido_por_id, activo: true }).value()
+    : null
+
+  let dispositivosEnriquecidos = []
+
+  if (isEntradaProveedor) {
+    const proveedor = entidad
+    const existingDocDeviceIds = new Set((doc.dispositivos || []).map(device => device.id))
+    const currentDevices = db.get('dispositivos').value().filter(device => existingDocDeviceIds.has(device.id) && device.activo)
+    const currentById = new Map(currentDevices.map(device => [device.id, device]))
+    const requestedLines = (dispositivos_recibidos || []).filter(line => line?.tipo && line?.marca)
+    if (!requestedLines.length) {
+      return res.status(400).json({ message: 'Debes conservar o agregar al menos un dispositivo recibido' })
+    }
+
+    const reserved = new Set()
+    const touchedIds = new Set()
+
+    for (const rawLine of requestedLines) {
+      const line = rawLine || {}
+      const lineId = line.id && currentById.has(line.id) ? line.id : null
+      const tipoDispositivo = String(line.tipo || '').trim()
+      const marca = String(line.marca || '').trim()
+      if (!tipoDispositivo || !marca) {
+        return res.status(400).json({ message: 'Cada línea recibida requiere tipo y marca' })
+      }
+
+      if (lineId) {
+        const current = currentById.get(lineId)
+        const estadoSerie = normalizeSerieEstado(line.serie_estado || current.serie_estado)
+        const serialInfo = estadoSerie === SERIE_ESTADOS.CAPTURADA
+          ? resolveReceivedSerial({
+              tipo: tipoDispositivo,
+              serie: line.serie || current.serie,
+              serie_estado: estadoSerie,
+              reserved,
+              ignoreIds: [current.id],
+            })
+          : {
+              serie: current.serie || nextGeneratedSerial(tipoDispositivo, db.get('dispositivos').value(), reserved),
+              serie_estado: estadoSerie,
+            }
+
+        const updates = {
+          tipo: tipoDispositivo,
+          marca,
+          serie: serialInfo.serie,
+          serie_estado: serialInfo.serie_estado,
+          modelo: line.modelo || '',
+          proveedor_id: proveedor.id,
+          proveedor_nombre: proveedor.nombre,
+          caracteristicas: line.caracteristicas || '',
+          campos_extra: normalizeCamposExtra(line.campos_extra),
+          costo_dia: resolveCostoDia(tipoDispositivo, line.costo_dia),
+          actualizado_por: req.user.id,
+          actualizado_por_nombre: req.user.nombre,
+          updated_at: now,
+        }
+        db.get('dispositivos').find({ id: current.id }).assign(updates).write()
+        dispositivosEnriquecidos.push(buildDocumentoDeviceSnapshot({ ...current, ...updates }, 0))
+        touchedIds.add(current.id)
+        continue
+      }
+
+      const cantidad = Math.max(1, parseInt(line.cantidad || 1, 10) || 1)
+      const estadoSerie = normalizeSerieEstado(line.serie_estado)
+      if (estadoSerie === SERIE_ESTADOS.CAPTURADA && cantidad > 1) {
+        return res.status(400).json({ message: 'Cuando capturas número de serie, registra una línea por dispositivo' })
+      }
+
+      for (let i = 0; i < cantidad; i += 1) {
+        const serialInfo = resolveReceivedSerial({
+          tipo: tipoDispositivo,
+          serie: line.serie,
+          serie_estado: line.serie_estado,
+          reserved,
+        })
+        const item = {
+          id: uuidv4(),
+          tipo: tipoDispositivo,
+          marca,
+          serie: serialInfo.serie,
+          serie_estado: serialInfo.serie_estado,
+          modelo: line.modelo || '',
+          cantidad: 1,
+          proveedor_id: proveedor.id,
+          proveedor_nombre: proveedor.nombre,
+          caracteristicas: line.caracteristicas || '',
+          campos_extra: normalizeCamposExtra(line.campos_extra),
+          costo_tipo: line.costo_tipo || 'mensual',
+          costo_dia: resolveCostoDia(tipoDispositivo, line.costo_dia),
+          estado: 'stock',
+          ubicacion_tipo: 'almacen',
+          ubicacion_id: null,
+          ubicacion_nombre: 'Almacén Central',
+          lat: null,
+          lng: null,
+          activo: true,
+          creado_por: req.user.id,
+          creado_por_nombre: req.user.nombre,
+          actualizado_por: req.user.id,
+          actualizado_por_nombre: req.user.nombre,
+          created_at: now,
+          updated_at: now,
+        }
+        db.get('dispositivos').push(item).write()
+        dispositivosEnriquecidos.push(buildDocumentoDeviceSnapshot(item, 0))
+      }
+    }
+
+    const removedIds = [...existingDocDeviceIds].filter(id => !touchedIds.has(id))
+    for (const removedId of removedIds) {
+      const device = currentById.get(removedId)
+      if (!device) continue
+      const activeAssignment = db.get('asignaciones').find({ dispositivo_id: removedId, activo: true }).value()
+      if (activeAssignment || device.ubicacion_tipo !== 'almacen' || device.estado !== 'stock') {
+        return res.status(409).json({
+          message: `No se puede quitar el dispositivo ${device.serie || device.id} porque ya tiene movimientos o salió del almacén`,
+        })
+      }
+      db.get('dispositivos').find({ id: removedId }).assign({
+        activo: false,
+        actualizado_por: req.user.id,
+        actualizado_por_nombre: req.user.nombre,
+        updated_at: now,
+      }).write()
+    }
+  } else {
+    dispositivosEnriquecidos = (dispositivos || []).map(({ id, costo }) => {
+      const device = db.get('dispositivos').find({ id, activo: true }).value()
+      if (!device) return null
+      return buildDocumentoDeviceSnapshot(device, costo)
+    }).filter(Boolean)
+
+    if (!dispositivosEnriquecidos.length) {
+      return res.status(400).json({ message: 'Debes seleccionar al menos un dispositivo válido' })
+    }
+  }
+
+  const updated = {
+    plantilla_id: plantilla_id || null,
+    entidad_tipo: origenTipo,
+    entidad_id,
+    entidad_nombre: origenTipo === 'empleado' ? entidad.nombre_completo : entidad.nombre,
+    entrada_origen_tipo: doc.tipo === 'entrada' ? origenTipo : null,
+    entrada_referencia: doc.tipo === 'entrada' ? String(entrada_referencia || '').trim() : '',
+    recibido_por_id: doc.tipo === 'entrada' ? (agenteRecibe?.id || doc.recibido_por_id || req.user.id) : null,
+    recibido_por_nombre: doc.tipo === 'entrada' ? (agenteRecibe?.nombre || doc.recibido_por_nombre || req.user.nombre) : null,
+    entidad_num_empleado: origenTipo === 'empleado' ? (entidad.num_empleado || entidad.numero_empleado || '') : '',
+    entidad_area: origenTipo === 'empleado' ? (entidad.area || entidad.departamento || '') : '',
+    entidad_puesto: origenTipo === 'empleado' ? (entidad.puesto || '') : '',
+    entidad_email: origenTipo === 'empleado' ? (entidad.email || '') : '',
+    dispositivos: dispositivosEnriquecidos,
+    receptor_id: receptor_id || null,
+    receptor_nombre: receptor ? receptor.nombre_completo : null,
+    motivo_salida: doc.tipo === 'salida' ? String(motivo_salida || '').trim() : '',
+    observaciones: observaciones || '',
+    firma_online_estado: null,
+    firma_online_token: null,
+    updated_at: now,
+  }
+
+  cancelPendingSignatureTokens(doc.id)
+
+  if (['salida', 'responsiva'].includes(doc.tipo)) {
+    const pendingMode = getDocumentPendingMode(doc.id)
+    const currentIds = new Set((doc.dispositivos || []).map(device => device.id))
+    const nextIds = new Set(dispositivosEnriquecidos.map(device => device.id))
+
+    for (const currentId of currentIds) {
+      if (nextIds.has(currentId)) continue
+      const currentDevice = db.get('dispositivos').find({ id: currentId }).value()
+      releasePendingReservation(currentDevice, doc, req.user, now)
+    }
+
+    if (pendingMode) {
+      for (const nextId of nextIds) {
+        const nextDevice = db.get('dispositivos').find({ id: nextId }).value()
+        if (nextDevice?.doc_pendiente_id === doc.id) continue
+        reservePendingReservation(nextDevice, doc, req.user, now)
+      }
+    }
+  }
+
+  db.get('documentos').find({ id: doc.id }).assign(updated).write()
+  res.json({ ...doc, ...updated, dispositivos: enrichDocumentoDispositivos(dispositivosEnriquecidos) })
+})
+
+router.patch('/:id/cancelar', requireRoles('super_admin', 'agente_soporte'), auditLog('cancelar', 'documento'), (req, res) => {
+  const doc = db.get('documentos').find({ id: req.params.id }).value()
+  if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+  if (doc.cancelado) return res.status(409).json({ message: 'El documento ya está cancelado' })
+
+  const motivo = String(req.body.motivo_cancelacion || '').trim()
+  if (!motivo) return res.status(400).json({ message: 'Debes capturar el motivo de cancelación' })
+
+  const now = new Date().toISOString()
+  if (['salida', 'responsiva'].includes(doc.tipo) && !doc.firmado) {
+    for (const deviceRef of doc.dispositivos || []) {
+      const device = db.get('dispositivos').find({ id: deviceRef.id }).value()
+      releasePendingReservation(device, doc, req.user, now)
+    }
+  }
+
+  cancelPendingSignatureTokens(doc.id)
+
+  const updated = {
+    cancelado: true,
+    cancelado_motivo: motivo,
+    cancelado_at: now,
+    cancelado_por_id: req.user.id,
+    cancelado_por_nombre: req.user.nombre,
+    firma_online_estado: 'cancelado',
+    firma_online_token: null,
+    updated_at: now,
+  }
+
+  db.get('documentos').find({ id: doc.id }).assign(updated).write()
+  res.json({ ...doc, ...updated })
+})
+
 // Firmar documento
 router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditLog('firmar', 'documento'), async (req, res) => {
   const doc = db.get('documentos').find({ id: req.params.id }).value()
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
+  if (doc.cancelado) return res.status(409).json({ message: 'El documento está cancelado y ya no puede firmarse' })
   if (doc.firmado) return res.status(409).json({ message: 'El documento ya fue firmado' })
 
   const { firma_agente, firma_receptor, firma_logistica, logistica_nombre, logistica_area, receptor_observaciones, receptor_firmante_nombre } = req.body

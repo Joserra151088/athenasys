@@ -207,7 +207,7 @@ export async function generateDocumentPDF(doc, options = {}) {
   pdf.text('FOLIO:', ml + 3, y + 5.4)
   pdf.setFont('courier', 'bold')
   pdf.setFontSize(8)
-  pdf.setTextColor(15, 23, 42)
+  pdf.setTextColor(...(doc.cancelado ? [156, 163, 175] : [15, 23, 42]))
   pdf.text(doc.folio || '', ml + 19, y + 5.4)
   const dateStr = doc.created_at
     ? new Date(doc.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -217,6 +217,21 @@ export async function generateDocumentPDF(doc, options = {}) {
   pdf.setTextColor(71, 85, 105)
   pdf.text(`Fecha: ${dateStr}`, ml + cw - 2, y + 5.4, { align: 'right' })
   y += 13
+
+  if (doc.cancelado) {
+    checkPage(12)
+    pdf.setFillColor(243, 244, 246)
+    pdf.setDrawColor(209, 213, 219)
+    pdf.roundedRect(ml, y, cw, 10, 1, 1, 'FD')
+    pdf.setFont('helvetica', 'bold')
+    pdf.setFontSize(7.5)
+    pdf.setTextColor(107, 114, 128)
+    pdf.text('DOCUMENTO CANCELADO', ml + 3, y + 4.2)
+    pdf.setFont('helvetica', 'normal')
+    pdf.setFontSize(7)
+    pdf.text(pdf.splitTextToSize(doc.cancelado_motivo || 'Sin motivo registrado', cw - 8), ml + 3, y + 7.6)
+    y += 15
+  }
 
   const tipoEntidad = doc.entidad_tipo === 'empleado' ? 'Empleado' : doc.entidad_tipo === 'proveedor' ? 'Proveedor' : 'Sucursal'
   const infoRows = doc.tipo === 'entrada'
