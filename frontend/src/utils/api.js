@@ -231,6 +231,15 @@ export const reportesAPI = {
   gastosHistorico: (params) => api.get('/reportes/gastos-historico', { params }),
 }
 
+export const planoOficinaAPI = {
+  getAll: (params) => api.get('/planos-oficina', { params }),
+  getById: (id) => api.get(`/planos-oficina/${id}`),
+  create: (data) => api.post('/planos-oficina', data),
+  update: (id, data) => api.put(`/planos-oficina/${id}`, data),
+  saveLayout: (id, data) => api.put(`/planos-oficina/${id}/layout`, data),
+  remove: (id) => api.delete(`/planos-oficina/${id}`),
+}
+
 export const presupuestoAPI = {
   // Agrupadores
   getAgrupadores: () => api.get('/presupuesto/agrupadores'),

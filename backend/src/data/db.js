@@ -28,6 +28,8 @@ const JSON_FIELDS = {
   tarifas_equipo: ['incluye'],
   presupuesto_partidas: ['montos_por_mes'],
   dispositivos: ['campos_extra'],
+  planos_oficina: ['config'],
+  plano_oficina_objetos: ['metadata'],
 }
 
 // ─── Store en memoria ────────────────────────────────────────────────────────
@@ -837,6 +839,63 @@ const DDL = [
     \`created_at\` DATETIME,
     \`updated_at\` DATETIME
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`planos_oficina\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`nombre\` VARCHAR(200) NOT NULL,
+    \`sucursal_id\` VARCHAR(36),
+    \`sucursal_nombre\` VARCHAR(200),
+    \`piso\` VARCHAR(100),
+    \`descripcion\` TEXT,
+    \`ancho\` INT DEFAULT 1600,
+    \`alto\` INT DEFAULT 900,
+    \`grid_size\` INT DEFAULT 24,
+    \`config\` LONGTEXT,
+    \`activo\` TINYINT(1) DEFAULT 1,
+    \`creado_por\` VARCHAR(36),
+    \`creado_por_nombre\` VARCHAR(200),
+    \`actualizado_por\` VARCHAR(36),
+    \`actualizado_por_nombre\` VARCHAR(200),
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`plano_oficina_capas\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`plano_id\` VARCHAR(36) NOT NULL,
+    \`clave\` VARCHAR(100) NOT NULL,
+    \`nombre\` VARCHAR(200) NOT NULL,
+    \`color\` VARCHAR(30),
+    \`icono\` VARCHAR(50),
+    \`visible\` TINYINT(1) DEFAULT 1,
+    \`bloqueada\` TINYINT(1) DEFAULT 0,
+    \`editable\` TINYINT(1) DEFAULT 1,
+    \`orden\` INT DEFAULT 0,
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+
+  `CREATE TABLE IF NOT EXISTS \`plano_oficina_objetos\` (
+    \`id\` VARCHAR(36) PRIMARY KEY,
+    \`plano_id\` VARCHAR(36) NOT NULL,
+    \`capa_id\` VARCHAR(36),
+    \`capa_clave\` VARCHAR(100),
+    \`tipo\` VARCHAR(100) NOT NULL,
+    \`nombre\` VARCHAR(200),
+    \`x\` DECIMAL(10,2) DEFAULT 0,
+    \`y\` DECIMAL(10,2) DEFAULT 0,
+    \`ancho\` DECIMAL(10,2) DEFAULT 120,
+    \`alto\` DECIMAL(10,2) DEFAULT 80,
+    \`rotacion\` DECIMAL(10,2) DEFAULT 0,
+    \`color\` VARCHAR(30),
+    \`z_index\` INT DEFAULT 0,
+    \`vinculo_tipo\` VARCHAR(50),
+    \`vinculo_id\` VARCHAR(36),
+    \`vinculo_nombre\` VARCHAR(200),
+    \`metadata\` LONGTEXT,
+    \`created_at\` DATETIME,
+    \`updated_at\` DATETIME
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
 ]
 
 // ─── Seed inicial ─────────────────────────────────────────────────────────────
@@ -1050,6 +1109,7 @@ const ALL_TABLES = [
   'catalogo_supervisores','catalogo_puestos',
   'configuracion','proveedor_documentos',
   'firma_tokens',
+  'planos_oficina','plano_oficina_capas','plano_oficina_objetos',
 ]
 
 // ─── Inicialización principal ─────────────────────────────────────────────────
@@ -1177,6 +1237,40 @@ async function initDB() {
   // ── Firma online (envío de link al receptor) ──────────────────────────────
   await alterIfNotExists('documentos', 'firma_online_estado', "VARCHAR(20) DEFAULT NULL")
   await alterIfNotExists('documentos', 'firma_online_token',  'VARCHAR(64) DEFAULT NULL')
+  // ── Planos de oficina ─────────────────────────────────────────────────────
+  await alterIfNotExists('planos_oficina', 'config', 'LONGTEXT')
+  await alterIfNotExists('planos_oficina', 'activo', 'TINYINT(1) DEFAULT 1')
+  await alterIfNotExists('planos_oficina', 'sucursal_id', 'VARCHAR(36)')
+  await alterIfNotExists('planos_oficina', 'sucursal_nombre', 'VARCHAR(200)')
+  await alterIfNotExists('planos_oficina', 'piso', 'VARCHAR(100)')
+  await alterIfNotExists('planos_oficina', 'descripcion', 'TEXT')
+  await alterIfNotExists('planos_oficina', 'ancho', 'INT DEFAULT 1600')
+  await alterIfNotExists('planos_oficina', 'alto', 'INT DEFAULT 900')
+  await alterIfNotExists('planos_oficina', 'grid_size', 'INT DEFAULT 24')
+  await alterIfNotExists('planos_oficina', 'creado_por', 'VARCHAR(36)')
+  await alterIfNotExists('planos_oficina', 'creado_por_nombre', 'VARCHAR(200)')
+  await alterIfNotExists('planos_oficina', 'actualizado_por', 'VARCHAR(36)')
+  await alterIfNotExists('planos_oficina', 'actualizado_por_nombre', 'VARCHAR(200)')
+  await alterIfNotExists('planos_oficina', 'created_at', 'DATETIME')
+  await alterIfNotExists('planos_oficina', 'updated_at', 'DATETIME')
+  await alterIfNotExists('plano_oficina_capas', 'visible', 'TINYINT(1) DEFAULT 1')
+  await alterIfNotExists('plano_oficina_capas', 'bloqueada', 'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('plano_oficina_capas', 'editable', 'TINYINT(1) DEFAULT 1')
+  await alterIfNotExists('plano_oficina_capas', 'orden', 'INT DEFAULT 0')
+  await alterIfNotExists('plano_oficina_capas', 'created_at', 'DATETIME')
+  await alterIfNotExists('plano_oficina_capas', 'updated_at', 'DATETIME')
+  await alterIfNotExists('plano_oficina_objetos', 'capa_id', 'VARCHAR(36)')
+  await alterIfNotExists('plano_oficina_objetos', 'capa_clave', 'VARCHAR(100)')
+  await alterIfNotExists('plano_oficina_objetos', 'nombre', 'VARCHAR(200)')
+  await alterIfNotExists('plano_oficina_objetos', 'rotacion', 'DECIMAL(10,2) DEFAULT 0')
+  await alterIfNotExists('plano_oficina_objetos', 'color', 'VARCHAR(30)')
+  await alterIfNotExists('plano_oficina_objetos', 'z_index', 'INT DEFAULT 0')
+  await alterIfNotExists('plano_oficina_objetos', 'vinculo_tipo', 'VARCHAR(50)')
+  await alterIfNotExists('plano_oficina_objetos', 'vinculo_id', 'VARCHAR(36)')
+  await alterIfNotExists('plano_oficina_objetos', 'vinculo_nombre', 'VARCHAR(200)')
+  await alterIfNotExists('plano_oficina_objetos', 'metadata', 'LONGTEXT')
+  await alterIfNotExists('plano_oficina_objetos', 'created_at', 'DATETIME')
+  await alterIfNotExists('plano_oficina_objetos', 'updated_at', 'DATETIME')
   // ── Campos adicionales por tipo de dispositivo ────────────────────────────
   await alterIfNotExists('dispositivos', 'campos_extra', 'LONGTEXT')
   await alterIfNotExists('dispositivos', 'costo_tipo',   "VARCHAR(20) DEFAULT 'mensual'")

@@ -41,6 +41,7 @@ const navItems = [
   },
   { path: '/reportes', label: 'Reportes' },
   { path: '/mapa', label: 'Mapa' },
+  { path: '/plano-oficina', label: 'Plano Oficina' },
   { path: '/catalogos', label: 'Catalogos', roles: ['super_admin', 'agente_soporte'] },
   { path: '/usuarios-sistema', label: 'Usuarios', labelByRole: { agente_soporte: 'Mi Firma' }, roles: ['super_admin', 'agente_soporte'] },
   { path: '/auditoria', label: 'Auditoria', roles: ['super_admin'] },

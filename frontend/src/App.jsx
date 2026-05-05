@@ -14,6 +14,7 @@ import Expedientes from './pages/Expedientes'
 import Cambios from './pages/Cambios'
 import Cotizaciones from './pages/Cotizaciones'
 import MapaInteractivo from './pages/MapaInteractivo'
+import PlanoOficina from './pages/PlanoOficina'
 import UsuariosSistema from './pages/UsuariosSistema'
 import Auditoria from './pages/Auditoria'
 import Proveedores from './pages/Proveedores'
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="cambios" element={<Cambios />} />
         <Route path="cotizaciones" element={<Cotizaciones />} />
         <Route path="mapa" element={<MapaInteractivo />} />
+        <Route path="plano-oficina" element={<PlanoOficina />} />
         <Route path="proveedores" element={<Proveedores />} />
         <Route path="licencias" element={<Licencias />} />
         <Route path="dominios" element={<Dominios />} />

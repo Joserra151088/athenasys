@@ -27,6 +27,7 @@ const reportesRoutes = require('./routes/reportes.routes')
 const catalogosRoutes = require('./routes/catalogos.routes')
 const configRoutes     = require('./routes/config.routes')
 const firmaOnlineRoutes = require('./routes/firma-online.routes')
+const planoOficinaRoutes = require('./routes/planoOficina.routes')
 
 const { initDB } = require('./data/db')
 const { tryRetryPendingDocs } = require('./services/pdfRetry')
@@ -66,6 +67,7 @@ app.use('/api/reportes', reportesRoutes)
 app.use('/api/catalogos', catalogosRoutes)
 app.use('/api/config', configRoutes)
 app.use('/api/firma-online', firmaOnlineRoutes)
+app.use('/api/planos-oficina', planoOficinaRoutes)
 
 // Health check
 app.get('/api/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }))
