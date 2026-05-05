@@ -29,6 +29,11 @@ const DEFAULT_CREATE_FORM = {
   ancho: 1600,
   alto: 900,
   grid_size: 24,
+  config: {
+    showGrid: true,
+    backgroundOpacity: 0.88,
+    backgroundImage: '',
+  },
 }
 
 const LAYER_PRESETS = [
@@ -43,6 +48,8 @@ const LAYER_PRESETS = [
 ]
 
 const OBJECT_LIBRARY = [
+  { type: 'pc', label: 'PC', layerKey: 'pantallas', width: 108, height: 86, color: '#2563eb', short: 'PC' },
+  { type: 'laptop', label: 'Laptop', layerKey: 'pantallas', width: 110, height: 82, color: '#1d4ed8', short: 'LP' },
   { type: 'mesa', label: 'Mesa', layerKey: 'mobiliario', width: 180, height: 96, color: '#cfb584', short: 'ME' },
   { type: 'silla', label: 'Silla', layerKey: 'mobiliario', width: 52, height: 52, color: '#cbd5e1', short: 'SI' },
   { type: 'sillon', label: 'Sillon', layerKey: 'mobiliario', width: 110, height: 70, color: '#d8b4fe', short: 'SO' },
@@ -53,8 +60,9 @@ const OBJECT_LIBRARY = [
   { type: 'camara', label: 'Camara', layerKey: 'camaras', width: 104, height: 58, color: '#ef4444', short: 'CA' },
   { type: 'access_point', label: 'Access point', layerKey: 'access_points', width: 118, height: 58, color: '#0d9488', short: 'AP' },
   { type: 'pantalla', label: 'Pantalla', layerKey: 'pantallas', width: 132, height: 76, color: '#7c3aed', short: 'TV' },
+  { type: 'impresora', label: 'Impresora', layerKey: 'pantallas', width: 108, height: 78, color: '#475569', short: 'IM' },
   { type: 'biometrico', label: 'Biometrico', layerKey: 'biometricos', width: 92, height: 58, color: '#14b8a6', short: 'BI' },
-  { type: 'usuario', label: 'Usuario', layerKey: 'usuarios', width: 142, height: 78, color: '#fb923c', short: 'US' },
+  { type: 'usuario', label: 'Usuario', layerKey: 'usuarios', width: 112, height: 132, color: '#fb923c', short: 'US' },
 ]
 
 const DEVICE_LINKABLE_TYPES = new Set(['nodo_red', 'camara', 'access_point', 'pantalla', 'biometrico'])
@@ -107,6 +115,179 @@ function objectBadge(item) {
 
 function cloneMeta(value) {
   return JSON.parse(JSON.stringify(value || {}))
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result)
+    reader.onerror = () => reject(new Error('No se pudo leer la imagen'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function resolveVisualType(item) {
+  const linkedType = String(item?.metadata?.device_type || '').toLowerCase()
+  if (linkedType.includes('laptop')) return 'laptop'
+  if (linkedType.includes('impresora')) return 'impresora'
+  if (linkedType.includes('monitor') || linkedType.includes('pantalla')) return 'pantalla'
+  if (linkedType.includes('cpu')) return 'pc'
+  if (linkedType.includes('biom')) return 'biometrico'
+  if (linkedType.includes('cam')) return 'camara'
+  if (linkedType.includes('modem') || linkedType.includes('módem')) return 'access_point'
+  return item?.tipo || 'mesa'
+}
+
+function FloorObjectGraphic({ item, compact = false }) {
+  const visualType = resolveVisualType(item)
+  const color = item.color || getPreset(visualType).color
+  const stroke = 'rgba(15,23,42,0.72)'
+  const userPhoto = item.metadata?.foto_url
+  const label = objectDisplayName(item)
+  const baseSvgClass = compact ? 'h-11 w-11' : 'h-full w-full'
+
+  if (visualType === 'usuario') {
+    return (
+      <div className={`flex h-full w-full flex-col items-center justify-center ${compact ? 'gap-1' : 'gap-2'}`}>
+        <div
+          className={`overflow-hidden rounded-full border-4 border-white shadow-[0_12px_26px_rgba(15,23,42,0.18)] ${compact ? 'h-10 w-10' : 'h-[68%] w-[68%]'}`}
+          style={{ background: 'linear-gradient(145deg, #ffffff, #e2e8f0)' }}
+        >
+          {userPhoto ? (
+            <img src={userPhoto} alt={label} className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-orange-400 to-pink-500 text-white">
+              <UserIcon className={compact ? 'h-5 w-5' : 'h-8 w-8'} />
+            </div>
+          )}
+        </div>
+        {!compact && (
+          <div className="max-w-full rounded-full bg-slate-900/85 px-3 py-1 text-center text-[11px] font-semibold text-white shadow-lg">
+            <span className="block truncate">{label}</span>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  if (visualType === 'pared') {
+    return <div className="h-full w-full rounded-full" style={{ background: color, boxShadow: 'inset 0 2px 5px rgba(255,255,255,0.22), 0 8px 16px rgba(15,23,42,0.18)' }} />
+  }
+
+  if (visualType === 'puerta') {
+    return (
+      <div className="relative h-full w-full overflow-hidden rounded-full border-2 border-dashed bg-white/80" style={{ borderColor: color }}>
+        <div className="absolute left-[12%] top-[12%] h-[76%] w-[62%] rounded-r-2xl border-2 bg-emerald-50" style={{ borderColor: color }} />
+        <div className="absolute left-[58%] top-1/2 h-2 w-2 -translate-y-1/2 rounded-full" style={{ backgroundColor: color }} />
+      </div>
+    )
+  }
+
+  const graphics = {
+    pc: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="18" y="15" width="64" height="44" rx="8" fill="#1e293b" stroke={stroke} strokeWidth="4" />
+        <rect x="23" y="20" width="54" height="34" rx="6" fill="#dbeafe" />
+        <rect x="42" y="60" width="16" height="11" rx="4" fill="#475569" />
+        <rect x="28" y="72" width="44" height="8" rx="4" fill="#64748b" />
+        <rect x="22" y="83" width="56" height="7" rx="3.5" fill="#cbd5e1" />
+      </svg>
+    ),
+    laptop: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="22" y="18" width="56" height="34" rx="7" fill="#1e293b" stroke={stroke} strokeWidth="4" />
+        <rect x="27" y="22" width="46" height="26" rx="4" fill="#bfdbfe" />
+        <path d="M15 64h70l-8 14H23L15 64Z" fill="#94a3b8" stroke={stroke} strokeWidth="4" strokeLinejoin="round" />
+        <rect x="42" y="68" width="16" height="3" rx="1.5" fill="#e2e8f0" />
+      </svg>
+    ),
+    pantalla: (
+      <svg viewBox="0 0 120 100" className={baseSvgClass}>
+        <rect x="14" y="16" width="92" height="46" rx="8" fill="#111827" stroke={stroke} strokeWidth="4" />
+        <rect x="20" y="22" width="80" height="34" rx="5" fill="#ede9fe" />
+        <rect x="55" y="62" width="10" height="11" rx="3" fill="#6b7280" />
+        <rect x="40" y="74" width="40" height="7" rx="3.5" fill="#94a3b8" />
+      </svg>
+    ),
+    impresora: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="27" y="15" width="46" height="21" rx="6" fill="#cbd5e1" stroke={stroke} strokeWidth="4" />
+        <rect x="18" y="34" width="64" height="38" rx="9" fill="#64748b" stroke={stroke} strokeWidth="4" />
+        <rect x="28" y="50" width="44" height="24" rx="4" fill="#f8fafc" />
+        <circle cx="70" cy="44" r="3" fill="#22c55e" />
+      </svg>
+    ),
+    nodo_red: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="16" y="20" width="68" height="52" rx="12" fill="#eff6ff" stroke={color} strokeWidth="5" />
+        <rect x="26" y="34" width="14" height="14" rx="3" fill={color} />
+        <rect x="43" y="34" width="14" height="14" rx="3" fill={color} opacity="0.88" />
+        <rect x="60" y="34" width="14" height="14" rx="3" fill={color} opacity="0.75" />
+        <rect x="26" y="52" width="48" height="8" rx="4" fill="#93c5fd" />
+      </svg>
+    ),
+    camara: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <path d="M24 42 66 28c6-2 10 4 7 9L58 61c-2 4-7 6-11 5L24 60Z" fill="#f8fafc" stroke={stroke} strokeWidth="4" strokeLinejoin="round" />
+        <circle cx="54" cy="44" r="9" fill="#1d4ed8" />
+        <path d="M20 57h15l-10 17H14Z" fill="#64748b" />
+        <path d="M69 61l11 14" stroke="#64748b" strokeWidth="6" strokeLinecap="round" />
+      </svg>
+    ),
+    access_point: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <circle cx="50" cy="52" r="19" fill="#ecfeff" stroke={color} strokeWidth="5" />
+        <circle cx="50" cy="52" r="4.5" fill={color} />
+        <path d="M31 36c6-7 11-10 19-10s13 3 19 10" fill="none" stroke={color} strokeWidth="5" strokeLinecap="round" />
+        <path d="M36 31c4-5 8-7 14-7s10 2 14 7" fill="none" stroke="#99f6e4" strokeWidth="4" strokeLinecap="round" />
+      </svg>
+    ),
+    biometrico: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="29" y="18" width="42" height="64" rx="10" fill="#f0fdfa" stroke={color} strokeWidth="5" />
+        <rect x="37" y="28" width="26" height="14" rx="4" fill="#99f6e4" />
+        <path d="M50 52c-8 0-14 6-14 14 0 8 6 14 14 14s14-6 14-14c0-8-6-14-14-14Zm0 5c5 0 9 4 9 9s-4 9-9 9-9-4-9-9 4-9 9-9Z" fill={color} />
+      </svg>
+    ),
+    mesa: (
+      <svg viewBox="0 0 140 100" className={baseSvgClass}>
+        <rect x="22" y="18" width="96" height="50" rx="12" fill={color} stroke="#7c5b2d" strokeWidth="4" />
+        <rect x="30" y="26" width="80" height="34" rx="9" fill="#f4e4c8" opacity="0.65" />
+        <rect x="28" y="68" width="8" height="22" rx="4" fill="#9a7136" />
+        <rect x="104" y="68" width="8" height="22" rx="4" fill="#9a7136" />
+      </svg>
+    ),
+    silla: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <rect x="28" y="18" width="44" height="24" rx="10" fill="#cbd5e1" stroke={stroke} strokeWidth="4" />
+        <rect x="24" y="46" width="52" height="18" rx="8" fill="#e2e8f0" stroke={stroke} strokeWidth="4" />
+        <rect x="30" y="64" width="6" height="18" rx="3" fill="#64748b" />
+        <rect x="64" y="64" width="6" height="18" rx="3" fill="#64748b" />
+      </svg>
+    ),
+    sillon: (
+      <svg viewBox="0 0 120 100" className={baseSvgClass}>
+        <rect x="16" y="40" width="88" height="28" rx="14" fill="#ddd6fe" stroke="#7c3aed" strokeWidth="4" />
+        <rect x="26" y="24" width="68" height="24" rx="12" fill="#c4b5fd" />
+        <rect x="18" y="64" width="10" height="18" rx="5" fill="#7c3aed" />
+        <rect x="92" y="64" width="10" height="18" rx="5" fill="#7c3aed" />
+      </svg>
+    ),
+    planta: (
+      <svg viewBox="0 0 100 100" className={baseSvgClass}>
+        <ellipse cx="50" cy="35" rx="11" ry="18" fill="#22c55e" />
+        <ellipse cx="34" cy="43" rx="12" ry="18" fill="#16a34a" transform="rotate(-28 34 43)" />
+        <ellipse cx="66" cy="43" rx="12" ry="18" fill="#4ade80" transform="rotate(28 66 43)" />
+        <path d="M38 62h24l-4 18H42Z" fill="#a16207" />
+      </svg>
+    ),
+  }
+
+  return (
+    <div className={`flex h-full w-full items-center justify-center ${compact ? 'p-1.5' : 'p-2.5'}`}>
+      {graphics[visualType] || graphics.pc}
+    </div>
+  )
 }
 
 function renderMiniIcon(icon) {
@@ -233,7 +414,12 @@ export default function PlanoOficina() {
         ancho: response.ancho || 1600,
         alto: response.alto || 900,
         grid_size: response.grid_size || 24,
-        config: response.config || {},
+        config: {
+          showGrid: true,
+          backgroundOpacity: 0.88,
+          backgroundImage: '',
+          ...(response.config || {}),
+        },
       })
       setLayers((response.layers || []).length ? response.layers : LAYER_PRESETS.map(makeDefaultLayer))
       setObjects(response.objetos || [])
@@ -337,10 +523,33 @@ export default function PlanoOficina() {
     setDirty(true)
   }
 
+  const updatePlanConfig = (patch) => {
+    setPlan(prev => ({
+      ...prev,
+      config: {
+        showGrid: true,
+        backgroundOpacity: 0.88,
+        ...(prev?.config || {}),
+        ...patch,
+      },
+    }))
+    setDirty(true)
+  }
+
   const updateSelectedObject = (patch) => {
     if (!selectedObjectId) return
     setObjects(prev => prev.map(item => item.id === selectedObjectId ? { ...item, ...patch } : item))
     setDirty(true)
+  }
+
+  const uploadBackgroundImage = async (file) => {
+    if (!file) return
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      updatePlanConfig({ backgroundImage: dataUrl })
+    } catch (err) {
+      showError(err?.message || 'No se pudo cargar la imagen del plano')
+    }
   }
 
   const addObject = (type) => {
@@ -457,6 +666,7 @@ export default function PlanoOficina() {
         ancho: toNumber(createForm.ancho, 1600, 600, 5000),
         alto: toNumber(createForm.alto, 900, 400, 4000),
         grid_size: toNumber(createForm.grid_size, 24, 8, 120),
+        config: createForm.config,
       })
       setCreateOpen(false)
       await loadPlans(response.id)
@@ -489,7 +699,12 @@ export default function PlanoOficina() {
         ancho: response.ancho || 1600,
         alto: response.alto || 900,
         grid_size: response.grid_size || 24,
-        config: response.config || {},
+        config: {
+          showGrid: true,
+          backgroundOpacity: 0.88,
+          backgroundImage: '',
+          ...(response.config || {}),
+        },
       })
       setLayers(response.layers || [])
       setObjects(response.objetos || [])
@@ -526,6 +741,8 @@ export default function PlanoOficina() {
         ...(selectedObject?.metadata || {}),
         puesto: employee?.puesto || '',
         sucursal_nombre: employee?.sucursal_nombre || '',
+        foto_url: employee?.foto_url || '',
+        email: employee?.email || '',
       },
     })
   }
@@ -541,6 +758,9 @@ export default function PlanoOficina() {
         ...(selectedObject?.metadata || {}),
         serie: device?.serie || '',
         ubicacion: device?.ubicacion_nombre || '',
+        device_type: device?.tipo || '',
+        marca: device?.marca || '',
+        modelo: device?.modelo || '',
       },
     })
   }
@@ -548,35 +768,26 @@ export default function PlanoOficina() {
   const canvasStyle = useMemo(() => {
     if (!plan) return {}
     const grid = toNumber(plan.grid_size, 24, 8, 120)
+    const showGrid = plan.config?.showGrid !== false
     return {
       width: `${plan.ancho}px`,
       height: `${plan.alto}px`,
-      backgroundColor: '#f8fafc',
-      backgroundImage: `linear-gradient(to right, rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.12) 1px, transparent 1px), radial-gradient(circle at top right, rgba(56,189,248,0.12), transparent 26%), radial-gradient(circle at bottom left, rgba(59,130,246,0.08), transparent 30%)`,
-      backgroundSize: `${grid}px ${grid}px, ${grid}px ${grid}px, 100% 100%, 100% 100%`,
+      backgroundColor: '#ffffff',
+      backgroundImage: showGrid
+        ? `linear-gradient(to right, rgba(148,163,184,0.12) 1px, transparent 1px), linear-gradient(to bottom, rgba(148,163,184,0.12) 1px, transparent 1px), radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 26%), radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%)`
+        : `radial-gradient(circle at top right, rgba(56,189,248,0.08), transparent 26%), radial-gradient(circle at bottom left, rgba(59,130,246,0.04), transparent 30%)`,
+      backgroundSize: showGrid
+        ? `${grid}px ${grid}px, ${grid}px ${grid}px, 100% 100%, 100% 100%`
+        : `100% 100%, 100% 100%`,
     }
   }, [plan])
 
   const renderObject = (item) => {
-    const preset = getPreset(item.tipo)
+    const preset = getPreset(resolveVisualType(item))
     const layer = layerById.get(item.capa_id)
     const isSelected = selectedObjectId === item.id
     const isLocked = layer?.bloqueada
-    const background = item.color || preset.color
-
-    let shapeClass = 'rounded-3xl border shadow-[0_16px_32px_rgba(15,23,42,0.12)]'
-    let extraStyle = {}
-    if (item.tipo === 'pared') {
-      shapeClass = 'rounded-full shadow-[0_10px_20px_rgba(15,23,42,0.16)]'
-      extraStyle = { border: 'none', background: '#475569' }
-    } else if (item.tipo === 'puerta') {
-      shapeClass = 'rounded-full border-2 border-dashed'
-      extraStyle = { background: 'rgba(34,197,94,0.12)' }
-    } else if (item.tipo === 'planta') {
-      shapeClass = 'rounded-full border shadow-[0_12px_24px_rgba(34,197,94,0.2)]'
-    } else if (item.tipo === 'usuario') {
-      shapeClass = 'rounded-[28px] border shadow-[0_18px_38px_rgba(249,115,22,0.18)]'
-    }
+    const isStructural = item.tipo === 'pared' || item.tipo === 'puerta'
 
     return (
       <div
@@ -586,50 +797,39 @@ export default function PlanoOficina() {
           event.stopPropagation()
           setSelectedObjectId(item.id)
         }}
-        className={`absolute overflow-hidden ${shapeClass} ${
-          isSelected ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-blue-50' : ''
-        } ${isLocked ? 'cursor-not-allowed opacity-85' : 'cursor-move'}`}
+        className={`absolute ${isSelected ? 'z-30' : 'z-10'} ${isLocked ? 'cursor-not-allowed opacity-90' : 'cursor-move'}`}
         style={{
           left: item.x,
           top: item.y,
           width: item.ancho,
           height: item.alto,
           transform: `rotate(${item.rotacion || 0}deg)`,
-          background,
-          borderColor: item.tipo === 'puerta' ? background : 'rgba(255,255,255,0.82)',
-          ...extraStyle,
         }}
       >
-        {item.tipo !== 'pared' && (
-          <div className="flex h-full w-full flex-col justify-between px-3 py-2 text-white">
-            <div className="flex items-center justify-between gap-2">
-              <span className="rounded-full bg-white/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
-                {objectBadge(item)}
-              </span>
-              {item.vinculo_nombre && (
-                <span className="max-w-[55%] truncate text-[10px] font-medium text-white/80">
-                  Vinculado
-                </span>
-              )}
+        <div
+          className={`relative h-full w-full ${
+            isStructural ? '' : 'rounded-[26px]'
+          } ${isSelected ? 'bg-blue-50/60 shadow-[0_24px_46px_rgba(59,130,246,0.14)]' : ''}`}
+        >
+          <FloorObjectGraphic item={item} />
+          {!isStructural && item.tipo !== 'usuario' && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-1 flex justify-center px-1">
+              <div className="max-w-full rounded-full bg-white/92 px-2.5 py-1 text-center text-[10px] font-semibold text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.14)] backdrop-blur">
+                <span className="block truncate">{objectDisplayName(item)}</span>
+              </div>
             </div>
-            <div>
-              <div className="line-clamp-2 text-sm font-semibold leading-tight">{objectDisplayName(item)}</div>
-              {item.metadata?.serie && (
-                <div className="mt-1 truncate text-[11px] text-white/80">{item.metadata.serie}</div>
-              )}
-              {item.metadata?.puesto && (
-                <div className="mt-1 truncate text-[11px] text-white/80">{item.metadata.puesto}</div>
-              )}
-            </div>
-          </div>
-        )}
+          )}
+          {isSelected && (
+            <div className="pointer-events-none absolute inset-0 rounded-[26px] border-2 border-dashed border-blue-500" />
+          )}
+        </div>
 
         {isSelected && editable && !isLocked && (
           <button
             type="button"
             data-resize="true"
             onMouseDown={(event) => startResize(item, event)}
-            className="absolute bottom-1.5 right-1.5 h-4 w-4 rounded border border-white/70 bg-white/90"
+            className="absolute bottom-1.5 right-1.5 h-5 w-5 rounded-md border border-blue-200 bg-white shadow"
             title="Redimensionar"
           />
         )}
@@ -838,6 +1038,11 @@ export default function PlanoOficina() {
                     <span className="rounded-full bg-blue-50 px-3 py-2 font-semibold text-blue-700">
                       Reticula {plan.grid_size}px
                     </span>
+                    {plan.config?.backgroundImage && (
+                      <span className="rounded-full bg-emerald-50 px-3 py-2 font-semibold text-emerald-700">
+                        Plano base cargado
+                      </span>
+                    )}
                     {editable && (
                       <button className="rounded-full bg-slate-900 px-4 py-2 font-semibold text-white transition hover:bg-slate-800" onClick={savePlan} disabled={saving || !dirty}>
                         {saving ? 'Guardando...' : 'Guardar'}
@@ -852,6 +1057,16 @@ export default function PlanoOficina() {
                     style={canvasStyle}
                     onClick={() => setSelectedObjectId('')}
                   >
+                    {plan.config?.backgroundImage && (
+                      <div className="pointer-events-none absolute inset-0 rounded-[30px] p-4">
+                        <img
+                          src={plan.config.backgroundImage}
+                          alt="Plano base"
+                          className="h-full w-full object-contain"
+                          style={{ opacity: toNumber(plan.config.backgroundOpacity, 0.88, 0.15, 1) }}
+                        />
+                      </div>
+                    )}
                     <div className="pointer-events-none absolute inset-0 rounded-[30px] border border-white/60" />
                     {visibleObjects.map(renderObject)}
                   </div>
@@ -893,8 +1108,8 @@ export default function PlanoOficina() {
                 className="rounded-3xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_12px_26px_rgba(15,23,42,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <div className="flex items-center gap-3">
-                  <span className="flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white" style={{ backgroundColor: item.color }}>
-                    {item.short}
+                  <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 shadow-inner">
+                    <FloorObjectGraphic item={{ ...item, nombre: item.label, metadata: {} }} compact />
                   </span>
                   <div>
                     <div className="text-sm font-semibold text-slate-900">{item.label}</div>
@@ -1158,6 +1373,73 @@ export default function PlanoOficina() {
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Descripcion</span>
                   <textarea className="input min-h-[96px]" value={plan.descripcion || ''} onChange={event => updatePlanField('descripcion', event.target.value)} disabled={!editable} />
                 </label>
+
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                  <div className="mb-3">
+                    <span className="block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Plano base</span>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Sube una imagen del layout de la oficina, como en Packet Tracer, para colocar objetos encima del plano real.
+                    </p>
+                  </div>
+
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Imagen del plano</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      className="input h-11 p-2"
+                      onChange={async event => {
+                        const file = event.target.files?.[0]
+                        await uploadBackgroundImage(file)
+                        event.target.value = ''
+                      }}
+                      disabled={!editable}
+                    />
+                  </label>
+
+                  <div className="mt-3 grid grid-cols-[1fr_96px] gap-3">
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Opacidad</span>
+                      <input
+                        type="range"
+                        min="0.15"
+                        max="1"
+                        step="0.05"
+                        value={toNumber(plan.config?.backgroundOpacity, 0.88, 0.15, 1)}
+                        onChange={event => updatePlanConfig({ backgroundOpacity: toNumber(event.target.value, 0.88, 0.15, 1) })}
+                        disabled={!editable}
+                        className="w-full"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Reticula</span>
+                      <button
+                        type="button"
+                        onClick={() => updatePlanConfig({ showGrid: !(plan.config?.showGrid !== false) })}
+                        disabled={!editable}
+                        className={`w-full rounded-2xl border px-3 py-2.5 text-xs font-semibold transition ${
+                          plan.config?.showGrid !== false
+                            ? 'border-blue-200 bg-blue-50 text-blue-700'
+                            : 'border-slate-200 bg-white text-slate-600'
+                        }`}
+                      >
+                        {plan.config?.showGrid !== false ? 'Visible' : 'Oculta'}
+                      </button>
+                    </label>
+                  </div>
+
+                  {plan.config?.backgroundImage && (
+                    <button
+                      type="button"
+                      className="mt-3 w-full rounded-2xl border border-red-100 bg-white px-3 py-2.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                      onClick={() => updatePlanConfig({ backgroundImage: '' })}
+                      disabled={!editable}
+                    >
+                      Quitar imagen del plano
+                    </button>
+                  )}
+                </div>
               </div>
 
               {editable && (
