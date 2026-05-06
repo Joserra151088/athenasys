@@ -28,6 +28,7 @@ const JSON_FIELDS = {
   tarifas_equipo: ['incluye'],
   presupuesto_partidas: ['montos_por_mes'],
   dispositivos: ['campos_extra'],
+  cambios: ['dispositivos'],
   planos_oficina: ['config'],
   plano_oficina_objetos: ['metadata'],
 }
@@ -43,7 +44,7 @@ const _columns = {}
 const DATETIME_COLS = new Set([
   'created_at','updated_at','fecha','fecha_asignacion','fecha_devolucion',
   'fecha_firma','fecha_retorno','fecha_estimada_retorno','valido_desde',
-  'fecha_liberacion',
+  'fecha_liberacion','documento_firmado_at',
 ])
 const DATE_COLS = new Set(['fecha_inicio','fecha_vencimiento','fecha_registro'])
 
@@ -83,7 +84,7 @@ function deserialize(table, row) {
       try { out[field] = JSON.parse(out[field]) } catch (_) { out[field] = [] }
     }
   }
-  const boolFields = ['activo','firmado','cancelado','es_paquete','renovacion_auto']
+  const boolFields = ['activo','firmado','cancelado','es_paquete','renovacion_auto','inventario_actualizado']
   for (const f of boolFields) {
     if (f in out) out[f] = out[f] === 1 || out[f] === true
   }
@@ -550,9 +551,17 @@ const DDL = [
     \`dispositivo_id\` VARCHAR(36),
     \`dispositivo_serie\` VARCHAR(200),
     \`dispositivo_tipo\` VARCHAR(100),
+    \`dispositivo_marca\` VARCHAR(200),
+    \`dispositivo_modelo\` VARCHAR(200),
+    \`dispositivos\` LONGTEXT,
+    \`cantidad_dispositivos\` INT DEFAULT 1,
     \`tipo_cambio\` ENUM('reparacion','baja_definitiva','actualizacion'),
     \`proveedor_id\` VARCHAR(36),
     \`proveedor_nombre\` VARCHAR(200),
+    \`documento_id\` VARCHAR(36),
+    \`documento_folio\` VARCHAR(100),
+    \`inventario_actualizado\` TINYINT(1) DEFAULT 0,
+    \`documento_firmado_at\` DATETIME,
     \`motivo\` TEXT,
     \`descripcion\` TEXT,
     \`fecha_estimada_retorno\` DATETIME,
@@ -1276,6 +1285,14 @@ async function initDB() {
   await alterIfNotExists('dispositivos', 'costo_tipo',   "VARCHAR(20) DEFAULT 'mensual'")
   await alterIfNotExists('dispositivos', 'doc_pendiente_id',    'VARCHAR(36) DEFAULT NULL')
   await alterIfNotExists('dispositivos', 'doc_pendiente_folio', 'VARCHAR(100) DEFAULT NULL')
+  await alterIfNotExists('cambios', 'dispositivo_marca', 'VARCHAR(200)')
+  await alterIfNotExists('cambios', 'dispositivo_modelo', 'VARCHAR(200)')
+  await alterIfNotExists('cambios', 'dispositivos', 'LONGTEXT')
+  await alterIfNotExists('cambios', 'cantidad_dispositivos', 'INT DEFAULT 1')
+  await alterIfNotExists('cambios', 'documento_id', 'VARCHAR(36)')
+  await alterIfNotExists('cambios', 'documento_folio', 'VARCHAR(100)')
+  await alterIfNotExists('cambios', 'inventario_actualizado', 'TINYINT(1) DEFAULT 0')
+  await alterIfNotExists('cambios', 'documento_firmado_at', 'DATETIME')
   // ── Asegurar utf8mb4 en tablas principales ────────────────────────────────
   for (const tbl of ['empleados','sucursales','dispositivos','documentos','plantillas','configuracion']) {
     try {

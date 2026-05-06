@@ -27,7 +27,7 @@ const navItems = [
   { path: '/expedientes', label: 'Expedientes' },
   { path: '/documentos', label: 'Documentos' },
   { path: '/plantillas', label: 'Plantillas' },
-  { path: '/cambios', label: 'Cambios de Equipo' },
+  { path: '/cambios', label: 'Movimientos con Proveedor' },
   { path: '/licencias', label: 'Licencias' },
   { path: '/dominios', label: 'Dominios' },
   { path: '/cotizaciones', label: 'Cotizaciones' },

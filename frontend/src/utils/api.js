@@ -104,11 +104,12 @@ export const expedienteAPI = {
   getSucursal: (id) => api.get(`/expedientes/sucursal/${id}`)
 }
 
-// Cambios de equipo
+// Movimientos con Proveedor
 export const cambioAPI = {
   getAll: (params) => api.get('/cambios', { params }),
   getById: (id) => api.get(`/cambios/${id}`),
-  create: (data) => api.post('/cambios', data)
+  create: (data) => api.post('/cambios', data),
+  complete: (id) => api.put(`/cambios/${id}/completar`),
 }
 
 // Cotizaciones

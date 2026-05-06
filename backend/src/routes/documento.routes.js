@@ -164,6 +164,56 @@ function buildDocumentoDeviceSnapshot(device, costo = 0) {
   }
 }
 
+function buildProveedorMovementSnapshot(device = {}, previous = {}) {
+  return {
+    id: device.id,
+    tipo: device.tipo,
+    marca: device.marca,
+    modelo: device.modelo,
+    serie: device.serie,
+    caracteristicas: buildDeviceCharacteristics(device),
+    campos_extra: normalizeCamposExtra(device.campos_extra),
+    estado_anterior: previous.estado_anterior ?? device.estado ?? 'stock',
+    ubicacion_tipo_anterior: previous.ubicacion_tipo_anterior ?? device.ubicacion_tipo ?? 'almacen',
+    ubicacion_id_anterior: previous.ubicacion_id_anterior ?? device.ubicacion_id ?? null,
+    ubicacion_nombre_anterior: previous.ubicacion_nombre_anterior ?? device.ubicacion_nombre ?? 'Almacén Central',
+    lat_anterior: previous.lat_anterior ?? device.lat ?? null,
+    lng_anterior: previous.lng_anterior ?? device.lng ?? null,
+    activo_anterior: previous.activo_anterior ?? Boolean(device.activo),
+  }
+}
+
+function syncProveedorCambioDesdeDocumento(documento, dispositivos = [], patch = {}) {
+  const cambio = db.get('cambios').find({ documento_id: documento.id }).value()
+  if (!cambio) return null
+
+  const prevMap = new Map((Array.isArray(cambio.dispositivos) ? cambio.dispositivos : []).map(item => [item.id, item]))
+  const snapshots = dispositivos.map(device => buildProveedorMovementSnapshot(device, prevMap.get(device.id)))
+  const first = snapshots[0] || {}
+  const proveedor = documento.entidad_tipo === 'proveedor'
+    ? db.get('proveedores').find({ id: documento.entidad_id }).value()
+    : null
+
+  const updates = {
+    dispositivo_id: first.id || null,
+    dispositivo_tipo: first.tipo || null,
+    dispositivo_serie: first.serie || null,
+    dispositivo_marca: first.marca || null,
+    dispositivo_modelo: first.modelo || null,
+    dispositivos: snapshots,
+    cantidad_dispositivos: snapshots.length,
+    proveedor_id: proveedor?.id || cambio.proveedor_id || null,
+    proveedor_nombre: proveedor?.nombre || cambio.proveedor_nombre || null,
+    documento_folio: documento.folio,
+    motivo: documento.motivo_salida || cambio.motivo || '',
+    updated_at: new Date().toISOString(),
+    ...patch,
+  }
+
+  db.get('cambios').find({ id: cambio.id }).assign(updates).write()
+  return { ...cambio, ...updates }
+}
+
 function getDocumentPendingMode(docId) {
   return db.get('dispositivos').value().some(device => device.doc_pendiente_id === docId)
 }
@@ -684,6 +734,9 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('edit
   }
 
   db.get('documentos').find({ id: doc.id }).assign(updated).write()
+  if (doc.tipo === 'salida' && origenTipo === 'proveedor') {
+    syncProveedorCambioDesdeDocumento({ ...doc, ...updated }, dispositivosEnriquecidos)
+  }
   res.json({ ...doc, ...updated, dispositivos: enrichDocumentoDispositivos(dispositivosEnriquecidos) })
 })
 
@@ -691,6 +744,9 @@ router.patch('/:id/cancelar', requireRoles('super_admin', 'agente_soporte'), aud
   const doc = db.get('documentos').find({ id: req.params.id }).value()
   if (!doc) return res.status(404).json({ message: 'Documento no encontrado' })
   if (doc.cancelado) return res.status(409).json({ message: 'El documento ya está cancelado' })
+  if (doc.tipo === 'salida' && doc.entidad_tipo === 'proveedor' && doc.firmado) {
+    return res.status(409).json({ message: 'Las salidas a proveedor ya firmadas no pueden cancelarse. Registra el retorno del proveedor o genera un ajuste documental.' })
+  }
 
   const motivo = String(req.body.motivo_cancelacion || '').trim()
   if (!motivo) return res.status(400).json({ message: 'Debes capturar el motivo de cancelación' })
@@ -717,6 +773,14 @@ router.patch('/:id/cancelar', requireRoles('super_admin', 'agente_soporte'), aud
   }
 
   db.get('documentos').find({ id: doc.id }).assign(updated).write()
+  if (doc.tipo === 'salida' && doc.entidad_tipo === 'proveedor') {
+    syncProveedorCambioDesdeDocumento({ ...doc, ...updated }, doc.dispositivos || [], {
+      estado: 'cancelado',
+      inventario_actualizado: false,
+      documento_firmado_at: null,
+      fecha_retorno: null,
+    })
+  }
   res.json({ ...doc, ...updated })
 })
 
@@ -868,8 +932,49 @@ router.post('/:id/firmar', requireRoles('super_admin', 'agente_soporte'), auditL
 
   db.get('documentos').find({ id: req.params.id }).assign(updated).write()
 
+  // ── Movimientos con proveedor al firmar ────────────────────────────────────
+  if (doc.tipo === 'salida' && doc.entidad_tipo === 'proveedor') {
+    const cambioRelacionado = db.get('cambios').find({ documento_id: doc.id }).value()
+    const estadoProveedor = cambioRelacionado?.tipo_cambio === 'baja_definitiva' ? 'baja' : 'en_reparacion'
+    const activoProveedor = false
+
+    for (const devInfo of (doc.dispositivos || [])) {
+      const dispositivo = db.get('dispositivos').find({ id: devInfo.id }).value()
+      if (!dispositivo) continue
+
+      const asigActiva = db.get('asignaciones').find({ dispositivo_id: devInfo.id, activo: true }).value()
+      if (asigActiva) {
+        db.get('asignaciones').find({ id: asigActiva.id }).assign({
+          activo: false,
+          fecha_devolucion: now,
+        }).write()
+      }
+
+      db.get('dispositivos').find({ id: devInfo.id }).assign({
+        estado: estadoProveedor,
+        ubicacion_tipo: 'proveedor',
+        ubicacion_id: doc.entidad_id,
+        ubicacion_nombre: doc.entidad_nombre,
+        lat: null,
+        lng: null,
+        activo: activoProveedor,
+        actualizado_por: req.user.id,
+        actualizado_por_nombre: req.user.nombre,
+        updated_at: now,
+        doc_pendiente_id: null,
+        doc_pendiente_folio: null,
+      }).write()
+    }
+
+    syncProveedorCambioDesdeDocumento({ ...doc, ...updated }, doc.dispositivos || [], {
+      inventario_actualizado: true,
+      documento_firmado_at: now,
+      estado: cambioRelacionado?.tipo_cambio === 'baja_definitiva' ? 'completado' : 'en_proceso',
+    })
+  }
+
   // ── Auto-asignaciones al firmar ────────────────────────────────────────────
-  if (['salida', 'responsiva'].includes(doc.tipo)) {
+  if (['salida', 'responsiva'].includes(doc.tipo) && doc.entidad_tipo !== 'proveedor') {
     for (const devInfo of (doc.dispositivos || [])) {
       const dispositivo = db.get('dispositivos').find({ id: devInfo.id, activo: true }).value()
       if (!dispositivo) continue
