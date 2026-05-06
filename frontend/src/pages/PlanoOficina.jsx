@@ -92,6 +92,15 @@ const CATEGORY_OPTIONS = [
   { key: 'personas', label: 'Personas' },
 ]
 
+const CATEGORY_LABELS = {
+  todos: 'Todos',
+  tecnologia: 'Tecnologia',
+  mobiliario: 'Mobiliario',
+  infraestructura: 'Infraestructura',
+  red: 'Red',
+  personas: 'Personas',
+}
+
 function uid() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
   return `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
@@ -118,6 +127,10 @@ function getPreset(type) {
 
 function getLayerPreset(clave) {
   return LAYER_PRESETS.find(item => item.clave === clave)
+}
+
+function getCategoryLabel(category) {
+  return CATEGORY_LABELS[category] || category
 }
 
 function objectDisplayName(item) {
@@ -169,7 +182,7 @@ function LayerBadge({ layer, count }) {
         {renderMiniIcon(layer.icono)}
       </span>
       <div className="min-w-0">
-        <div className="truncate text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">{layer.nombre}</div>
+        <div className="truncate text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">{layer.nombre}</div>
         <div className="text-sm font-semibold text-slate-800">{count} objeto(s)</div>
       </div>
     </div>
@@ -347,15 +360,16 @@ function LibraryCard({ item, onAdd }) {
     <button
       type="button"
       onClick={() => onAdd(item.type)}
-      className="group rounded-[24px] border border-slate-200/80 bg-white/90 p-3 text-left shadow-[0_12px_24px_rgba(148,163,184,0.12)] transition duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(15,23,42,0.12)]"
+      title={`${item.label} · ${getCategoryLabel(item.category)}`}
+      className="group rounded-[24px] border border-slate-200/80 bg-white/90 p-3.5 text-left shadow-[0_12px_24px_rgba(148,163,184,0.12)] transition duration-300 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-[0_18px_32px_rgba(15,23,42,0.12)]"
     >
       <div className="flex items-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-[20px] bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[20px] bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner">
           <ObjectArtwork item={{ tipo: item.type, color: item.color }} compact />
         </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold text-slate-900">{item.label}</div>
-          <div className="text-xs uppercase tracking-[0.16em] text-slate-400">{item.category}</div>
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="truncate text-sm font-semibold leading-5 text-slate-900">{item.label}</div>
+          <div className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">{getCategoryLabel(item.category)}</div>
         </div>
       </div>
     </button>
@@ -367,6 +381,7 @@ function ObjectCard({ selected, item, onSelect }) {
     <button
       type="button"
       onClick={() => onSelect(item.id)}
+      title={objectDisplayName(item)}
       className={`w-full rounded-[22px] border px-3 py-3 text-left transition ${
         selected
           ? 'border-blue-200 bg-blue-50/80 shadow-[0_12px_28px_rgba(59,130,246,0.12)]'
@@ -1009,7 +1024,7 @@ export default function PlanoOficina() {
           </div>
         </SurfaceCard>
       ) : (
-        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_360px]">
+        <div className="grid gap-5 xl:grid-cols-[300px_minmax(0,1fr)_400px]">
           <div className="space-y-5">
             <SurfaceCard className="p-5">
               <div className="flex items-start justify-between gap-3">
@@ -1051,7 +1066,7 @@ export default function PlanoOficina() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold">{item.nombre}</div>
-                          <div className={`mt-1 text-xs ${selectedPlanId === item.id ? 'text-slate-300' : 'text-slate-500'}`}>
+                          <div className={`mt-1 truncate text-xs ${selectedPlanId === item.id ? 'text-slate-300' : 'text-slate-500'}`}>
                             {item.sucursal_nombre || 'Sin sucursal ligada'} - {item.piso || 'Sin piso'}
                           </div>
                         </div>
@@ -1287,7 +1302,7 @@ export default function PlanoOficina() {
                 />
               </div>
 
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-3 2xl:grid-cols-2">
                 {filteredLibrary.map(item => (
                   <LibraryCard key={item.type} item={item} onAdd={addObject} />
                 ))}
