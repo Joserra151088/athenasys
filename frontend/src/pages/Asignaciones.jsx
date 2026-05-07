@@ -85,6 +85,7 @@ export default function Asignaciones() {
   const [observaciones, setObservaciones] = useState('')
   const [loadingDev, setLoadingDev] = useState(false)
   const [searchDev, setSearchDev] = useState('')
+  const searchDevTimer = useRef(null)
   const [searchDest, setSearchDest] = useState('')
   const [loadingDest, setLoadingDest] = useState(false)
   const searchDestTimer = useRef(null)
@@ -132,6 +133,7 @@ export default function Asignaciones() {
 
   useEffect(() => {
     return () => {
+      if (searchDevTimer.current) clearTimeout(searchDevTimer.current)
       if (searchDestTimer.current) clearTimeout(searchDestTimer.current)
       if (editSearchDestTimer.current) clearTimeout(editSearchDestTimer.current)
     }
@@ -180,6 +182,25 @@ export default function Asignaciones() {
     }
   }, [getDestinatarios])
 
+  const fetchAvailableDevices = useCallback(async (searchValue = '') => {
+    setLoadingDev(true)
+    try {
+      const params = {
+        ubicacion_tipo: 'almacen',
+        estado: 'stock',
+        limit: searchValue ? 500 : 500,
+        sort_by: 'created_at',
+        sort_dir: 'desc',
+      }
+      if (searchValue?.trim()) params.search = searchValue.trim()
+
+      const result = await deviceAPI.getAll(params)
+      setDispositivosDisponibles(result.data || [])
+    } finally {
+      setLoadingDev(false)
+    }
+  }, [])
+
   const resetCreateModal = useCallback(() => {
     setTipoAsignacion('empleado')
     setSelectedDevices([])
@@ -199,7 +220,13 @@ export default function Asignaciones() {
 
     try {
       const [devs, plants, targets] = await Promise.all([
-        deviceAPI.getAll({ ubicacion_tipo: 'almacen', estado: 'stock', limit: 100 }),
+        deviceAPI.getAll({
+          ubicacion_tipo: 'almacen',
+          estado: 'stock',
+          limit: 500,
+          sort_by: 'created_at',
+          sort_dir: 'desc',
+        }),
         plantillaAPI.getAll(),
         getDestinatarios('empleado'),
       ])
@@ -225,6 +252,14 @@ export default function Asignaciones() {
     searchDestTimer.current = setTimeout(() => {
       fetchDestinatarios(tipoAsignacion, value)
     }, 300)
+  }
+
+  const handleSearchDev = value => {
+    setSearchDev(value)
+    if (searchDevTimer.current) clearTimeout(searchDevTimer.current)
+    searchDevTimer.current = setTimeout(() => {
+      fetchAvailableDevices(value)
+    }, 250)
   }
 
   const openEditModal = async asignacion => {
@@ -341,12 +376,7 @@ export default function Asignaciones() {
     }
   }
 
-  const filteredDevs = dispositivosDisponibles.filter(device =>
-    !searchDev ||
-    device.tipo?.toLowerCase().includes(searchDev.toLowerCase()) ||
-    device.serie?.toLowerCase().includes(searchDev.toLowerCase()) ||
-    device.marca?.toLowerCase().includes(searchDev.toLowerCase())
-  )
+  const filteredDevs = dispositivosDisponibles
 
   const selectedDeviceItems = selectedDevices
     .map(id => dispositivosDisponibles.find(device => device.id === id))
@@ -606,7 +636,7 @@ export default function Asignaciones() {
                   className="input mb-2"
                   placeholder="Buscar..."
                   value={searchDev}
-                  onChange={event => setSearchDev(event.target.value)}
+                  onChange={event => handleSearchDev(event.target.value)}
                 />
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
                   {loadingDev ? (
