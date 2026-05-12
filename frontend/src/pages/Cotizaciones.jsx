@@ -15,6 +15,23 @@ import { useNotification } from '../context/NotificationContext'
 import html2canvas from 'html2canvas'
 
 const ESTADO_COLORS = { borrador: 'bg-gray-100 text-gray-600', enviada: 'bg-blue-100 text-blue-700', aceptada: 'bg-emerald-100 text-emerald-700', rechazada: 'bg-red-100 text-red-700' }
+const REPO_CATEGORIAS = [
+  { value: 'computo', label: 'Equipo de Computo', color: 'bg-blue-100 text-blue-700' },
+  { value: 'laptop', label: 'Laptop / Notebook', color: 'bg-indigo-100 text-indigo-700' },
+  { value: 'celular', label: 'Celular / Tablet', color: 'bg-purple-100 text-purple-700' },
+  { value: 'impresora', label: 'Impresora / Escaner', color: 'bg-pink-100 text-pink-700' },
+  { value: 'red', label: 'Red / Switches / AP', color: 'bg-teal-100 text-teal-700' },
+  { value: 'internet', label: 'Internet / Telefonia', color: 'bg-cyan-100 text-cyan-700' },
+  { value: 'licencia', label: 'Licencias de Software', color: 'bg-amber-100 text-amber-700' },
+  { value: 'mantenimiento', label: 'Mantenimiento', color: 'bg-orange-100 text-orange-700' },
+  { value: 'servicio', label: 'Servicio Profesional', color: 'bg-green-100 text-green-700' },
+  { value: 'accesorio', label: 'Accesorio / Periferico', color: 'bg-gray-100 text-gray-700' },
+  { value: 'otro', label: 'Otro', color: 'bg-slate-100 text-slate-700' },
+]
+
+function ensureArray(value, fallback = []) {
+  return Array.isArray(value) ? value : fallback
+}
 
 function defaultVenc() {
   const d = new Date(); d.setDate(d.getDate() + 30)
@@ -30,6 +47,17 @@ function formatDateEs(dateStr) {
   if (!dateStr) return ''
   try { return format(new Date(dateStr + 'T12:00:00'), "dd 'de' MMMM 'de' yyyy", { locale: es }) }
   catch { return dateStr }
+}
+
+function safeFormatDate(dateValue, formatStr = 'dd/MM/yyyy') {
+  if (!dateValue) return ''
+  try {
+    const date = new Date(dateValue)
+    if (Number.isNaN(date.getTime())) return ''
+    return format(date, formatStr, { locale: es })
+  } catch {
+    return ''
+  }
 }
 
 export default function Cotizaciones() {
@@ -59,8 +87,18 @@ export default function Cotizaciones() {
 
   useEffect(() => {
     loadCotizaciones()
-    exchangeAPI.getRate().then(r => { setExchangeRate(r.usd_mxn); setForm(f => ({ ...f, tipo_cambio: r.usd_mxn })) })
-    cotizacionAPI.getRepositorio().then(setRepositorio)
+    exchangeAPI.getRate()
+      .then(r => {
+        const nextRate = Number(r?.usd_mxn)
+        if (Number.isFinite(nextRate) && nextRate > 0) {
+          setExchangeRate(nextRate)
+          setForm(f => ({ ...f, tipo_cambio: nextRate }))
+        }
+      })
+      .catch(() => {})
+    cotizacionAPI.getRepositorio()
+      .then(result => setRepositorio(ensureArray(result)))
+      .catch(() => setRepositorio([]))
     configAPI.getLogo().then(r => setGlobalLogo(r.logo)).catch(() => {})
   }, [])
 
@@ -68,10 +106,24 @@ export default function Cotizaciones() {
     setLoading(true)
     const params = { page, limit: 20 }
     if (search) params.search = search
-    cotizacionAPI.getAll(params).then(d => {
-      setCotizaciones(d.data)
-      setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
-    }).finally(() => setLoading(false))
+    cotizacionAPI.getAll(params)
+      .then(d => {
+        const rows = ensureArray(d?.data)
+        const total = Number(d?.total) || 0
+        setCotizaciones(rows)
+        setPagination({
+          page: Number(d?.page) || page,
+          pages: Math.max(1, Math.ceil(total / 20)),
+          total,
+          limit: 20,
+        })
+      })
+      .catch(err => {
+        setCotizaciones([])
+        setPagination({ page: 1, pages: 1, total: 0, limit: 20 })
+        showError(err?.message || 'No se pudieron cargar las cotizaciones')
+      })
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => { loadCotizaciones(1) }, [search])
@@ -106,28 +158,28 @@ export default function Cotizaciones() {
   const addFromRepo = (item) => {
     const qty = parseInt(repoQty[item.id]) || 1
     // Check if already in list
-    const existing = form.items.findIndex(i => i.nombre === item.nombre && i.precio === parseFloat(item.precio))
+    const existing = ensureArray(form.items).findIndex(i => i.nombre === item.nombre && i.precio === parseFloat(item.precio))
     if (existing >= 0) {
-      setForm(f => ({ ...f, items: f.items.map((it, idx) => idx === existing ? { ...it, cantidad: it.cantidad + qty } : it) }))
+      setForm(f => ({ ...f, items: ensureArray(f.items).map((it, idx) => idx === existing ? { ...it, cantidad: it.cantidad + qty } : it) }))
     } else {
-      setForm(f => ({ ...f, items: [...f.items, { nombre: item.nombre, descripcion: item.descripcion || '', cantidad: qty, precio: parseFloat(item.precio) }] }))
+      setForm(f => ({ ...f, items: [...ensureArray(f.items), { nombre: item.nombre, descripcion: item.descripcion || '', cantidad: qty, precio: parseFloat(item.precio) }] }))
     }
     setRepoQty(q => ({ ...q, [item.id]: 1 }))
   }
 
-  const removeItem = (i) => setForm(f => ({ ...f, items: f.items.filter((_, idx) => idx !== i) }))
+  const removeItem = (i) => setForm(f => ({ ...f, items: ensureArray(f.items).filter((_, idx) => idx !== i) }))
 
   const updateItemQty = (i, delta) => {
-    setForm(f => ({ ...f, items: f.items.map((it, idx) => idx === i ? { ...it, cantidad: Math.max(1, (it.cantidad || 1) + delta) } : it) }))
+    setForm(f => ({ ...f, items: ensureArray(f.items).map((it, idx) => idx === i ? { ...it, cantidad: Math.max(1, (it.cantidad || 1) + delta) } : it) }))
   }
 
   const handleCreate = async (e) => {
     e.preventDefault()
     setFormError('')
-    if (!form.items.length) { setFormError('Agrega al menos un ítem a la cotización'); return }
+    if (!ensureArray(form.items).length) { setFormError('Agrega al menos un item a la cotizacion'); return }
     setSaving(true)
     try {
-      await cotizacionAPI.create(form)
+      await cotizacionAPI.create({ ...form, items: ensureArray(form.items) })
       setModal(null)
       loadCotizaciones(1)
     } catch (err) { setFormError(err?.message || 'Error al crear') }
@@ -135,9 +187,13 @@ export default function Cotizaciones() {
   }
 
   const openPreview = async (c) => {
-    const full = await cotizacionAPI.getById(c.id)
-    setSelected(full)
-    setModal('preview')
+    try {
+      const full = await cotizacionAPI.getById(c.id)
+      setSelected(full)
+      setModal('preview')
+    } catch (err) {
+      showError(err?.message || 'No se pudo abrir la cotizacion')
+    }
   }
 
   const exportPDF = async () => {
@@ -157,7 +213,7 @@ export default function Cotizaciones() {
     finally { setDeleteId(null) }
   }
 
-  const { subtotal, iva, total, total_mxn } = calcTotals(form.items, form.moneda, form.tipo_cambio)
+  const { subtotal, iva, total, total_mxn } = calcTotals(ensureArray(form.items), form.moneda, form.tipo_cambio)
 
   return (
     <div className="space-y-5">
@@ -198,23 +254,23 @@ export default function Cotizaciones() {
                 <tr><td colSpan={9} className="py-12 text-center"><div className="inline-block animate-spin rounded-full h-6 w-6 border-4 border-primary-600 border-t-transparent" /></td></tr>
               ) : cotizaciones.length === 0 ? (
                 <tr><td colSpan={9} className="py-12 text-center text-gray-400">No hay cotizaciones</td></tr>
-              ) : cotizaciones.map(c => (
+              ) : ensureArray(cotizaciones).map(c => (
                 <tr key={c.id} className="hover:bg-gray-50">
                   <td className="table-cell font-mono text-xs font-semibold text-gray-700">{c.folio}</td>
                   <td className="table-cell font-medium text-sm">{c.cliente}</td>
-                  <td className="table-cell text-sm">{c.items?.length || 0}</td>
+                  <td className="table-cell text-sm">{ensureArray(c.items).length}</td>
                   <td className="table-cell text-sm font-semibold">{fmt(c.total, c.moneda)}</td>
                   <td className="table-cell"><Badge label={c.moneda} color={c.moneda === 'USD' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'} /></td>
                   <td className="table-cell"><Badge label={c.estado} color={ESTADO_COLORS[c.estado] || 'bg-gray-100 text-gray-600'} /></td>
                   <td className="table-cell text-xs">
                     <div className="flex items-center gap-1">
                       <span className={isExpired(c.fecha_vencimiento) ? 'text-red-600' : 'text-gray-500'}>
-                        {c.fecha_vencimiento ? format(new Date(c.fecha_vencimiento + 'T12:00:00'), 'dd/MM/yyyy') : '—'}
+                        {c.fecha_vencimiento ? safeFormatDate(`${c.fecha_vencimiento}T12:00:00`) || '—' : '—'}
                       </span>
                       {isExpired(c.fecha_vencimiento) && <Badge label="Vencida" color="bg-red-100 text-red-700" />}
                     </div>
                   </td>
-                  <td className="table-cell text-xs text-gray-500">{c.created_at ? format(new Date(c.created_at), 'dd/MM/yyyy') : ''}</td>
+                  <td className="table-cell text-xs text-gray-500">{safeFormatDate(c.created_at, 'dd/MM/yyyy')}</td>
                   <td className="table-cell">
                     <div className="flex gap-1">
                       <button onClick={() => openPreview(c)} className="p-1.5 rounded text-gray-400 hover:text-primary-600 hover:bg-primary-50">
@@ -271,7 +327,7 @@ export default function Cotizaciones() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <label className="label mb-0">Ítems</label>
-              {repositorio.length > 0 && (
+              {ensureArray(repositorio).length > 0 && (
                 <button type="button" className="text-xs text-primary-600 hover:underline" onClick={() => setShowRepo(!showRepo)}>
                   + Agregar del repositorio
                 </button>
@@ -281,12 +337,12 @@ export default function Cotizaciones() {
             {showRepo && (
               <div className="mb-3 border border-primary-200 rounded-lg overflow-y-auto max-h-64 bg-white">
                 {/* Agrupar por categoría */}
-                {REPO_CATEGORIAS.filter(cat => repositorio.some(r => r.categoria === cat.value)).map(cat => (
+                {REPO_CATEGORIAS.filter(cat => ensureArray(repositorio).some(r => r?.categoria === cat.value)).map(cat => (
                   <div key={cat.value}>
                     <div className={`px-3 py-1.5 text-xs font-semibold border-b border-gray-100 ${cat.color}`}>
                       {cat.label}
                     </div>
-                    {repositorio.filter(r => r.categoria === cat.value).map(item => (
+                    {ensureArray(repositorio).filter(r => r?.categoria === cat.value).map(item => (
                       <div key={item.id} className="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-primary-50">
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium truncate">{item.nombre}</div>
@@ -306,14 +362,14 @@ export default function Cotizaciones() {
                     ))}
                   </div>
                 ))}
-                {repositorio.length === 0 && (
+                {ensureArray(repositorio).length === 0 && (
                   <div className="text-center text-gray-400 py-6 text-sm">Sin productos en el repositorio</div>
                 )}
               </div>
             )}
 
             <div className="space-y-2 mb-3">
-              {form.items.map((item, i) => (
+              {ensureArray(form.items).map((item, i) => (
                 <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-lg px-3 py-2">
                   <div className="flex-1">
                     <div className="font-medium text-sm">{item.nombre}</div>
@@ -400,7 +456,7 @@ export default function Cotizaciones() {
                   <div className="text-right">
                     <div className="text-xs text-slate-400 uppercase tracking-wider mb-1">Cotización</div>
                     <div className="font-mono font-bold text-lg">{selected.folio}</div>
-                    <div className="text-xs text-slate-300">{selected.created_at ? format(new Date(selected.created_at), "dd 'de' MMMM yyyy", { locale: es }) : ''}</div>
+                    <div className="text-xs text-slate-300">{selected.created_at ? safeFormatDate(selected.created_at, "dd 'de' MMMM yyyy") : ''}</div>
                   </div>
                 </div>
               </div>
@@ -435,7 +491,7 @@ export default function Cotizaciones() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selected.items?.map((item, i) => (
+                    {ensureArray(selected.items).map((item, i) => (
                       <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-slate-50'}>
                         <td className="px-4 py-2.5 text-gray-400">{i + 1}</td>
                         <td className="px-4 py-2.5">
@@ -505,26 +561,11 @@ export default function Cotizaciones() {
   )
 }
 
-// Categorías del repositorio de cotizaciones
-const REPO_CATEGORIAS = [
-  { value: 'computo',      label: '🖥️  Equipo de Cómputo',     color: 'bg-blue-100 text-blue-700' },
-  { value: 'laptop',       label: '💻  Laptop / Notebook',      color: 'bg-indigo-100 text-indigo-700' },
-  { value: 'celular',      label: '📱  Celular / Tablet',       color: 'bg-purple-100 text-purple-700' },
-  { value: 'impresora',    label: '🖨️  Impresora / Escáner',    color: 'bg-pink-100 text-pink-700' },
-  { value: 'red',          label: '🌐  Red / Switches / AP',    color: 'bg-teal-100 text-teal-700' },
-  { value: 'internet',     label: '📡  Internet / Telefonía',   color: 'bg-cyan-100 text-cyan-700' },
-  { value: 'licencia',     label: '🔑  Licencias de Software',  color: 'bg-amber-100 text-amber-700' },
-  { value: 'mantenimiento',label: '🔧  Mantenimiento',          color: 'bg-orange-100 text-orange-700' },
-  { value: 'servicio',     label: '⚙️  Servicio Profesional',   color: 'bg-green-100 text-green-700' },
-  { value: 'accesorio',    label: '🖱️  Accesorio / Periférico', color: 'bg-gray-100 text-gray-700' },
-  { value: 'otro',         label: '📦  Otro',                   color: 'bg-slate-100 text-slate-700' },
-]
-
 function catColor(cat) {
   return REPO_CATEGORIAS.find(c => c.value === cat)?.color || 'bg-gray-100 text-gray-700'
 }
 function catLabel(cat) {
-  return REPO_CATEGORIAS.find(c => c.value === cat)?.label?.replace(/^.{2}\s+/, '') || cat
+  return REPO_CATEGORIAS.find(c => c.value === cat)?.label || cat
 }
 
 function RepositorioManager({ repositorio, onChange }) {
@@ -540,7 +581,7 @@ function RepositorioManager({ repositorio, onChange }) {
     try {
       await cotizacionAPI.addRepositorio({ ...form, precio: parseFloat(form.precio) })
       const updated = await cotizacionAPI.getRepositorio()
-      onChange(updated)
+      onChange(ensureArray(updated))
       setForm(EMPTY)
     } catch { showError('Error al agregar') }
     finally { setSaving(false) }
@@ -548,10 +589,12 @@ function RepositorioManager({ repositorio, onChange }) {
 
   const handleDelete = async (id) => {
     await cotizacionAPI.deleteRepositorio(id)
-    onChange(repositorio.filter(r => r.id !== id))
+    onChange(ensureArray(repositorio).filter(r => r.id !== id))
   }
 
-  const filtered = filterCat === 'todas' ? repositorio : repositorio.filter(r => r.categoria === filterCat)
+  const filtered = filterCat === 'todas'
+    ? ensureArray(repositorio)
+    : ensureArray(repositorio).filter(r => r?.categoria === filterCat)
 
   return (
     <div className="space-y-4">
@@ -578,12 +621,12 @@ function RepositorioManager({ repositorio, onChange }) {
       {/* Filtro por categoría */}
       <div className="flex gap-1.5 flex-wrap">
         <button onClick={() => setFilterCat('todas')} className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterCat === 'todas' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-          Todas ({repositorio.length})
+          Todas ({ensureArray(repositorio).length})
         </button>
-        {REPO_CATEGORIAS.filter(c => repositorio.some(r => r.categoria === c.value)).map(c => (
+        {REPO_CATEGORIAS.filter(c => ensureArray(repositorio).some(r => r?.categoria === c.value)).map(c => (
           <button key={c.value} onClick={() => setFilterCat(c.value)}
             className={`text-xs px-2.5 py-1 rounded-full border transition-all ${filterCat === c.value ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {c.label.replace(/^.{2}\s+/, '')} ({repositorio.filter(r => r.categoria === c.value).length})
+            {c.label} ({ensureArray(repositorio).filter(r => r?.categoria === c.value).length})
           </button>
         ))}
       </div>
