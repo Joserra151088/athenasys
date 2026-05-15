@@ -321,6 +321,7 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
   const agenteRecibe = recibido_por_id
     ? db.get('usuarios_sistema').find({ id: recibido_por_id, activo: true }).value()
     : null
+  const receptorEntradaNombre = tipo === 'entrada' ? (agenteRecibe?.nombre || req.user.nombre) : null
 
   let dispositivosEnriquecidos = []
 
@@ -424,8 +425,10 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
     firma_agente: null, firma_agente_path: null,
     logistica_nombre: null, logistica_area: null,
     firma_logistica: null, firma_logistica_path: null,
-    receptor_id: receptor_id || null,
-    receptor_nombre: receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null),
+    receptor_id: tipo === 'entrada' ? null : (receptor_id || null),
+    receptor_nombre: tipo === 'entrada'
+      ? receptorEntradaNombre
+      : (receptor ? receptor.nombre_completo : (req.body.receptor_nombre || null)),
     receptor_firmante_nombre: req.body.receptor_firmante_nombre || null,
     firma_receptor: null, firma_receptor_path: null,
     cancelado: false,
@@ -550,6 +553,9 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('edit
     : null
   const agenteRecibe = recibido_por_id
     ? db.get('usuarios_sistema').find({ id: recibido_por_id, activo: true }).value()
+    : null
+  const receptorEntradaNombre = doc.tipo === 'entrada'
+    ? (agenteRecibe?.nombre || doc.recibido_por_nombre || req.user.nombre)
     : null
 
   let dispositivosEnriquecidos = []
@@ -702,8 +708,8 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('edit
     entidad_puesto: origenTipo === 'empleado' ? (entidad.puesto || '') : '',
     entidad_email: origenTipo === 'empleado' ? (entidad.email || '') : '',
     dispositivos: dispositivosEnriquecidos,
-    receptor_id: receptor_id || null,
-    receptor_nombre: receptor ? receptor.nombre_completo : null,
+    receptor_id: doc.tipo === 'entrada' ? null : (receptor_id || null),
+    receptor_nombre: doc.tipo === 'entrada' ? receptorEntradaNombre : (receptor ? receptor.nombre_completo : null),
     motivo_salida: doc.tipo === 'salida' ? String(motivo_salida || '').trim() : '',
     observaciones: observaciones || '',
     firma_online_estado: null,

@@ -13,6 +13,13 @@ import previtaLogo from '../assets/previta.png'
 const tipoLabel = { entrada: 'Entrada de equipo', salida: 'Salida de equipo', responsiva: 'Responsiva de resguardo' }
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+function getReceiverDisplayName(doc = {}) {
+  if (doc?.tipo === 'entrada') {
+    return doc.receptor_firmante_nombre || doc.receptor_nombre || doc.recibido_por_nombre || doc.agente_nombre || ''
+  }
+  return doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre || ''
+}
+
 function PublicSignatureHeader({ compact = false }) {
   return (
     <div className={`bg-white border-b border-slate-200 shadow-sm ${compact ? 'px-4 py-4' : 'px-4 py-5'}`}>
@@ -92,6 +99,7 @@ export default function FirmaOnline() {
           setMensaje(data.message || 'Este documento ya fue firmado.')
         } else {
           setDocInfo(data.documento)
+          setReceptorFirmanteNombre(prev => prev || getReceiverDisplayName(data.documento))
           setEstado('pendiente')
         }
       })
@@ -231,6 +239,9 @@ export default function FirmaOnline() {
     )
   }
 
+  const isEntrada = docInfo?.tipo === 'entrada'
+  const signerPlaceholder = isEntrada ? 'Ej. Ricardo Utrera Vasquez' : 'Ej. Juan Perez Lopez'
+
   // ── Pantalla principal de firma ──────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-50">
@@ -254,13 +265,19 @@ export default function FirmaOnline() {
 
           <div className="mt-4 space-y-2 divide-y divide-gray-100">
             <div className="flex justify-between py-2 text-sm">
-              <span className="text-gray-500">Receptor</span>
+              <span className="text-gray-500">{isEntrada ? 'Origen' : 'Receptor'}</span>
               <span className="font-medium text-gray-800">{docInfo?.entidad_nombre}</span>
             </div>
             <div className="flex justify-between py-2 text-sm">
               <span className="text-gray-500">Agente TI</span>
               <span className="font-medium text-gray-800">{docInfo?.agente_nombre}</span>
             </div>
+            {isEntrada && (
+              <div className="flex justify-between py-2 text-sm">
+                <span className="text-gray-500">Recibe</span>
+                <span className="font-medium text-gray-800">{getReceiverDisplayName(docInfo) || docInfo?.agente_nombre}</span>
+              </div>
+            )}
             {docInfo?.tipo === 'salida' && docInfo?.logistica_nombre && (
               <div className="flex justify-between py-2 text-sm">
                 <span className="text-gray-500">{docInfo.logistica_area || 'Logística / Almacén'}</span>
@@ -296,7 +313,9 @@ export default function FirmaOnline() {
             Nombre completo de quien recibe y firma <span className="text-red-500">*</span>
           </label>
           <p className="text-xs text-gray-400 mb-3">
-            Este nombre quedará registrado en el documento firmado, aunque el receptor sea una sucursal.
+            {isEntrada
+              ? 'Este nombre debe corresponder al agente de soporte que recibe el equipo y quedara registrado en el documento firmado.'
+              : 'Este nombre quedara registrado en el documento firmado, aunque el receptor sea una sucursal.'}
           </p>
           <input
             type="text"
@@ -305,7 +324,7 @@ export default function FirmaOnline() {
             maxLength={200}
             autoComplete="name"
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-800 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-            placeholder="Ej. Juan Pérez López"
+            placeholder={signerPlaceholder}
           />
         </div>
 

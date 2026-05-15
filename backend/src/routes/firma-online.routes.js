@@ -40,6 +40,13 @@ function getExpiryLabel(tipo) {
   return tipo === 'salida' ? `${SALIDA_EXPIRY_DAYS} días` : `${EXPIRY_HOURS} horas`
 }
 
+function getDocumentoReceiverName(doc = {}) {
+  if (doc.tipo === 'entrada') {
+    return doc.recibido_por_nombre || doc.receptor_nombre || doc.agente_nombre || doc.entidad_nombre || ''
+  }
+  return doc.receptor_nombre || doc.entidad_nombre || ''
+}
+
 function getPublicBaseURL(req) {
   const explicitURL = (process.env.PUBLIC_URL || '').trim()
   if (explicitURL) return explicitURL.replace(/\/+$/, '')
@@ -153,14 +160,16 @@ router.post('/solicitar', authMiddleware, async (req, res) => {
     let emailEnviado = false
     const { receptor_email } = req.body
     const emailDestino = receptor_email ||
-      (doc.receptor_id ? db.get('empleados').find({ id: doc.receptor_id }).value()?.email : null) ||
+      (doc.tipo === 'entrada'
+        ? (doc.recibido_por_id ? db.get('usuarios_sistema').find({ id: doc.recibido_por_id }).value()?.email : null)
+        : (doc.receptor_id ? db.get('empleados').find({ id: doc.receptor_id }).value()?.email : null)) ||
       doc.entidad_email || null
 
     if (emailSvc && emailDestino) {
       try {
         await emailSvc.enviarLinkFirma({
           receptor_email:  emailDestino,
-          receptor_nombre: doc.receptor_nombre || doc.entidad_nombre,
+          receptor_nombre: getDocumentoReceiverName(doc),
           agente_nombre:   req.user.nombre,
           folio:           doc.folio,
           tipo:            doc.tipo,
@@ -250,7 +259,8 @@ router.get('/:token', (req, res) => {
         entidad_nombre:  doc.entidad_nombre,
         entidad_tipo:    doc.entidad_tipo,
         agente_nombre:   doc.agente_nombre,
-        receptor_nombre: doc.receptor_nombre,
+        recibido_por_nombre: doc.recibido_por_nombre || '',
+        receptor_nombre: getDocumentoReceiverName(doc),
         receptor_firmante_nombre: doc.receptor_firmante_nombre || '',
         dispositivos:    doc.dispositivos || [],
         motivo_salida:   doc.motivo_salida || '',

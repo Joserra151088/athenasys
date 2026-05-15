@@ -52,6 +52,22 @@ const normalizeText = (value = '') =>
     .toLowerCase()
     .trim()
 
+const getDocReceiverName = (doc = {}) => {
+  if (doc?.tipo === 'entrada') {
+    return doc.receptor_nombre || doc.recibido_por_nombre || doc.agente_nombre || ''
+  }
+  return doc.receptor_nombre || ''
+}
+
+const getDocReceiverSignedName = (doc = {}) => {
+  if (doc?.tipo === 'entrada') {
+    return doc.receptor_firmante_nombre || getDocReceiverName(doc) || doc.entidad_nombre || ''
+  }
+  return doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre || ''
+}
+
+const getDocReceiverRole = (doc = {}) => (doc?.tipo === 'entrada' ? 'Agente que recibe' : 'Receptor')
+
 async function fetchAllPaginated(getter, params = {}, pageSize = 500) {
   const first = await getter({ ...params, page: 1, limit: pageSize })
   const all = [...(first.data || [])]
@@ -689,7 +705,7 @@ export default function Documentos() {
 
     return doc.plantilla.texto_legal
       // Receptor / Empleado
-      .replaceAll('{{receptor_nombre}}',       doc.receptor_firmante_nombre || doc.receptor_nombre || doc.entidad_nombre || '')
+      .replaceAll('{{receptor_nombre}}',       getDocReceiverSignedName(doc))
       .replaceAll('{{receptor_num_empleado}}', doc.entidad_num_empleado || '')
       .replaceAll('{{receptor_area}}',         doc.entidad_area || doc.entidad_departamento || '')
       .replaceAll('{{receptor_puesto}}',       doc.entidad_puesto || '')
@@ -903,10 +919,10 @@ export default function Documentos() {
                     <td className="table-cell text-sm">{d.dispositivos?.length || 0} dispositivo(s)</td>
                   )}
                   {visibleCols.receptor && (
-                    <td className="table-cell text-sm">{d.receptor_nombre || <span className="text-gray-300">—</span>}</td>
+                    <td className="table-cell text-sm">{getDocReceiverName(d) || <span className="text-gray-300">—</span>}</td>
                   )}
                   {visibleCols.receptor_firmante && (
-                    <td className="table-cell text-sm">{d.receptor_firmante_nombre || <span className="text-gray-300">—</span>}</td>
+                    <td className="table-cell text-sm">{getDocReceiverSignedName(d) || <span className="text-gray-300">—</span>}</td>
                   )}
                   {visibleCols.estado && (
                     <td className="table-cell">
@@ -958,7 +974,7 @@ export default function Documentos() {
                       )}
                       {canEdit() && !d.firmado && !d.cancelado && (
                         <button onClick={() => handleEnviarFirma(d)} disabled={enviandoLink}
-                          className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title="Enviar link de firma al receptor">
+                          className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50" title={d.tipo === 'entrada' ? 'Enviar link de firma al agente que recibe' : 'Enviar link de firma al receptor'}>
                           <PaperAirplaneIcon className="h-4 w-4" />
                         </button>
                       )}
@@ -1487,7 +1503,7 @@ export default function Documentos() {
                   existingSignature={selected.firma_logistica || null}
                 />
               )}
-              <FirmaCanvas ref={firmaReceptorRef} label={`Firma del Receptor — ${selected.receptor_nombre || selected.entidad_nombre}`} existingSignature={null} />
+              <FirmaCanvas ref={firmaReceptorRef} label={`Firma de ${getDocReceiverRole(selected)} — ${getDocReceiverName(selected) || selected.entidad_nombre}`} existingSignature={null} />
             </div>
             <div className="flex justify-end gap-3">
               <button className="btn-secondary" onClick={() => setModal(null)}>Cancelar</button>
@@ -1587,13 +1603,13 @@ export default function Documentos() {
             <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm">
               <p className="text-indigo-700 font-semibold">{firmaLink.doc?.folio}</p>
               <p className="text-indigo-500 text-xs mt-0.5">
-                Receptor: <span className="font-medium">{firmaLink.doc?.entidad_nombre}</span>
+                {firmaLink.doc?.tipo === 'entrada' ? 'Firma de recepción' : 'Receptor'}: <span className="font-medium">{getDocReceiverName(firmaLink.doc) || firmaLink.doc?.entidad_nombre}</span>
               </p>
             </div>
 
             {/* QR Code */}
             <div className="flex flex-col items-center gap-3">
-              <p className="text-sm text-gray-600 font-medium">El receptor puede escanear este código QR con su celular:</p>
+              <p className="text-sm text-gray-600 font-medium">{firmaLink.doc?.tipo === 'entrada' ? 'El agente que recibe puede escanear este código QR con su celular:' : 'El receptor puede escanear este código QR con su celular:'}</p>
               <div className="bg-white border-2 border-gray-200 rounded-2xl p-4 shadow-sm">
                 <QRCodeSVG value={firmaLink.url} size={200} level="M" includeMargin={false} />
               </div>
@@ -1632,9 +1648,9 @@ export default function Documentos() {
               Compartir por WhatsApp
             </a>
 
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
-              <strong>📱 Instrucción:</strong> El receptor abre el link en su celular o computadora, ve el resumen del documento y dibuja su firma. No requiere crear cuenta.
-            </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-700">
+                <strong>📱 Instrucción:</strong> {firmaLink.doc?.tipo === 'entrada' ? 'El agente que recibe abre el link en su celular o computadora, revisa el documento y registra su firma.' : 'El receptor abre el link en su celular o computadora, ve el resumen del documento y dibuja su firma. No requiere crear cuenta.'}
+              </div>
 
             <div className="flex justify-end">
               <button onClick={() => { setModal(null); setFirmaLink(null) }} className="btn-secondary">Cerrar</button>
@@ -1672,7 +1688,7 @@ export default function Documentos() {
                 <div><span className="font-semibold">Entidad:</span> {selected.entidad_nombre}</div>
                 <div><span className="font-semibold">Tipo:</span> {selected.entidad_tipo === 'empleado' ? 'Empleado' : selected.entidad_tipo === 'proveedor' ? 'Proveedor' : 'Sucursal'}</div>
                 <div><span className="font-semibold">Agente TI:</span> {selected.agente_nombre}</div>
-                {selected.receptor_nombre && <div><span className="font-semibold">Receptor:</span> {selected.receptor_nombre}</div>}
+                {getDocReceiverName(selected) && <div><span className="font-semibold">{selected.tipo === 'entrada' ? 'Recibe:' : 'Receptor:'}</span> {getDocReceiverName(selected)}</div>}
                 {selected.receptor_firmante_nombre && <div><span className="font-semibold">Recibe y firma:</span> {selected.receptor_firmante_nombre}</div>}
               </div>
 
@@ -1757,8 +1773,8 @@ export default function Documentos() {
                   ) : (
                     <div className="h-16 border-b border-gray-400 mb-2" />
                   )}
-                  <div className="text-xs font-semibold text-gray-700">{selected.receptor_firmante_nombre || selected.receptor_nombre || selected.entidad_nombre}</div>
-                  <div className="text-xs text-gray-500">Receptor</div>
+                  <div className="text-xs font-semibold text-gray-700">{getDocReceiverSignedName(selected)}</div>
+                  <div className="text-xs text-gray-500">{getDocReceiverRole(selected)}</div>
                 </div>
               </div>
             </div>
