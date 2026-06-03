@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').join(__dirname, '../.env') })
+const { envPath } = require('./utils/loadEnv')
 const express = require('express')
 const cors = require('cors')
 const path = require('path')
@@ -83,6 +83,7 @@ initDB()
   .then(() => {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 AthenaSys Backend corriendo en http://0.0.0.0:${PORT}`)
+      if (envPath) console.log(`✓ Variables cargadas desde ${envPath}`)
       // Iniciar job de reintento de PDFs pendientes
       tryRetryPendingDocs()
       setInterval(tryRetryPendingDocs, 60 * 60 * 1000) // cada hora

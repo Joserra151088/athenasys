@@ -1,4 +1,4 @@
-require('dotenv').config({ path: './.env' })
+require('./src/utils/loadEnv')
 const mysql = require('mysql2/promise')
 
 async function run() {

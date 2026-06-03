@@ -69,7 +69,7 @@ REM ─── BACKEND ───────────────────�
 :BACKEND
 echo.
 echo [1/1] Actualizando backend en el servidor...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "cd ~/athenasys && git pull && pm2 restart athenasys-backend"
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "cd ~/athenasys && bash deploy/actualizar-app.sh"
 if errorlevel 1 (
     echo [ERROR] Fallo la actualizacion del backend.
     pause
@@ -102,7 +102,7 @@ if errorlevel 1 (
 
 echo.
 echo [3/3] Actualizando backend en el servidor...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "cd ~/athenasys && git pull && pm2 restart athenasys-backend"
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %EC2_USER%@%EC2_IP% "cd ~/athenasys && bash deploy/actualizar-app.sh"
 if errorlevel 1 (
     echo [ERROR] Fallo la actualizacion del backend.
     pause

@@ -6,7 +6,7 @@
  * - Escrituras se persisten a MySQL de forma asíncrona (fire-and-forget)
  * - NO requiere cambios en las rutas existentes
  */
-require('dotenv').config({ path: require('path').join(__dirname, '../../.env') })
+require('../utils/loadEnv')
 
 const mysql  = require('mysql2/promise')
 const bcrypt = require('bcryptjs')
