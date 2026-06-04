@@ -107,6 +107,8 @@ export default function Asignaciones() {
   const [docCreado, setDocCreado] = useState(null)
 
   const totalColumns = canManage ? 8 : 7
+  const selectedPlantilla = plantillas.find(plantilla => String(plantilla.id) === String(plantillaId)) || null
+  const selectedPlantillaTipo = selectedPlantilla?.tipo || 'responsiva'
 
   const load = useCallback((page = 1) => {
     setLoading(true)
@@ -231,7 +233,7 @@ export default function Asignaciones() {
         getDestinatarios('empleado'),
       ])
       setDispositivosDisponibles(devs.data || [])
-      setPlantillas(plants || [])
+      setPlantillas((plants || []).filter(plantilla => ['responsiva', 'salida'].includes(plantilla.tipo)))
       setDestinatarios(targets)
       setModal(true)
     } finally {
@@ -307,20 +309,24 @@ export default function Asignaciones() {
     setSaving(true)
     try {
       if (crearDoc) {
+        const documentType = selectedPlantilla?.tipo || 'responsiva'
         const dispositivos = selectedDevices.map(id => {
           const rawCost = Number(selectedDeviceCosts[id])
           return {
             id,
-            costo: Number.isFinite(rawCost) && rawCost >= 0 ? rawCost : 0,
+            costo: documentType === 'responsiva' && Number.isFinite(rawCost) && rawCost >= 0 ? rawCost : 0,
           }
         })
         const result = await documentoAPI.create({
-          tipo: 'responsiva',
+          tipo: documentType,
           plantilla_id: plantillaId,
           entidad_tipo: tipoAsignacion,
           entidad_id: selectedDest,
           dispositivos,
           observaciones,
+          motivo_salida: documentType === 'salida'
+            ? (observaciones?.trim() || `Asignacion de equipo a ${tipoAsignacion === 'empleado' ? 'empleado' : 'sucursal'}`)
+            : '',
           receptor_id: tipoAsignacion === 'empleado' ? selectedDest : null,
           desde_asignacion: true,
         })
@@ -654,9 +660,6 @@ export default function Asignaciones() {
                           className="rounded border-gray-300"
                           checked={selectedDevices.includes(device.id)}
                           onChange={event => {
-                            const baseCost = Number(device.costo_dia)
-                            const initialCost = Number.isFinite(baseCost) && baseCost >= 0 ? baseCost : 0
-
                             setSelectedDevices(previous =>
                               event.target.checked
                                 ? [...previous, device.id]
@@ -667,7 +670,7 @@ export default function Asignaciones() {
                               if (event.target.checked) {
                                 return previous[device.id] != null
                                   ? previous
-                                  : { ...previous, [device.id]: initialCost }
+                                  : { ...previous, [device.id]: 0 }
                               }
 
                               const next = { ...previous }
@@ -753,18 +756,34 @@ export default function Asignaciones() {
                     <option value="">Seleccionar plantilla...</option>
                     {plantillas.map(plantilla => (
                       <option key={plantilla.id} value={plantilla.id}>
-                        {plantilla.nombre}
+                        {plantilla.nombre} ({plantilla.tipo === 'salida' ? 'Salida' : 'Responsiva'})
                       </option>
                     ))}
                   </select>
 
-                  {selectedDeviceItems.length > 0 && (
+                  {selectedPlantillaTipo === 'salida' && selectedDeviceItems.length > 0 && (
+                    <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/90 p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">Documento de salida</p>
+                          <p className="text-xs text-slate-500">
+                            Esta plantilla creara una salida formal. Los costos de responsiva no se capturan en este flujo.
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-sky-700">
+                          Salida
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedPlantillaTipo === 'responsiva' && selectedDeviceItems.length > 0 && (
                     <div className="mt-4 rounded-2xl border border-emerald-200 bg-white/90 p-4 shadow-sm">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">Costo por dispositivo</p>
+                          <p className="text-sm font-semibold text-slate-800">Costo total por dispositivo</p>
                           <p className="text-xs text-slate-500">
-                            Estos importes se guardaran en la responsiva firmada.
+                            Estos importes se guardaran como costo total en la responsiva firmada.
                           </p>
                         </div>
                         <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-700">
@@ -794,7 +813,7 @@ export default function Asignaciones() {
                                 min="0"
                                 step="0.01"
                                 className="w-28 bg-transparent text-right text-sm font-semibold text-slate-800 outline-none"
-                                value={selectedDeviceCosts[device.id] ?? 0}
+                                value={selectedDeviceCosts[device.id] ?? ''}
                                 onChange={event => {
                                   const nextValue = event.target.value
                                   setSelectedDeviceCosts(previous => ({
@@ -803,7 +822,7 @@ export default function Asignaciones() {
                                   }))
                                 }}
                               />
-                              <span className="text-xs text-slate-400">/ equipo</span>
+                              <span className="text-xs text-slate-400">total</span>
                             </label>
                           </div>
                         ))}

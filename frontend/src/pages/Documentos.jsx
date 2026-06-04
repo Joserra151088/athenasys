@@ -762,7 +762,7 @@ export default function Documentos() {
         <div className="flex flex-wrap gap-3 items-center">
           <div className="relative flex-1 min-w-48">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input type="text" className="input pl-9" placeholder="Buscar por folio, receptor..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input type="text" className="input pl-9" placeholder="Buscar por folio, receptor o serie..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
           <select className="input w-40" value={filterTipo} onChange={e => setFilterTipo(e.target.value)}>
             <option value="">Todos los tipos</option>

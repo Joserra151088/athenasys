@@ -265,7 +265,13 @@ router.get('/', (req, res) => {
       d.agente_nombre?.toLowerCase().includes(q) ||
       d.logistica_nombre?.toLowerCase().includes(q) ||
       d.receptor_firmante_nombre?.toLowerCase().includes(q) ||
-      d.cancelado_motivo?.toLowerCase().includes(q)
+      d.cancelado_motivo?.toLowerCase().includes(q) ||
+      (Array.isArray(d.dispositivos) && d.dispositivos.some(device =>
+        device?.serie?.toLowerCase().includes(q) ||
+        device?.tipo?.toLowerCase().includes(q) ||
+        device?.marca?.toLowerCase().includes(q) ||
+        device?.modelo?.toLowerCase().includes(q)
+      ))
     )
   }
   items = items.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -308,6 +314,12 @@ router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear'
 
   const entidad = findEntidadByTipo(origenTipo, entidad_id)
   if (!entidad) return res.status(404).json({ message: 'Entidad no encontrada' })
+
+  const plantilla = plantilla_id ? db.get('plantillas').find({ id: plantilla_id, activo: true }).value() : null
+  if (plantilla_id && !plantilla) return res.status(404).json({ message: 'Plantilla no encontrada' })
+  if (plantilla && plantilla.tipo !== tipo) {
+    return res.status(400).json({ message: `La plantilla seleccionada es de tipo ${plantilla.tipo} y no coincide con el documento ${tipo}` })
+  }
 
   const total = db.get('documentos').size().value()
   const folio = `${tipo.toUpperCase()}-${String(total + 1).padStart(6, '0')}`
@@ -546,6 +558,12 @@ router.put('/:id', requireRoles('super_admin', 'agente_soporte'), auditLog('edit
 
   const entidad = findEntidadByTipo(origenTipo, entidad_id)
   if (!entidad) return res.status(404).json({ message: 'Entidad no encontrada' })
+
+  const plantilla = plantilla_id ? db.get('plantillas').find({ id: plantilla_id, activo: true }).value() : null
+  if (plantilla_id && !plantilla) return res.status(404).json({ message: 'Plantilla no encontrada' })
+  if (plantilla && plantilla.tipo !== doc.tipo) {
+    return res.status(400).json({ message: `La plantilla seleccionada es de tipo ${plantilla.tipo} y no coincide con el documento ${doc.tipo}` })
+  }
 
   const now = new Date().toISOString()
   const receptor = receptor_id
