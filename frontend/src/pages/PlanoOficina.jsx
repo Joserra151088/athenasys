@@ -25,14 +25,13 @@ import {
   ViewColumnsIcon,
   WifiIcon,
 } from '@heroicons/react/24/outline'
-import html2canvas from 'html2canvas'
-import { jsPDF } from 'jspdf'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Modal from '../components/Modal'
 import PageHeader from '../components/PageHeader'
 import { useAuth } from '../context/AuthContext'
 import { useNotification } from '../context/NotificationContext'
 import { deviceAPI, empleadoAPI, planoOficinaAPI, sucursalAPI } from '../utils/api'
+import { loadHtml2Canvas, loadJsPDF } from '../utils/lazyVendors'
 
 const DEFAULT_CREATE_FORM = {
   nombre: '',
@@ -1222,6 +1221,7 @@ export default function PlanoOficina() {
     if (!plan || !exportRef.current) return
     setExporting(true)
     try {
+      const [html2canvas, jsPDF] = await Promise.all([loadHtml2Canvas(), loadJsPDF()])
       await new Promise(resolve => requestAnimationFrame(resolve))
       const canvas = await html2canvas(exportRef.current, {
         backgroundColor: '#f8fafc',

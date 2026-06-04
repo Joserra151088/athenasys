@@ -3,7 +3,6 @@ import {
   BarChart, Bar, LineChart, Line, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts'
-import jsPDF from 'jspdf'
 import {
   reportesAPI, empleadoAPI, sucursalAPI, centroCostoAPI,
   catalogosAPI, configAPI
@@ -18,6 +17,7 @@ import {
   ArrowTrendingUpIcon, ArrowTrendingDownIcon, CheckBadgeIcon,
   BanknotesIcon, DevicePhoneMobileIcon, GlobeAltIcon,
 } from '@heroicons/react/24/outline'
+import { loadJsPDF } from '../utils/lazyVendors'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants & helpers
@@ -74,6 +74,7 @@ function exportCSV(data, filename) {
 // PDF Generator — jsPDF native text (no screenshot)
 // ─────────────────────────────────────────────────────────────────────────────
 async function generatePDF({ data, meta, historico, filters, logo, headerConfig }) {
+  const jsPDF = await loadJsPDF()
   const doc       = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const pw        = doc.internal.pageSize.getWidth()   // 297
   const ph        = doc.internal.pageSize.getHeight()  // 210

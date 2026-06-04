@@ -1,4 +1,4 @@
-import jsPDF from 'jspdf'
+import { loadJsPDF } from './lazyVendors'
 
 export const DOC_CODES = {
   responsiva: 'F-TI-39-V2',
@@ -148,6 +148,7 @@ export async function generateDocumentPDF(doc, options = {}) {
     firmaReceptorImg = null,
   } = options
 
+  const jsPDF = await loadJsPDF()
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const W = pdf.internal.pageSize.getWidth()
   const H = pdf.internal.pageSize.getHeight()

@@ -10,9 +10,8 @@ import { PlusIcon, MagnifyingGlassIcon, EyeIcon, TrashIcon, PrinterIcon, Bookmar
 import PageHeader from '../components/PageHeader'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
-import jsPDF from 'jspdf'
 import { useNotification } from '../context/NotificationContext'
-import html2canvas from 'html2canvas'
+import { loadHtml2Canvas, loadJsPDF } from '../utils/lazyVendors'
 
 const ESTADO_COLORS = { borrador: 'bg-gray-100 text-gray-600', enviada: 'bg-blue-100 text-blue-700', aceptada: 'bg-emerald-100 text-emerald-700', rechazada: 'bg-red-100 text-red-700' }
 const REPO_CATEGORIAS = [
@@ -198,6 +197,7 @@ export default function Cotizaciones() {
 
   const exportPDF = async () => {
     if (!previewRef.current) return
+    const [html2canvas, jsPDF] = await Promise.all([loadHtml2Canvas(), loadJsPDF()])
     const canvas = await html2canvas(previewRef.current, { scale: 2, useCORS: true })
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })

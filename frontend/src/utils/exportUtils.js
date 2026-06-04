@@ -1,7 +1,5 @@
-import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
-import jsPDF from 'jspdf'
-import html2canvas from 'html2canvas'
+import { loadHtml2Canvas, loadJsPDF, loadWriteExcelFile } from './lazyVendors'
 
 /**
  * Exporta datos a Excel (.xlsx)
@@ -10,20 +8,26 @@ import html2canvas from 'html2canvas'
  * @param {Array} columns - [{ key, label }]
  */
 export function exportToExcel(data, fileName, columns) {
-  const rows = data.map(item =>
-    Object.fromEntries(columns.map(c => [c.label, item[c.key] ?? '']))
-  )
-  const ws = XLSX.utils.json_to_sheet(rows)
-  const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, 'Datos')
+  return (async () => {
+    const writeExcelFile = await loadWriteExcelFile()
+    const sheetData = [
+      columns.map((column) => ({
+        value: column.label,
+        fontWeight: 'bold',
+      })),
+      ...data.map((item) =>
+        columns.map((column) => item[column.key] ?? '')
+      ),
+    ]
 
-  // Ajustar ancho de columnas
-  const colWidths = columns.map(c => ({ wch: Math.max(c.label.length + 2, 14) }))
-  ws['!cols'] = colWidths
+    const blob = await writeExcelFile(sheetData, {
+      columns: columns.map((column) => ({
+        width: Math.max(column.label.length + 2, 14),
+      })),
+    }).toBlob()
 
-  const excelBuffer = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-  const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-  saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`)
+    saveAs(blob, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`)
+  })()
 }
 
 /**
@@ -58,6 +62,7 @@ export async function exportToPDF(elementId, title) {
   }
 
   try {
+    const [html2canvas, jsPDF] = await Promise.all([loadHtml2Canvas(), loadJsPDF()])
     const canvas = await html2canvas(el, { scale: 1.5, useCORS: true, logging: false })
     const imgData = canvas.toDataURL('image/png')
     const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })

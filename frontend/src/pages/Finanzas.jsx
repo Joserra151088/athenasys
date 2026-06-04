@@ -12,10 +12,9 @@ import {
 import { presupuestoAPI } from '../utils/api'
 import { useNotification } from '../context/NotificationContext'
 import Modal from '../components/Modal'
-import * as XLSX from 'xlsx'
 import { saveAs } from 'file-saver'
-import jsPDF from 'jspdf'
 import PageHeader from '../components/PageHeader'
+import { loadJsPDF, loadWriteExcelFile } from '../utils/lazyVendors'
 
 // ── EmpleadoSearch ────────────────────────────────────────────────────────────
 function EmpleadoSearch({ value, display, onSelect, onClear }) {
@@ -1179,22 +1178,31 @@ function TabDesgloce() {
     showSuccess('CSV exportado correctamente')
   }
 
-  const exportExcel = () => {
+  const exportExcel = async () => {
     const rows = buildExportRows()
     if (!rows.length) return showError('No hay datos para exportar')
-    const ws = XLSX.utils.json_to_sheet(rows)
-    const colWidths = Object.keys(rows[0]).map(k => ({ wch: Math.max(k.length, 16) }))
-    ws['!cols'] = colWidths
-    const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, `${MESES[mes-1]} ${anio}`)
-    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
-    saveAs(new Blob([buf], { type: 'application/octet-stream' }), `desgloce_gastos_${MESES[mes-1]}_${anio}.xlsx`)
+    const headers = Object.keys(rows[0])
+    const writeExcelFile = await loadWriteExcelFile()
+    const sheetData = [
+      headers.map((header) => ({ value: header, fontWeight: 'bold' })),
+      ...rows.map((row) => headers.map((header) => row[header] ?? '')),
+    ]
+
+    const blob = await writeExcelFile(sheetData, {
+      sheet: `${MESES[mes-1]} ${anio}`,
+      columns: headers.map((header) => ({
+        width: Math.max(header.length, 16),
+      })),
+    }).toBlob()
+
+    saveAs(blob, `desgloce_gastos_${MESES[mes-1]}_${anio}.xlsx`)
     showSuccess('Excel exportado correctamente')
   }
 
-  const exportPDF = () => {
+  const exportPDF = async () => {
     const rows = buildExportRows()
     if (!rows.length) return showError('No hay datos para exportar')
+    const jsPDF = await loadJsPDF()
     const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' })
     const pageW = doc.internal.pageSize.getWidth()
 
