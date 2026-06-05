@@ -103,6 +103,15 @@ const getDocReceiverSignedName = (doc = {}) => {
 
 const getDocReceiverRole = (doc = {}) => (doc?.tipo === 'entrada' ? 'Agente que recibe' : 'Receptor')
 
+const formatDocumentDevicesSummary = (doc = {}) =>
+  normalizeDocumentDevices(doc?.dispositivos)
+    .map((device) => {
+      const pieces = [device.tipo, device.marca, device.modelo, device.serie].filter(Boolean)
+      return pieces.join(' ')
+    })
+    .filter(Boolean)
+    .join(', ')
+
 async function fetchAllPaginated(getter, params = {}, pageSize = 500) {
   const first = await getter({ ...params, page: 1, limit: pageSize })
   const all = [...(first.data || [])]
@@ -1464,7 +1473,7 @@ export default function Documentos() {
             <div className="bg-gray-50 rounded-xl p-4 text-sm space-y-1">
               <div><span className="font-medium">Tipo:</span> {DOCUMENT_TYPES[selected.tipo]?.label}</div>
               <div><span className="font-medium">Entidad:</span> {selected.entidad_nombre}</div>
-              <div><span className="font-medium">Dispositivos:</span> {selected.dispositivos?.map(d => `${d.tipo} ${d.serie}`).join(', ')}</div>
+                <div><span className="font-medium">Dispositivos:</span> {formatDocumentDevicesSummary(selected) || '—'}</div>
             </div>
             {docsPath && (
               <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-700">

@@ -103,31 +103,44 @@ const FirmaCanvas = forwardRef(function FirmaCanvas({ label, existingSignature }
   const signatureModal =
     expanded && typeof document !== 'undefined'
       ? createPortal(
-          <div
-            className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
-            onClick={(e) => e.target === e.currentTarget && setExpanded(false)}
-          >
-            <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-3xl space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-lg text-gray-900">{label || 'Firma digital'}</h3>
-                <button type="button" onClick={() => setExpanded(false)} className="p-1 rounded text-gray-400 hover:text-gray-600">
-                  <XMarkIcon className="h-5 w-5" />
-                </button>
-              </div>
-              <p className="text-sm text-gray-500">Firma en el área de abajo usando el ratón o el dedo. En móvil, mantén el dedo dentro del recuadro.</p>
+          <SignatureCanvasErrorBoundary
+            resetKey={modalNonce}
+            fallback={
               <div
-                ref={canvasWrapRef}
-                className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 hover:border-primary-400 transition-colors"
-                style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+                className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
+                onClick={() => setExpanded(false)}
               >
-                <SignatureCanvasErrorBoundary
-                  resetKey={modalNonce}
-                  fallback={
-                    <div className="flex min-h-[220px] flex-col items-center justify-center gap-3 px-6 text-center text-sm text-rose-600">
-                      <p className="font-semibold">No se pudo cargar el área de firma.</p>
-                      <p className="text-xs text-rose-500">Cierra esta ventana e inténtalo de nuevo. Si persiste, revisamos el documento específico.</p>
-                    </div>
-                  }
+                <div
+                  className="w-full max-w-lg rounded-2xl bg-white p-6 text-center shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="text-base font-semibold text-rose-600">No se pudo abrir el área de firma.</p>
+                  <p className="mt-2 text-sm text-rose-500">Cierra esta ventana e inténtalo de nuevo. Si persiste, revisamos ese documento en particular.</p>
+                  <div className="mt-4 flex justify-center">
+                    <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            }
+          >
+            <div
+              className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
+              onClick={(e) => e.target === e.currentTarget && setExpanded(false)}
+            >
+              <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-3xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-lg text-gray-900">{label || 'Firma digital'}</h3>
+                  <button type="button" onClick={() => setExpanded(false)} className="p-1 rounded text-gray-400 hover:text-gray-600">
+                    <XMarkIcon className="h-5 w-5" />
+                  </button>
+                </div>
+                <p className="text-sm text-gray-500">Firma en el área de abajo usando el ratón o el dedo. En móvil, mantén el dedo dentro del recuadro.</p>
+                <div
+                  ref={canvasWrapRef}
+                  className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 hover:border-primary-400 transition-colors"
+                  style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
                 >
                   <SignatureCanvas
                     key={modalNonce}
@@ -148,26 +161,26 @@ const FirmaCanvas = forwardRef(function FirmaCanvas({ label, existingSignature }
                     }}
                     backgroundColor="rgb(249, 250, 251)"
                   />
-                </SignatureCanvasErrorBoundary>
-              </div>
-              {inlineError && (
-                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
-                  {inlineError}
                 </div>
-              )}
-              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                <button type="button" className="btn-secondary text-sm" onClick={() => sigRef.current?.clear()}>
-                  <TrashIcon className="h-4 w-4" /> Limpiar
-                </button>
-                <div className="flex gap-3 justify-end">
-                  <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>Cancelar</button>
-                  <button type="button" className="btn-primary" onClick={confirmSignature}>
-                    <CheckIcon className="h-4 w-4" /> Confirmar firma
+                {inlineError && (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
+                    {inlineError}
+                  </div>
+                )}
+                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                  <button type="button" className="btn-secondary text-sm" onClick={() => sigRef.current?.clear()}>
+                    <TrashIcon className="h-4 w-4" /> Limpiar
                   </button>
+                  <div className="flex gap-3 justify-end">
+                    <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>Cancelar</button>
+                    <button type="button" className="btn-primary" onClick={confirmSignature}>
+                      <CheckIcon className="h-4 w-4" /> Confirmar firma
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>,
+          </SignatureCanvasErrorBoundary>,
           document.body
         )
       : null
