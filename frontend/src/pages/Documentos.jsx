@@ -52,6 +52,41 @@ const normalizeText = (value = '') =>
     .toLowerCase()
     .trim()
 
+const normalizeDocumentDevices = (devices = []) =>
+  (Array.isArray(devices) ? devices : []).map(device => {
+    if (!device || typeof device !== 'object' || Array.isArray(device)) {
+      return {
+        id: null,
+        tipo: '',
+        marca: '',
+        modelo: '',
+        serie: String(device || ''),
+        caracteristicas: '',
+        campos_extra: {},
+        costo: null,
+      }
+    }
+
+    return {
+      ...device,
+      id: device.id || null,
+      tipo: device.tipo || '',
+      marca: device.marca || '',
+      modelo: device.modelo || '',
+      serie: device.serie || '',
+      caracteristicas: device.caracteristicas || '',
+      campos_extra: device.campos_extra && typeof device.campos_extra === 'object' && !Array.isArray(device.campos_extra)
+        ? device.campos_extra
+        : {},
+      costo: device.costo ?? null,
+    }
+  })
+
+const normalizeDocumentRecord = (doc = {}) => ({
+  ...doc,
+  dispositivos: normalizeDocumentDevices(doc?.dispositivos),
+})
+
 const getDocReceiverName = (doc = {}) => {
   if (doc?.tipo === 'entrada') {
     return doc.receptor_nombre || doc.recibido_por_nombre || doc.agente_nombre || ''
@@ -238,7 +273,7 @@ export default function Documentos() {
         firma: firmaLogistica,
         firmaAgente,
       })
-      setSelected(updated)
+      setSelected(normalizeDocumentRecord(updated))
       load(pagination.page || 1)
       if (updated.firma_agente && updated.firma_logistica) {
         showToast('Firmas internas guardadas. Ya puedes imprimir la salida con firma del agente y logística.')
@@ -359,7 +394,7 @@ export default function Documentos() {
     if (filterTipo) params.tipo = filterTipo
     if (filterEstado) params.estado = filterEstado
     documentoAPI.getAll(params).then(d => {
-      setDocumentos(d.data)
+      setDocumentos((d.data || []).map(normalizeDocumentRecord))
       setPagination({ page: d.page, pages: Math.ceil(d.total / 20), total: d.total, limit: 20 })
     }).finally(() => setLoading(false))
   }, [search, filterTipo, filterEstado])
@@ -418,7 +453,7 @@ export default function Documentos() {
 
   const openEdit = async (doc) => {
     const deps = await loadFormDependencies()
-    const full = await documentoAPI.getById(doc.id)
+    const full = normalizeDocumentRecord(await documentoAPI.getById(doc.id))
     const nextEntidadTipo = full.entrada_origen_tipo || full.entidad_tipo
 
     if (nextEntidadTipo === 'empleado') {
@@ -437,7 +472,7 @@ export default function Documentos() {
     setDeviceSearch('')
     setDeviceTypeFilter('')
     setDeviceAssignFilter('todos')
-    setSelected(full)
+    setSelected(normalizeDocumentRecord(full))
     setEditingDocId(full.id)
     setReceivedDevices(
       full.tipo === 'entrada' && nextEntidadTipo === 'proveedor'
@@ -510,8 +545,8 @@ export default function Documentos() {
   }
 
   const openSign = async (doc) => {
-    const full = await documentoAPI.getById(doc.id)
-    setSelected(full)
+    const full = normalizeDocumentRecord(await documentoAPI.getById(doc.id))
+    setSelected(normalizeDocumentRecord(full))
     setLogisticaNombre(full.logistica_nombre || '')
     setLogisticaArea(full.logistica_area || 'Logística / Almacén')
     // Load agent's firma
@@ -528,14 +563,14 @@ export default function Documentos() {
   }
 
   const openPreview = async (doc) => {
-    const full = await documentoAPI.getById(doc.id)
-    setSelected(full)
+    const full = normalizeDocumentRecord(await documentoAPI.getById(doc.id))
+    setSelected(normalizeDocumentRecord(full))
     setModal('preview')
   }
 
   const openCancel = async (doc) => {
-    const full = await documentoAPI.getById(doc.id)
-    setSelected(full)
+    const full = normalizeDocumentRecord(await documentoAPI.getById(doc.id))
+    setSelected(normalizeDocumentRecord(full))
     setCancelReason('')
     setModal('cancel')
   }
@@ -621,8 +656,8 @@ export default function Documentos() {
   const exportPDF = async () => {
     if (!selected) return
     try {
-      const full = await documentoAPI.getById(selected.id)
-      setSelected(full)
+      const full = normalizeDocumentRecord(await documentoAPI.getById(selected.id))
+      setSelected(normalizeDocumentRecord(full))
       const pdf = await generateDocumentPDF(full)
       pdf.save(`${full.folio || 'documento'}.pdf`)
     } catch (err) {

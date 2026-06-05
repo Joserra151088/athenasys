@@ -13,6 +13,92 @@ import previtaLogo from '../assets/previta.png'
 const tipoLabel = { entrada: 'Entrada de equipo', salida: 'Salida de equipo', responsiva: 'Responsiva de resguardo' }
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
+function normalizePublicDevices(devices = []) {
+  return (Array.isArray(devices) ? devices : []).map(device => {
+    if (!device || typeof device !== 'object' || Array.isArray(device)) {
+      return {
+        id: null,
+        tipo: '',
+        marca: '',
+        modelo: '',
+        serie: String(device || ''),
+        caracteristicas: '',
+        campos_extra: {},
+        costo: null,
+      }
+    }
+
+    return {
+      ...device,
+      id: device.id || null,
+      tipo: device.tipo || '',
+      marca: device.marca || '',
+      modelo: device.modelo || '',
+      serie: device.serie || '',
+      caracteristicas: device.caracteristicas || '',
+      campos_extra: device.campos_extra && typeof device.campos_extra === 'object' && !Array.isArray(device.campos_extra)
+        ? device.campos_extra
+        : {},
+      costo: device.costo ?? null,
+    }
+  })
+}
+
+function normalizePublicDocument(doc = {}) {
+  if (!doc || typeof doc !== 'object') {
+    return {
+      tipo: '',
+      folio: '',
+      entidad_nombre: '',
+      agente_nombre: '',
+      recibido_por_nombre: '',
+      receptor_nombre: '',
+      receptor_firmante_nombre: '',
+      dispositivos: [],
+      motivo_salida: '',
+      observaciones: '',
+      receptor_observaciones: '',
+      created_at: '',
+      firma_agente: null,
+      logistica_nombre: '',
+      logistica_area: '',
+      firma_logistica: null,
+      plantilla_texto: '',
+      entidad_num_empleado: '',
+      entidad_area: '',
+      entidad_puesto: '',
+      entidad_email: '',
+      logo_global: null,
+    }
+  }
+
+  return {
+    ...doc,
+    tipo: doc.tipo || '',
+    folio: doc.folio || '',
+    entidad_nombre: doc.entidad_nombre || '',
+    agente_nombre: doc.agente_nombre || '',
+    recibido_por_nombre: doc.recibido_por_nombre || '',
+    receptor_nombre: doc.receptor_nombre || '',
+    receptor_firmante_nombre: doc.receptor_firmante_nombre || '',
+    dispositivos: normalizePublicDevices(doc.dispositivos),
+    motivo_salida: doc.motivo_salida || '',
+    observaciones: doc.observaciones || '',
+    receptor_observaciones: doc.receptor_observaciones || '',
+    created_at: doc.created_at || '',
+    firma_agente: doc.firma_agente || null,
+    logistica_nombre: doc.logistica_nombre || '',
+    logistica_area: doc.logistica_area || '',
+    firma_logistica: doc.firma_logistica || null,
+    plantilla_texto: doc.plantilla_texto || '',
+    entidad_num_empleado: doc.entidad_num_empleado || '',
+    entidad_area: doc.entidad_area || '',
+    entidad_puesto: doc.entidad_puesto || '',
+    entidad_email: doc.entidad_email || '',
+    logo_global: doc.logo_global || null,
+  }
+}
+
 function getReceiverDisplayName(doc = {}) {
   if (doc?.tipo === 'entrada') {
     return doc.receptor_firmante_nombre || doc.receptor_nombre || doc.recibido_por_nombre || doc.agente_nombre || ''
@@ -98,8 +184,9 @@ export default function FirmaOnline() {
           setEstado('firmado')
           setMensaje(data.message || 'Este documento ya fue firmado.')
         } else {
-          setDocInfo(data.documento)
-          setReceptorFirmanteNombre(prev => prev || getReceiverDisplayName(data.documento))
+          const normalizedDoc = normalizePublicDocument(data.documento)
+          setDocInfo(normalizedDoc)
+          setReceptorFirmanteNombre(prev => prev || getReceiverDisplayName(normalizedDoc))
           setEstado('pendiente')
         }
       })
@@ -241,6 +328,7 @@ export default function FirmaOnline() {
 
   const isEntrada = docInfo?.tipo === 'entrada'
   const signerPlaceholder = isEntrada ? 'Ej. Ricardo Utrera Vasquez' : 'Ej. Juan Perez Lopez'
+  const safeDevices = normalizePublicDevices(docInfo?.dispositivos)
 
   // ── Pantalla principal de firma ──────────────────────────────────────────
   return (
@@ -284,11 +372,11 @@ export default function FirmaOnline() {
                 <span className="font-medium text-gray-800">{docInfo.logistica_nombre}</span>
               </div>
             )}
-            {docInfo?.dispositivos?.length > 0 && (
+            {safeDevices.length > 0 && (
               <div className="py-2 text-sm">
-                <p className="text-gray-500 mb-2">Equipos ({docInfo.dispositivos.length})</p>
+                <p className="text-gray-500 mb-2">Equipos ({safeDevices.length})</p>
                 <div className="space-y-1">
-                  {docInfo.dispositivos.map((d, i) => (
+                  {safeDevices.map((d, i) => (
                     <div key={i} className="bg-gray-50 rounded-lg px-3 py-2 text-xs">
                       <span className="font-medium text-gray-700">{d.tipo}</span>
                       {d.marca && <span className="text-gray-500"> · {d.marca} {d.modelo}</span>}

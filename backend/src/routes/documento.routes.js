@@ -134,6 +134,14 @@ function enrichDocumentoDispositivos(dispositivos = []) {
   })
 }
 
+function normalizeDocumentoRecord(doc = {}) {
+  if (!doc || typeof doc !== 'object') return { dispositivos: [] }
+  return {
+    ...doc,
+    dispositivos: enrichDocumentoDispositivos(doc.dispositivos),
+  }
+}
+
 function findEntidadByTipo(tipo, entidadId) {
   if (tipo === 'empleado') {
     return db.get('empleados').filter(e => e.id === entidadId && e.activo).value()[0] || null
@@ -251,7 +259,7 @@ function cancelPendingSignatureTokens(docId) {
 
 router.get('/', (req, res) => {
   const { tipo, page = 1, limit = 20, search, entidad_tipo, estado } = req.query
-  let items = db.get('documentos').value()
+  let items = db.get('documentos').value().map(normalizeDocumentoRecord)
   if (tipo) items = items.filter(d => d.tipo === tipo)
   if (entidad_tipo) items = items.filter(d => d.entidad_tipo === entidad_tipo)
   if (estado === 'firmado') items = items.filter(d => d.firmado && !d.cancelado)
@@ -284,7 +292,7 @@ router.get('/:id', (req, res) => {
   const item = db.get('documentos').find({ id: req.params.id }).value()
   if (!item) return res.status(404).json({ message: 'Documento no encontrado' })
   const plantilla = item.plantilla_id ? db.get('plantillas').find({ id: item.plantilla_id }).value() : null
-  res.json({ ...item, dispositivos: enrichDocumentoDispositivos(item.dispositivos), plantilla })
+  res.json({ ...normalizeDocumentoRecord(item), plantilla })
 })
 
 router.post('/', requireRoles('super_admin', 'agente_soporte'), auditLog('crear', 'documento'), (req, res) => {

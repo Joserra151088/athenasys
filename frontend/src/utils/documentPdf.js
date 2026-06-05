@@ -36,6 +36,35 @@ function normalizeCamposExtra(camposExtra) {
   return typeof camposExtra === 'object' && !Array.isArray(camposExtra) ? camposExtra : {}
 }
 
+function normalizeDocumentDevices(devices = []) {
+  return (Array.isArray(devices) ? devices : []).map(device => {
+    if (!device || typeof device !== 'object' || Array.isArray(device)) {
+      return {
+        id: null,
+        tipo: '',
+        marca: '',
+        modelo: '',
+        serie: String(device || ''),
+        caracteristicas: '',
+        campos_extra: {},
+        costo: null,
+      }
+    }
+
+    return {
+      ...device,
+      id: device.id || null,
+      tipo: device.tipo || '',
+      marca: device.marca || '',
+      modelo: device.modelo || '',
+      serie: device.serie || '',
+      caracteristicas: device.caracteristicas || '',
+      campos_extra: normalizeCamposExtra(device.campos_extra),
+      costo: device.costo ?? null,
+    }
+  })
+}
+
 function formatCampoLabel(key = '') {
   return String(key)
     .replace(/_/g, ' ')
@@ -72,6 +101,7 @@ export function getDeviceCharacteristicsText(device = {}) {
 }
 
 function getPlantillaTexto(doc) {
+  const devices = normalizeDocumentDevices(doc?.dispositivos)
   const plantillaTexto = doc?.plantilla?.texto_legal || doc?.plantilla_texto || ''
   if (!plantillaTexto) return ''
 
@@ -79,7 +109,7 @@ function getPlantillaTexto(doc) {
     ? new Date(doc.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
     : new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })
 
-  const listaDispositivos = doc.dispositivos?.length
+  const listaDispositivos = devices.length
     ? `<table style="width:100%;border-collapse:collapse;font-size:11px;margin:8px 0">
         <thead><tr style="background:#f3f4f6">
           <th style="text-align:left;padding:4px 8px;border:1px solid #e5e7eb">Tipo</th>
@@ -87,7 +117,7 @@ function getPlantillaTexto(doc) {
           <th style="text-align:left;padding:4px 8px;border:1px solid #e5e7eb">No. Serie</th>
           <th style="text-align:left;padding:4px 8px;border:1px solid #e5e7eb">Caracteristicas</th>
         </tr></thead>
-        <tbody>${doc.dispositivos.map(d =>
+        <tbody>${devices.map(d =>
           `<tr>
             <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.tipo || ''}</td>
             <td style="padding:4px 8px;border:1px solid #e5e7eb">${d.marca || ''} ${d.modelo || ''}</td>
@@ -115,7 +145,7 @@ function getPlantillaTexto(doc) {
     .replaceAll('{{fecha_documento}}', fechaDoc)
     .replaceAll('{{folio}}', doc.folio || '')
     .replaceAll('{{motivo_salida}}', doc.motivo_salida || doc.observaciones || '')
-    .replaceAll('{{num_dispositivos}}', String(doc.dispositivos?.length || 0))
+    .replaceAll('{{num_dispositivos}}', String(devices.length || 0))
     .replaceAll('{{lista_dispositivos}}', listaDispositivos)
 }
 
@@ -149,6 +179,7 @@ export async function generateDocumentPDF(doc, options = {}) {
   } = options
 
   const jsPDF = await loadJsPDF()
+  const devices = normalizeDocumentDevices(doc?.dispositivos)
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' })
   const W = pdf.internal.pageSize.getWidth()
   const H = pdf.internal.pageSize.getHeight()
@@ -334,7 +365,6 @@ export async function generateDocumentPDF(doc, options = {}) {
   })
   y += 7
 
-  const devices = doc.dispositivos || []
   devices.forEach((device, index) => {
     const even = index % 2 === 0
     const cells = isResponsiva

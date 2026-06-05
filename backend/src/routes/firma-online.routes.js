@@ -47,6 +47,37 @@ function getDocumentoReceiverName(doc = {}) {
   return doc.receptor_nombre || doc.entidad_nombre || ''
 }
 
+function normalizePublicDevices(devices = []) {
+  return (Array.isArray(devices) ? devices : []).map(device => {
+    if (!device || typeof device !== 'object' || Array.isArray(device)) {
+      return {
+        id: null,
+        tipo: '',
+        marca: '',
+        modelo: '',
+        serie: String(device || ''),
+        caracteristicas: '',
+        campos_extra: {},
+        costo: null,
+      }
+    }
+
+    return {
+      ...device,
+      id: device.id || null,
+      tipo: device.tipo || '',
+      marca: device.marca || '',
+      modelo: device.modelo || '',
+      serie: device.serie || '',
+      caracteristicas: device.caracteristicas || '',
+      campos_extra: device.campos_extra && typeof device.campos_extra === 'object' && !Array.isArray(device.campos_extra)
+        ? device.campos_extra
+        : {},
+      costo: device.costo ?? null,
+    }
+  })
+}
+
 function getPublicBaseURL(req) {
   const explicitURL = (process.env.PUBLIC_URL || '').trim()
   if (explicitURL) return explicitURL.replace(/\/+$/, '')
@@ -262,7 +293,7 @@ router.get('/:token', (req, res) => {
         recibido_por_nombre: doc.recibido_por_nombre || '',
         receptor_nombre: getDocumentoReceiverName(doc),
         receptor_firmante_nombre: doc.receptor_firmante_nombre || '',
-        dispositivos:    doc.dispositivos || [],
+        dispositivos:    normalizePublicDevices(doc.dispositivos),
         motivo_salida:   doc.motivo_salida || '',
         observaciones:   doc.observaciones || '',
         receptor_observaciones: doc.receptor_observaciones || '',
