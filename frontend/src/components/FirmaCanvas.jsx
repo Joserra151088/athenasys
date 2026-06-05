@@ -1,56 +1,165 @@
-import { useRef, forwardRef, useImperativeHandle, useState, useEffect, Component } from 'react'
+import { useRef, forwardRef, useImperativeHandle, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import SignatureCanvas from 'react-signature-canvas'
 import { TrashIcon, PencilIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max)
 
-class SignatureCanvasErrorBoundary extends Component {
-  constructor(props) {
-    super(props)
-    this.state = { hasError: false }
-  }
+const BACKGROUND_COLOR = 'rgb(249, 250, 251)'
+const PEN_COLOR = '#1d4ed8'
 
-  static getDerivedStateFromError() {
-    return { hasError: true }
-  }
+function trimCanvas(sourceCanvas) {
+  const context = sourceCanvas.getContext('2d')
+  if (!context) return sourceCanvas
 
-  componentDidCatch(error, info) {
-    console.error('[FirmaCanvas] Error renderizando el canvas de firma:', error, info)
-  }
+  const { width, height } = sourceCanvas
+  const pixels = context.getImageData(0, 0, width, height).data
 
-  componentDidUpdate(prevProps) {
-    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false })
+  let top = null
+  let left = null
+  let right = null
+  let bottom = null
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4
+      const alpha = pixels[index + 3]
+      const isBackground =
+        pixels[index] === 249 &&
+        pixels[index + 1] === 250 &&
+        pixels[index + 2] === 251 &&
+        alpha === 255
+
+      if (alpha !== 0 && !isBackground) {
+        if (top === null) top = y
+        if (left === null || x < left) left = x
+        if (right === null || x > right) right = x
+        if (bottom === null || y > bottom) bottom = y
+      }
     }
   }
 
-  render() {
-    if (this.state.hasError) {
-      return this.props.fallback || null
-    }
-
-    return this.props.children
+  if (top === null || left === null || right === null || bottom === null) {
+    return sourceCanvas
   }
+
+  const padding = 8
+  const cropLeft = Math.max(left - padding, 0)
+  const cropTop = Math.max(top - padding, 0)
+  const cropWidth = Math.min(right - left + padding * 2 + 1, width - cropLeft)
+  const cropHeight = Math.min(bottom - top + padding * 2 + 1, height - cropTop)
+
+  const trimmed = document.createElement('canvas')
+  trimmed.width = cropWidth
+  trimmed.height = cropHeight
+  const trimmedContext = trimmed.getContext('2d')
+  if (!trimmedContext) return sourceCanvas
+
+  trimmedContext.fillStyle = BACKGROUND_COLOR
+  trimmedContext.fillRect(0, 0, cropWidth, cropHeight)
+  trimmedContext.drawImage(
+    sourceCanvas,
+    cropLeft,
+    cropTop,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    cropWidth,
+    cropHeight
+  )
+
+  return trimmed
 }
 
 const FirmaCanvas = forwardRef(function FirmaCanvas({ label, existingSignature }, ref) {
-  const sigRef = useRef(null)
+  const canvasRef = useRef(null)
   const canvasWrapRef = useRef(null)
+  const drawingRef = useRef(false)
+  const lastPointRef = useRef(null)
   const [expanded, setExpanded] = useState(false)
-  const [localSig, setLocalSig] = useState(null) // base64 confirmed in modal
+  const [localSig, setLocalSig] = useState(null)
   const [canvasSize, setCanvasSize] = useState({ width: 600, height: 220 })
   const [inlineError, setInlineError] = useState('')
-  const [modalNonce, setModalNonce] = useState(0)
+  const [hasStroke, setHasStroke] = useState(false)
+
+  const displaySig = localSig || existingSignature
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) return
+
+    context.save()
+    context.setTransform(1, 0, 0, 1, 0, 0)
+    context.clearRect(0, 0, canvas.width, canvas.height)
+    context.restore()
+
+    context.fillStyle = BACKGROUND_COLOR
+    context.fillRect(0, 0, canvasSize.width, canvasSize.height)
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.strokeStyle = PEN_COLOR
+    context.lineWidth = 2
+    setHasStroke(false)
+  }
+
+  const setupCanvas = (seedImage = null) => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const context = canvas.getContext('2d')
+    if (!context) {
+      setInlineError('No se pudo inicializar el área de firma.')
+      return
+    }
+
+    const ratio = Math.max(window.devicePixelRatio || 1, 1)
+    canvas.width = Math.floor(canvasSize.width * ratio)
+    canvas.height = Math.floor(canvasSize.height * ratio)
+    canvas.style.width = `${canvasSize.width}px`
+    canvas.style.height = `${canvasSize.height}px`
+
+    context.setTransform(1, 0, 0, 1, 0, 0)
+    context.scale(ratio, ratio)
+    context.fillStyle = BACKGROUND_COLOR
+    context.fillRect(0, 0, canvasSize.width, canvasSize.height)
+    context.lineCap = 'round'
+    context.lineJoin = 'round'
+    context.strokeStyle = PEN_COLOR
+    context.lineWidth = 2
+
+    if (!seedImage) {
+      setHasStroke(false)
+      return
+    }
+
+    const image = new Image()
+    image.onload = () => {
+      context.fillStyle = BACKGROUND_COLOR
+      context.fillRect(0, 0, canvasSize.width, canvasSize.height)
+
+      const padding = 14
+      const maxWidth = canvasSize.width - padding * 2
+      const maxHeight = canvasSize.height - padding * 2
+      const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1)
+      const drawWidth = image.width * scale
+      const drawHeight = image.height * scale
+      const offsetX = (canvasSize.width - drawWidth) / 2
+      const offsetY = (canvasSize.height - drawHeight) / 2
+      context.drawImage(image, offsetX, offsetY, drawWidth, drawHeight)
+      setHasStroke(true)
+    }
+    image.onerror = () => setInlineError('No se pudo cargar la firma anterior para editarla.')
+    image.src = seedImage
+  }
 
   useEffect(() => {
     if (!expanded) return undefined
 
     const measure = () => {
-      if (sigRef.current && !sigRef.current.isEmpty()) return
       const width = Math.floor(canvasWrapRef.current?.clientWidth || 600)
       const height = Math.floor(clamp(width * 0.38, 190, 280))
-      setCanvasSize(size => (size.width === width && size.height === height ? size : { width, height }))
+      setCanvasSize((size) => (size.width === width && size.height === height ? size : { width, height }))
     }
 
     measure()
@@ -64,123 +173,162 @@ const FirmaCanvas = forwardRef(function FirmaCanvas({ label, existingSignature }
     }
   }, [expanded])
 
-  useImperativeHandle(ref, () => ({
-    getDataURL: () => {
-      if (localSig) return localSig
-      if (existingSignature && !localSig) return existingSignature
-      return null
-    },
-    clear: () => setLocalSig(null),
-    isEmpty: () => !localSig && !existingSignature
-  }), [localSig, existingSignature])
+  useEffect(() => {
+    if (!expanded) return
+    setInlineError('')
+    setupCanvas(localSig || existingSignature || null)
+  }, [expanded, canvasSize.width, canvasSize.height])
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      getDataURL: () => {
+        if (localSig) return localSig
+        if (existingSignature && !localSig) return existingSignature
+        return null
+      },
+      clear: () => setLocalSig(null),
+      isEmpty: () => !localSig && !existingSignature,
+    }),
+    [localSig, existingSignature]
+  )
+
+  const getCanvasPoint = (event) => {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const rect = canvas.getBoundingClientRect()
+    return {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+    }
+  }
+
+  const handlePointerDown = (event) => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    const point = getCanvasPoint(event)
+    if (!canvas || !context || !point) return
+
+    event.preventDefault()
+    drawingRef.current = true
+    lastPointRef.current = point
+    setHasStroke(true)
+
+    if (canvas.setPointerCapture) {
+      try {
+        canvas.setPointerCapture(event.pointerId)
+      } catch (_) {
+        // no-op
+      }
+    }
+
+    context.beginPath()
+    context.moveTo(point.x, point.y)
+  }
+
+  const handlePointerMove = (event) => {
+    if (!drawingRef.current) return
+    const context = canvasRef.current?.getContext('2d')
+    const point = getCanvasPoint(event)
+    if (!context || !point) return
+
+    event.preventDefault()
+    const lastPoint = lastPointRef.current || point
+    context.beginPath()
+    context.moveTo(lastPoint.x, lastPoint.y)
+    context.lineTo(point.x, point.y)
+    context.stroke()
+    lastPointRef.current = point
+  }
+
+  const stopDrawing = (event) => {
+    const canvas = canvasRef.current
+    drawingRef.current = false
+    lastPointRef.current = null
+    if (canvas?.releasePointerCapture) {
+      try {
+        canvas.releasePointerCapture(event.pointerId)
+      } catch (_) {
+        // no-op
+      }
+    }
+  }
 
   const confirmSignature = () => {
     try {
-      if (sigRef.current && !sigRef.current.isEmpty()) {
-        setLocalSig(sigRef.current.getTrimmedCanvas().toDataURL('image/png'))
+      const canvas = canvasRef.current
+      if (canvas && hasStroke) {
+        const trimmed = trimCanvas(canvas)
+        setLocalSig(trimmed.toDataURL('image/png'))
       }
       setInlineError('')
       setExpanded(false)
     } catch (error) {
       console.error('[FirmaCanvas] Error confirmando firma:', error)
-      setInlineError('No se pudo abrir o confirmar la firma. Intenta nuevamente.')
+      setInlineError('No se pudo confirmar la firma. Intenta nuevamente.')
     }
   }
 
   const clearAll = () => {
     setLocalSig(null)
     setInlineError('')
-    sigRef.current?.clear()
+    clearCanvas()
   }
 
   const openExpanded = () => {
     setInlineError('')
-    setModalNonce(value => value + 1)
     setExpanded(true)
   }
 
-  const displaySig = localSig || existingSignature
   const signatureModal =
     expanded && typeof document !== 'undefined'
       ? createPortal(
-          <SignatureCanvasErrorBoundary
-            resetKey={modalNonce}
-            fallback={
-              <div
-                className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
-                onClick={() => setExpanded(false)}
-              >
-                <div
-                  className="w-full max-w-lg rounded-2xl bg-white p-6 text-center shadow-2xl"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <p className="text-base font-semibold text-rose-600">No se pudo abrir el área de firma.</p>
-                  <p className="mt-2 text-sm text-rose-500">Cierra esta ventana e inténtalo de nuevo. Si persiste, revisamos ese documento en particular.</p>
-                  <div className="mt-4 flex justify-center">
-                    <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>
-                      Cerrar
-                    </button>
-                  </div>
-                </div>
-              </div>
-            }
+          <div
+            className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
+            onClick={(e) => e.target === e.currentTarget && setExpanded(false)}
           >
-            <div
-              className="fixed inset-0 z-[300] bg-black/70 flex items-center justify-center p-3 sm:p-4"
-              onClick={(e) => e.target === e.currentTarget && setExpanded(false)}
-            >
-              <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-3xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold text-lg text-gray-900">{label || 'Firma digital'}</h3>
-                  <button type="button" onClick={() => setExpanded(false)} className="p-1 rounded text-gray-400 hover:text-gray-600">
-                    <XMarkIcon className="h-5 w-5" />
-                  </button>
+            <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 w-full max-w-3xl space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-lg text-gray-900">{label || 'Firma digital'}</h3>
+                <button type="button" onClick={() => setExpanded(false)} className="p-1 rounded text-gray-400 hover:text-gray-600">
+                  <XMarkIcon className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500">Firma en el área de abajo usando el ratón o el dedo. En móvil, mantén el dedo dentro del recuadro.</p>
+              <div
+                ref={canvasWrapRef}
+                className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 hover:border-primary-400 transition-colors"
+                style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
+              >
+                <canvas
+                  ref={canvasRef}
+                  className="block"
+                  style={{ touchAction: 'none' }}
+                  onPointerDown={handlePointerDown}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={stopDrawing}
+                  onPointerLeave={stopDrawing}
+                  onPointerCancel={stopDrawing}
+                />
+              </div>
+              {inlineError && (
+                <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
+                  {inlineError}
                 </div>
-                <p className="text-sm text-gray-500">Firma en el área de abajo usando el ratón o el dedo. En móvil, mantén el dedo dentro del recuadro.</p>
-                <div
-                  ref={canvasWrapRef}
-                  className="border-2 border-dashed border-gray-300 rounded-xl overflow-hidden bg-gray-50 hover:border-primary-400 transition-colors"
-                  style={{ touchAction: 'none', overscrollBehavior: 'contain' }}
-                >
-                  <SignatureCanvas
-                    key={modalNonce}
-                    ref={sigRef}
-                    penColor="#1d4ed8"
-                    minWidth={0.8}
-                    maxWidth={2.4}
-                    velocityFilterWeight={0.65}
-                    canvasProps={{
-                      width: canvasSize.width,
-                      height: canvasSize.height,
-                      style: {
-                        width: `${canvasSize.width}px`,
-                        height: `${canvasSize.height}px`,
-                        display: 'block',
-                        touchAction: 'none',
-                      },
-                    }}
-                    backgroundColor="rgb(249, 250, 251)"
-                  />
-                </div>
-                {inlineError && (
-                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-600">
-                    {inlineError}
-                  </div>
-                )}
-                <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
-                  <button type="button" className="btn-secondary text-sm" onClick={() => sigRef.current?.clear()}>
-                    <TrashIcon className="h-4 w-4" /> Limpiar
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+                <button type="button" className="btn-secondary text-sm" onClick={clearCanvas}>
+                  <TrashIcon className="h-4 w-4" /> Limpiar
+                </button>
+                <div className="flex gap-3 justify-end">
+                  <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>Cancelar</button>
+                  <button type="button" className="btn-primary" onClick={confirmSignature}>
+                    <CheckIcon className="h-4 w-4" /> Confirmar firma
                   </button>
-                  <div className="flex gap-3 justify-end">
-                    <button type="button" className="btn-secondary" onClick={() => setExpanded(false)}>Cancelar</button>
-                    <button type="button" className="btn-primary" onClick={confirmSignature}>
-                      <CheckIcon className="h-4 w-4" /> Confirmar firma
-                    </button>
-                  </div>
                 </div>
               </div>
             </div>
-          </SignatureCanvasErrorBoundary>,
+          </div>,
           document.body
         )
       : null
@@ -189,7 +337,6 @@ const FirmaCanvas = forwardRef(function FirmaCanvas({ label, existingSignature }
     <div>
       {label && <label className="label mb-1">{label}</label>}
 
-      {/* Thumbnail / click area */}
       <div
         onClick={openExpanded}
         className={`relative border-2 rounded-xl overflow-hidden cursor-pointer transition-all group ${
